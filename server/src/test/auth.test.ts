@@ -1,0 +1,97 @@
+import { describe, it, beforeAll, afterAll, beforeEach, expect } from 'vitest';
+import type { Express } from 'express';
+import request from 'supertest';
+import { createApp } from '../app.js';
+import { setupTestDb, teardownTestDb } from './db.js';
+import { registerTutor } from './helpers.js';
+
+describe('auth', () => {
+  let app: Express;
+
+  beforeAll(async () => {
+    await setupTestDb();
+  });
+
+  beforeEach(async () => {
+    await setupTestDb();
+    app = await createApp();
+  });
+
+  afterAll(async () => {
+    await teardownTestDb();
+  });
+
+  it('register success + sets session', async () => {
+    const email = `reg-${crypto.randomUUID()}@test.com`;
+    const agent = request.agent(app);
+    const reg = await agent
+      .post('/api/auth/register')
+      .send({ email, password: 'password123', name: 'Reg Test' })
+      .expect(201);
+    expect(reg.headers['set-cookie']).toBeDefined();
+    const me = await agent.get('/api/auth/me').expect(200);
+    expect(me.body.tutor.email).toBe(email);
+  });
+
+  it('duplicate email → 409 EMAIL_TAKEN', async () => {
+    const email = `dup-${crypto.randomUUID()}@test.com`;
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email, password: 'password123', name: 'A' })
+      .expect(201);
+
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ email, password: 'password123', name: 'B' })
+      .expect(409);
+    expect(res.body.error.code).toBe('EMAIL_TAKEN');
+  });
+
+  it('weak/invalid input → 400 VALIDATION', async () => {
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'not-email', password: 'short', name: '' })
+      .expect(400);
+    expect(res.body.error.code).toBe('VALIDATION');
+    expect(res.body.error.details).toBeDefined();
+  });
+
+  it('login success/failure', async () => {
+    const email = `login-${crypto.randomUUID()}@test.com`;
+    const password = 'password123';
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email, password, name: 'Login Test' })
+      .expect(201);
+
+    const agent = request.agent(app);
+    await agent.post('/api/auth/login').send({ email, password }).expect(200);
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({ email, password: 'wrong' })
+      .expect(401);
+  });
+
+  it('patch me updates weekStartsOn', async () => {
+    const { agent } = await registerTutor(app);
+    const me = await agent.get('/api/auth/me').expect(200);
+    expect(me.body.tutor.weekStartsOn).toBe('monday');
+
+    const patched = await agent
+      .patch('/api/auth/me')
+      .send({ weekStartsOn: 'sunday' })
+      .expect(200);
+    expect(patched.body.tutor.weekStartsOn).toBe('sunday');
+  });
+
+  it('me with and without session; logout clears session', async () => {
+    const { agent } = await registerTutor(app);
+    await agent.get('/api/auth/me').expect(200);
+
+    await request(app).get('/api/auth/me').expect(401);
+
+    await agent.post('/api/auth/logout').expect(204);
+    await agent.get('/api/auth/me').expect(401);
+  });
+});
