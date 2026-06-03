@@ -6,18 +6,20 @@ import {
   activeDayAtom,
   lessonDraftAtom,
   lessonsAtom,
+  recurringSchedulesAtom,
+  recurringSchedulesOpenAtom,
   scheduleVariantAtom,
   selectedLessonIdAtom,
   weekStartAtom,
 } from '../atoms/schedule';
 import { AddLessonDrawer } from '../components/AddLessonDrawer';
 import { LessonDrawer } from '../components/LessonDrawer';
+import { RecurringSchedulesDrawer } from '../components/RecurringSchedulesDrawer';
 import { AgendaList } from '../components/schedule/AgendaList';
 import { FocusTimeline } from '../components/schedule/FocusTimeline';
 import { WeekGrid } from '../components/schedule/WeekGrid';
-import { Wallet } from '../components/Wallet';
 import { useLessonActions } from '../hooks/useLessonActions';
-import { useStudent } from '../hooks/useStudentMap';
+import { useRecurringScheduleActions } from '../hooks/useRecurringScheduleActions';
 import { fmtWeekLabel } from '../utils/format';
 import { isLessonPast } from '../utils/lessonBalance';
 import { shiftWeek, todayDayIndex, weekRangeUtc, type ViewLesson } from '../utils/schedule';
@@ -47,6 +49,7 @@ function Topbar({
   onNextWeek,
   onToday,
   onAddLesson,
+  onRecurring,
 }: {
   variant: 'week' | 'timeline' | 'agenda';
   setVariant: (v: 'week' | 'timeline' | 'agenda') => void;
@@ -58,6 +61,7 @@ function Topbar({
   onNextWeek: () => void;
   onToday: () => void;
   onAddLesson: () => void;
+  onRecurring: () => void;
 }) {
   return (
     <header className="top">
@@ -91,6 +95,9 @@ function Topbar({
             </button>
           ))}
         </div>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={onRecurring}>
+          Повторы
+        </button>
         <button type="button" className="btn btn--primary btn--sm" onClick={onAddLesson}>
           + Урок
         </button>
@@ -116,13 +123,7 @@ function Topbar({
   );
 }
 
-function RightRail({
-  lessons,
-  onSelectStudent,
-}: {
-  lessons: ViewLesson[];
-  onSelectStudent: (id: string) => void;
-}) {
+function RightRail({ lessons }: { lessons: ViewLesson[] }) {
   const tutor = useAtomValue(tutorAtom);
   const weekStart = useAtomValue(weekStartAtom);
   const tz = tutor?.timezone ?? 'UTC';
@@ -133,9 +134,6 @@ function RightRail({
   const hours = lessons
     .filter((l) => l.status !== 'cancelled')
     .reduce((a, l) => a + l.dur, 0);
-
-  const featuredId = lessons.find((l) => !l.paid && l.status !== 'cancelled')?.studentId;
-  const featured = useStudent(featuredId);
 
   return (
     <aside className="rail">
@@ -161,36 +159,6 @@ function RightRail({
           </div>
         </div>
       </div>
-
-      {featured ? (
-        <div className="rail__card">
-          <div className="rail__card-head">
-            <h4>Требует внимания</h4>
-            <button type="button" className="link" onClick={() => onSelectStudent(featured.id)}>
-              профиль
-            </button>
-          </div>
-          <div
-            className="rail__student"
-            onClick={() => onSelectStudent(featured.id)}
-            onKeyDown={(e) => e.key === 'Enter' && onSelectStudent(featured.id)}
-            role="button"
-            tabIndex={0}
-          >
-            <span
-              className="avatar avatar--sm"
-              style={{ background: `oklch(0.62 0.13 ${featured.hue})` }}
-            >
-              {featured.initials}
-            </span>
-            <span className="rail__student-txt">
-              <strong>{featured.name}</strong>
-              <span>есть неоплаченные уроки</span>
-            </span>
-          </div>
-          <Wallet student={featured} compact />
-        </div>
-      ) : null}
     </aside>
   );
 }
@@ -201,6 +169,8 @@ export function SchedulePage() {
   const location = useLocation();
   const tutor = useAtomValue(tutorAtom);
   const lessons = useAtomValue(lessonsAtom);
+  const recurringSchedules = useAtomValue(recurringSchedulesAtom);
+  const [recurringOpen, setRecurringOpen] = useAtom(recurringSchedulesOpenAtom);
   const [variant, setVariant] = useAtom(scheduleVariantAtom);
   const weekStart = useAtomValue(weekStartAtom);
   const [selectedId, setSelectedId] = useAtom(selectedLessonIdAtom);
@@ -208,6 +178,7 @@ export function SchedulePage() {
   const [prefillStudentId, setPrefillStudentId] = useState<string | undefined>();
   const setActiveDay = useSetAtom(activeDayAtom);
   const { setStatus, setPaid, createLesson, deleteLesson, rescheduleLesson } = useLessonActions();
+  const { createRecurringSchedule } = useRecurringScheduleActions();
   const store = useAppStore();
 
   const tz = tutor?.timezone ?? 'UTC';
@@ -250,10 +221,6 @@ export function SchedulePage() {
     navigate('/schedule', { replace: true, state: {} });
   }, [location.state, navigate, setDraft, setSelectedId, weekStart, tz]);
 
-  const openStudent = (sid: string) => {
-    navigate(`/students/${sid}`);
-  };
-
   const openCreate = (day: number, start = 10) => {
     setSelectedId(null);
     setDraft({ day, start });
@@ -262,8 +229,16 @@ export function SchedulePage() {
   const onLessonCreated = async (input: Parameters<typeof createLesson>[0]): Promise<string> => {
     const id = await createLesson(input);
     setDraft(null);
-    setSelectedId(id);
+    setSelectedId(null);
     return id;
+  };
+
+  const onRecurringCreated = async (
+    input: Parameters<typeof createRecurringSchedule>[0],
+  ): Promise<void> => {
+    await createRecurringSchedule(input);
+    setDraft(null);
+    setPrefillStudentId(undefined);
   };
 
   return (
@@ -279,6 +254,10 @@ export function SchedulePage() {
         onNextWeek={onNextWeek}
         onToday={onToday}
         onAddLesson={() => openCreate(todayDayIndex(weekStart, tz) ?? 0, 10)}
+        onRecurring={() => {
+          setSelectedId(null);
+          setRecurringOpen(true);
+        }}
       />
       <div className="app__content">
         <main className="board">
@@ -294,7 +273,7 @@ export function SchedulePage() {
           )}
           {effVariant === 'agenda' && <AgendaList onSelect={setSelectedId} />}
         </main>
-        {!mobile && <RightRail lessons={lessons} onSelectStudent={openStudent} />}
+        {!mobile && <RightRail lessons={lessons} />}
       </div>
       {draft && (
         <AddLessonDrawer
@@ -305,6 +284,13 @@ export function SchedulePage() {
             setPrefillStudentId(undefined);
           }}
           onCreate={onLessonCreated}
+          onCreateRecurring={onRecurringCreated}
+        />
+      )}
+      {recurringOpen && !draft && (
+        <RecurringSchedulesDrawer
+          schedules={recurringSchedules}
+          onClose={() => setRecurringOpen(false)}
         />
       )}
       {selected && !draft && (

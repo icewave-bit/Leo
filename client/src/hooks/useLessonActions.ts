@@ -41,6 +41,7 @@ export function useLessonActions() {
     try {
       const updated = await api.patchLesson(id, { paid });
       patchLocal(id, { paid: updated.paid });
+      await reload();
     } catch {
       await reload();
     }

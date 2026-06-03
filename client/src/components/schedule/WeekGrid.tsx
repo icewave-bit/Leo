@@ -19,7 +19,16 @@ import {
   type ViewLesson,
   type ViewStudent,
 } from '../../utils/schedule';
-import { fmtTime, lessonStyle, PaidDot, TypeIcon } from './LessonChrome';
+import {
+  fmtTime,
+  lessonCardClass,
+  lessonCardVars,
+  lessonEventLabel,
+  lessonGridHint,
+  LessonPayMark,
+  TypeIcon,
+} from './LessonChrome';
+import { RecurrenceIcon } from '../RecurrenceFields';
 
 function LessonEvent({
   lesson,
@@ -38,21 +47,30 @@ function LessonEvent({
 }) {
   const top = start * WG_PX_PER_HOUR;
   const height = lesson.dur * WG_PX_PER_HOUR - 4;
+  const tight = height < 42;
+  const hint = lessonGridHint(lesson);
 
   return (
     <button
       type="button"
-      className={'ev ev--' + lesson.status + (ghost ? ' ev--ghost' : '')}
-      style={{ top, height, ...lessonStyle(student, lesson.status) }}
+      className={lessonCardClass(lesson, { tight, ghost })}
+      style={{ top, height, ...lessonCardVars(student) }}
+      title={`${student.name} · ${lessonEventLabel(lesson)}`}
+      aria-label={`${student.name}, ${fmtTime(start)}, ${lessonEventLabel(lesson)}`}
       onPointerDown={onPointerDown}
       onClick={onClick}
     >
-      <span className="ev__time">{fmtTime(start)}</span>
-      <span className="ev__name">{student.name}</span>
-      <span className="ev__meta">
-        <TypeIcon type={lesson.type} />
-        <PaidDot paid={lesson.paid} />
+      <LessonPayMark lesson={lesson} />
+      <span className="ev__head">
+        <span className="ev__name">{student.name}</span>
+        {lesson.recurringScheduleId ? <RecurrenceIcon /> : null}
+        {lesson.type === 'group' ? <TypeIcon type="group" /> : null}
       </span>
+      <span className="ev__time">
+        {fmtTime(start)}
+        {!tight ? ` – ${fmtTime(start + lesson.dur)}` : null}
+      </span>
+      {hint && !tight ? <span className="ev__hint">{hint}</span> : null}
     </button>
   );
 }

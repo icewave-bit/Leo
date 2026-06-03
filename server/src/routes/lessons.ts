@@ -10,12 +10,14 @@ import { AppError } from '../errors.js';
 import {
   reverseLessonBalanceCharge,
   runAutoCompleteForTutor,
+  syncLessonBalanceForPaid,
   syncLessonBalanceForStatus,
 } from '../lessonBalance.js';
 import { toLesson, type LessonRow } from '../mappers.js';
 import type { AcademicUnits } from '../types.js';
 import { validate } from '../validate.js';
 import { requireAuth } from '../middleware/requireAuth.js';
+import { topUpRecurringSchedules } from '../recurringSchedule.js';
 
 const lessonStatusEnum = z.enum(['planned', 'completed', 'cancelled', 'no_show']);
 const lessonTypeEnum = z.enum(['solo', 'group']);
@@ -63,7 +65,8 @@ const deleteLessonQuerySchema = z.object({
 });
 
 const LESSON_COLUMNS = `id, tutor_id, student_id, start_utc, duration_min, academic_units, status, type, paid, notes,
-              balance_charged, charge_prepaid_delta, charge_debt_delta, created_at, updated_at`;
+              balance_charged, balance_paid_applied, charge_prepaid_delta, charge_debt_delta,
+              recurring_schedule_id, created_at, updated_at`;
 
 export const lessonsRouter = Router();
 
@@ -109,6 +112,7 @@ lessonsRouter.get('/', async (req, res, next) => {
     }
 
     await runAutoCompleteForTutor(req.tutorId!, { from, to });
+    await topUpRecurringSchedules(req.tutorId!);
 
     const params: unknown[] = [req.tutorId, from.toISOString(), to.toISOString()];
     let studentFilter = '';
@@ -241,7 +245,17 @@ lessonsRouter.patch('/:id', async (req, res, next) => {
     let updated = current.rows[0]!;
 
     if (body.status !== undefined) {
-      await syncLessonBalanceForStatus(client, updated, body.status);
+      const paidAfterUpdate = body.paid !== undefined ? body.paid : updated.paid;
+      await syncLessonBalanceForStatus(client, updated, body.status, paidAfterUpdate);
+      const refreshed = await client.query<LessonRow>(
+        `SELECT ${LESSON_COLUMNS} FROM lessons WHERE id = $1`,
+        [updated.id],
+      );
+      updated = refreshed.rows[0]!;
+    }
+
+    if (body.paid !== undefined) {
+      await syncLessonBalanceForPaid(client, updated, body.paid);
       const refreshed = await client.query<LessonRow>(
         `SELECT ${LESSON_COLUMNS} FROM lessons WHERE id = $1`,
         [updated.id],

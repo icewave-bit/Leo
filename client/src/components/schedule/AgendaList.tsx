@@ -3,8 +3,13 @@ import { tutorAtom } from '../../atoms/auth';
 import { lessonsAtom, weekStartAtom } from '../../atoms/schedule';
 import { weekDates, weekDayNames, todayDayIndex } from '../../utils/schedule';
 import { useStudentMap } from '../../hooks/useStudentMap';
-import { STATUS_LABELS } from '../../constants/status';
-import { fmtTime, lessonStyle, PaidDot, TypeIcon } from './LessonChrome';
+import {
+  fmtTime,
+  lessonCardClass,
+  lessonCardVars,
+  LessonMetaLine,
+  TypeIcon,
+} from './LessonChrome';
 
 export function AgendaList({ onSelect }: { onSelect: (id: string) => void }) {
   const lessons = useAtomValue(lessonsAtom);
@@ -40,8 +45,8 @@ export function AgendaList({ onSelect }: { onSelect: (id: string) => void }) {
                   <button
                     key={l.id}
                     type="button"
-                    className={'ag__card ev--' + l.status}
-                    style={lessonStyle(stu, l.status)}
+                    className={'ag__card ' + lessonCardClass(l)}
+                    style={lessonCardVars(stu)}
                     onClick={() => onSelect(l.id)}
                   >
                     <span className="ag__time">
@@ -55,17 +60,11 @@ export function AgendaList({ onSelect }: { onSelect: (id: string) => void }) {
                       {stu.initials}
                     </span>
                     <span className="ag__main">
-                      <span className="ag__name">
-                        {stu.name}
+                      <span className="ag__head">
+                        <span className="ag__name">{stu.name}</span>
                         <TypeIcon type={l.type} />
                       </span>
-                      <span className="ag__status">
-                        <i className="sdot" style={{ background: STATUS_LABELS[l.status].dot }} />
-                        {STATUS_LABELS[l.status].ru}
-                      </span>
-                    </span>
-                    <span className="ag__pay">
-                      <PaidDot paid={l.paid} />
+                      <LessonMetaLine lesson={l} />
                     </span>
                   </button>
                 );

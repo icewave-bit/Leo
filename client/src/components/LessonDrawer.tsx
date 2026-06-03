@@ -5,12 +5,14 @@ import { academicUnitsShort, lessonPrice } from '../utils/academicHour';
 import { fmtMoney, fmtTime } from '../utils/format';
 import { isLessonPast } from '../utils/lessonBalance';
 import { weekDates, weekDayNames } from '../utils/schedule';
+import { recurringSchedulesAtom } from '../atoms/schedule';
 import { tutorAtom } from '../atoms/auth';
 import { weekStartAtom } from '../atoms/schedule';
 import { useStudent } from '../hooks/useStudentMap';
 import type { ViewLesson, UiLessonStatus } from '../utils/schedule';
 import { ConfirmDialog } from './ConfirmDialog';
 import { LessonBalanceConfirmOptions } from './LessonBalanceConfirmOptions';
+import { RecurrenceIcon } from './RecurrenceFields';
 import { Wallet } from './Wallet';
 import { TypeIcon } from './schedule/LessonChrome';
 
@@ -30,6 +32,7 @@ export function LessonDrawer({ lesson, onClose, onStatus, onPaid, onDelete }: Le
   const stu = useStudent(lesson.studentId);
   const tutor = useAtomValue(tutorAtom);
   const weekStart = useAtomValue(weekStartAtom);
+  const recurringSchedules = useAtomValue(recurringSchedulesAtom);
   const tz = tutor?.timezone ?? 'UTC';
   const dates = weekDates(weekStart, tz);
   const { full: daysFull } = weekDayNames(tutor?.weekStartsOn ?? 'monday');
@@ -45,6 +48,9 @@ export function LessonDrawer({ lesson, onClose, onStatus, onPaid, onDelete }: Le
     : null;
 
   const lessonWhen = `${daysFull[lesson.day]}, ${dates[lesson.day]} · ${fmtTime(lesson.start)}–${fmtTime(lesson.start + lesson.dur)}`;
+  const series = lesson.recurringScheduleId
+    ? recurringSchedules.find((s) => s.id === lesson.recurringScheduleId)
+    : null;
   const pastByTime = isLessonPast(lesson.startUtc, lesson.durationMin);
   const showBalanceOnDelete = pastByTime;
 
@@ -135,6 +141,17 @@ export function LessonDrawer({ lesson, onClose, onStatus, onPaid, onDelete }: Le
             </button>
           )}
         </div>
+
+        {series ? (
+          <div className="drawer__row drawer__row--series">
+            <span className="drawer__k">Серия</span>
+            <span className="drawer__series">
+              <RecurrenceIcon />
+              {series.active ? 'Повторяется еженедельно' : 'Серия на паузе'}
+              {series.endDate ? ` · до ${series.endDate}` : ''}
+            </span>
+          </div>
+        ) : null}
 
         <div className="drawer__row">
           <span className="drawer__k">Статус</span>

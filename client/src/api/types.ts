@@ -70,8 +70,33 @@ export interface Lesson {
   paid: boolean;
   notes: string | null;
   balanceCharged: boolean;
+  recurringScheduleId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RecurringSchedule {
+  id: string;
+  tutorId: string;
+  studentId: string;
+  weekdays: number[];
+  startMinutes: number;
+  durationMin: number;
+  academicUnits: AcademicUnits;
+  type: LessonType;
+  notes: string | null;
+  intervalWeeks: number;
+  startDate: string;
+  endDate: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RecurrenceConfig {
+  intervalWeeks: number;
+  weekdays: number[];
+  endDate: string | null;
 }
 
 export interface ApiError {

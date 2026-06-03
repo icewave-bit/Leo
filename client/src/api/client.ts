@@ -3,6 +3,7 @@ import type {
   CreateStudentBody,
   Lesson,
   LessonType,
+  RecurringSchedule,
   Student,
   PatchTutorBody,
   Tutor,
@@ -86,5 +87,28 @@ export const api = {
     if (opts?.restoreBalance) params.set('restoreBalance', 'true');
     const qs = params.toString();
     return request<void>(`/api/lessons/${id}${qs ? `?${qs}` : ''}`, { method: 'DELETE' });
+  },
+
+  recurringSchedules: () => request<RecurringSchedule[]>('/api/recurring-schedules'),
+  createRecurringSchedule: (body: {
+    studentId: string;
+    weekdays: number[];
+    startMinutes: number;
+    academicUnits: 1 | 2;
+    type?: LessonType;
+    notes?: string | null;
+    intervalWeeks?: number;
+    startDate: string;
+    endDate?: string | null;
+  }) => request<RecurringSchedule>('/api/recurring-schedules', { method: 'POST', json: body }),
+  patchRecurringSchedule: (
+    id: string,
+    body: Partial<Pick<RecurringSchedule, 'active' | 'endDate' | 'notes'>>,
+  ) => request<RecurringSchedule>(`/api/recurring-schedules/${id}`, { method: 'PATCH', json: body }),
+  deleteRecurringSchedule: (id: string, opts?: { deleteFutureLessons?: boolean }) => {
+    const params = new URLSearchParams();
+    if (opts?.deleteFutureLessons) params.set('deleteFutureLessons', 'true');
+    const qs = params.toString();
+    return request<void>(`/api/recurring-schedules/${id}${qs ? `?${qs}` : ''}`, { method: 'DELETE' });
   },
 };

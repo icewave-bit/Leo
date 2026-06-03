@@ -34,9 +34,26 @@ type LessonBalanceRow = Pick<
   | 'academic_units'
   | 'status'
   | 'balance_charged'
+  | 'balance_paid_applied'
   | 'charge_prepaid_delta'
   | 'charge_debt_delta'
 >;
+
+async function reloadLessonBalanceRow(
+  client: PoolClient,
+  lessonId: string,
+): Promise<LessonBalanceRow> {
+  const result = await client.query<LessonBalanceRow>(
+    `SELECT id, student_id, start_utc, duration_min, academic_units, status,
+            balance_charged, balance_paid_applied,
+            charge_prepaid_delta, charge_debt_delta
+     FROM lessons WHERE id = $1`,
+    [lessonId],
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error('Lesson not found');
+  return row;
+}
 
 type StudentBalanceRow = Pick<
   StudentRow,
@@ -87,11 +104,61 @@ export async function applyLessonBalanceCharge(
   );
 }
 
+export async function applyLessonBalancePayment(
+  client: PoolClient,
+  lesson: LessonBalanceRow,
+): Promise<void> {
+  if (!lesson.balance_charged || lesson.balance_paid_applied) return;
+
+  const fromPrepaid = Number(lesson.charge_prepaid_delta);
+  const toDebt = Number(lesson.charge_debt_delta);
+  if (fromPrepaid === 0 && toDebt === 0) return;
+
+  await client.query(
+    `UPDATE students
+     SET prepaid = prepaid + $1,
+         debt = GREATEST(0, debt - $2)
+     WHERE id = $3`,
+    [fromPrepaid, toDebt, lesson.student_id],
+  );
+  await client.query(
+    `UPDATE lessons
+     SET balance_paid_applied = true,
+         updated_at = now()
+     WHERE id = $1`,
+    [lesson.id],
+  );
+}
+
+export async function reverseLessonBalancePayment(
+  client: PoolClient,
+  lesson: LessonBalanceRow,
+): Promise<void> {
+  if (!lesson.balance_paid_applied) return;
+
+  const fromPrepaid = Number(lesson.charge_prepaid_delta);
+  const toDebt = Number(lesson.charge_debt_delta);
+
+  await client.query(
+    `UPDATE students SET prepaid = prepaid - $1, debt = debt + $2 WHERE id = $3`,
+    [fromPrepaid, toDebt, lesson.student_id],
+  );
+  await client.query(
+    `UPDATE lessons
+     SET balance_paid_applied = false,
+         updated_at = now()
+     WHERE id = $1`,
+    [lesson.id],
+  );
+}
+
 export async function reverseLessonBalanceCharge(
   client: PoolClient,
   lesson: LessonBalanceRow,
 ): Promise<void> {
   if (!lesson.balance_charged) return;
+
+  await reverseLessonBalancePayment(client, lesson);
 
   const fromPrepaid = Number(lesson.charge_prepaid_delta);
   const toDebt = Number(lesson.charge_debt_delta);
@@ -115,15 +182,32 @@ export async function syncLessonBalanceForStatus(
   client: PoolClient,
   lesson: LessonBalanceRow,
   nextStatus: LessonStatus,
+  paid: boolean,
 ): Promise<void> {
-  const student = await loadStudent(client, lesson.student_id);
   if (nextStatus === 'completed') {
+    const student = await loadStudent(client, lesson.student_id);
     await applyLessonBalanceCharge(client, lesson, student);
+    if (paid) {
+      const charged = await reloadLessonBalanceRow(client, lesson.id);
+      await applyLessonBalancePayment(client, charged);
+    }
     return;
   }
   if (lesson.balance_charged) {
     await reverseLessonBalanceCharge(client, lesson);
   }
+}
+
+export async function syncLessonBalanceForPaid(
+  client: PoolClient,
+  lesson: LessonBalanceRow,
+  nextPaid: boolean,
+): Promise<void> {
+  if (nextPaid) {
+    await applyLessonBalancePayment(client, lesson);
+    return;
+  }
+  await reverseLessonBalancePayment(client, lesson);
 }
 
 export async function runAutoCompleteForTutor(
@@ -139,7 +223,8 @@ export async function runAutoCompleteForTutor(
 
   const due = await query<LessonBalanceRow & { student_id: string }>(
     `SELECT id, student_id, start_utc, duration_min, academic_units, status,
-            balance_charged, charge_prepaid_delta, charge_debt_delta
+            balance_charged, balance_paid_applied,
+            charge_prepaid_delta, charge_debt_delta
      FROM lessons
      WHERE tutor_id = $1
        AND status = 'planned'
@@ -155,7 +240,8 @@ export async function runAutoCompleteForTutor(
     for (const lesson of due.rows) {
       const locked = await client.query<LessonBalanceRow>(
         `SELECT id, student_id, start_utc, duration_min, academic_units, status,
-                balance_charged, charge_prepaid_delta, charge_debt_delta
+                balance_charged, balance_paid_applied,
+                charge_prepaid_delta, charge_debt_delta
          FROM lessons WHERE id = $1 FOR UPDATE`,
         [lesson.id],
       );

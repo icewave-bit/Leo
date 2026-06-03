@@ -3,9 +3,14 @@ import { tutorAtom } from '../../atoms/auth';
 import { activeDayAtom, lessonsAtom, weekStartAtom } from '../../atoms/schedule';
 import { weekDates, weekDayNames } from '../../utils/schedule';
 import { useStudentMap } from '../../hooks/useStudentMap';
-import { STATUS_LABELS } from '../../constants/status';
 import { academicUnitsShort } from '../../utils/academicHour';
-import { fmtTime, lessonStyle, PaidDot, TypeIcon } from './LessonChrome';
+import {
+  fmtTime,
+  lessonCardClass,
+  lessonCardVars,
+  LessonMetaLine,
+  TypeIcon,
+} from './LessonChrome';
 
 export function FocusTimeline({
   onSelect,
@@ -82,24 +87,25 @@ export function FocusTimeline({
                 </div>
                 <button
                   type="button"
-                  className={'ft__card ev--' + l.status}
-                  style={lessonStyle(stu, l.status)}
+                  className={'ft__card ' + lessonCardClass(l)}
+                  style={lessonCardVars(stu)}
                   onClick={() => onSelect(l.id)}
                 >
                   <span className="avatar" style={{ background: `oklch(0.62 0.13 ${stu.hue})` }}>
                     {stu.initials}
                   </span>
                   <span className="ft__card-main">
-                    <span className="ft__card-name">
-                      {stu.name}
+                    <span className="ft__card-head">
+                      <span className="ft__card-name">{stu.name}</span>
                       <TypeIcon type={l.type} />
                     </span>
                     <span className="ft__card-sub">
-                      {fmtTime(l.start)}–{fmtTime(l.start + l.dur)} · {STATUS_LABELS[l.status].ru}
+                      {fmtTime(l.start)}–{fmtTime(l.start + l.dur)} ·{' '}
+                      {academicUnitsShort(l.academicUnits)}
                     </span>
+                    <LessonMetaLine lesson={l} />
                   </span>
                   <span className="ft__card-side">
-                    <PaidDot paid={l.paid} />
                     {stu.meet ? (
                       <a
                         className="ft__join"

@@ -4,6 +4,7 @@ import type {
   Lesson,
   LessonStatus,
   LessonType,
+  RecurringSchedule,
   Student,
   Tutor,
   WeekStartsOn,
@@ -52,8 +53,28 @@ interface LessonRow {
   paid: boolean;
   notes: string | null;
   balance_charged: boolean;
+  balance_paid_applied: boolean;
   charge_prepaid_delta: string;
   charge_debt_delta: string;
+  recurring_schedule_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface RecurringScheduleRow {
+  id: string;
+  tutor_id: string;
+  student_id: string;
+  weekdays: number[];
+  start_minutes: number;
+  duration_min: number;
+  academic_units: AcademicUnits;
+  type: LessonType;
+  notes: string | null;
+  interval_weeks: number;
+  start_date: string;
+  end_date: string | null;
+  active: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -110,9 +131,30 @@ export function toLesson(row: LessonRow): Lesson {
     paid: row.paid,
     notes: row.notes,
     balanceCharged: row.balance_charged,
+    recurringScheduleId: row.recurring_schedule_id,
     createdAt: toIsoUtc(row.created_at),
     updatedAt: toIsoUtc(row.updated_at),
   };
 }
 
-export type { TutorRow, StudentRow, LessonRow };
+export function toRecurringSchedule(row: RecurringScheduleRow): RecurringSchedule {
+  return {
+    id: row.id,
+    tutorId: row.tutor_id,
+    studentId: row.student_id,
+    weekdays: row.weekdays,
+    startMinutes: row.start_minutes,
+    durationMin: row.duration_min,
+    academicUnits: row.academic_units,
+    type: row.type,
+    notes: row.notes,
+    intervalWeeks: row.interval_weeks,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    active: row.active,
+    createdAt: toIsoUtc(row.created_at),
+    updatedAt: toIsoUtc(row.updated_at),
+  };
+}
+
+export type { TutorRow, StudentRow, LessonRow, RecurringScheduleRow };

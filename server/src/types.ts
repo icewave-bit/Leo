@@ -49,6 +49,25 @@ export interface Lesson {
   paid: boolean;
   notes: string | null;
   balanceCharged: boolean;
+  recurringScheduleId: UUID | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RecurringSchedule {
+  id: UUID;
+  tutorId: UUID;
+  studentId: UUID;
+  weekdays: number[];
+  startMinutes: number;
+  durationMin: number;
+  academicUnits: AcademicUnits;
+  type: LessonType;
+  notes: string | null;
+  intervalWeeks: number;
+  startDate: string;
+  endDate: string | null;
+  active: boolean;
   createdAt: string;
   updatedAt: string;
 }

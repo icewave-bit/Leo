@@ -9,6 +9,7 @@ import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
 import { studentsRouter } from './routes/students.js';
 import { lessonsRouter } from './routes/lessons.js';
+import { recurringSchedulesRouter } from './routes/recurringSchedules.js';
 
 const PgSession = connectPgSimple(session);
 
@@ -45,6 +46,7 @@ export async function createApp(): Promise<express.Express> {
   app.use('/api/auth', authRouter);
   app.use('/api/students', studentsRouter);
   app.use('/api/lessons', lessonsRouter);
+  app.use('/api/recurring-schedules', recurringSchedulesRouter);
 
   app.use(
     (
