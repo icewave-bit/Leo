@@ -117,6 +117,10 @@ export async function materializeRecurringSchedule(
        WHERE NOT EXISTS (
          SELECT 1 FROM lessons
          WHERE recurring_schedule_id = $8 AND start_utc = $3
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM recurring_schedule_skips
+         WHERE recurring_schedule_id = $8 AND start_utc = $3
        )`,
       [
         schedule.tutor_id,
@@ -133,6 +137,53 @@ export async function materializeRecurringSchedule(
   }
 
   return inserted;
+}
+
+/** Deletes planned lessons in a series from now onward (e.g. when pausing). */
+export async function deleteFutureLessonsForSchedule(
+  client: PoolClient,
+  scheduleId: string,
+  tutorId: string,
+): Promise<void> {
+  await client.query(
+    `DELETE FROM lessons
+     WHERE recurring_schedule_id = $1
+       AND tutor_id = $2
+       AND status = 'planned'
+       AND start_utc + (duration_min * interval '1 minute') > now()`,
+    [scheduleId, tutorId],
+  );
+}
+
+/** Deletes this and following lessons in a series from the anchor occurrence onward. */
+export async function deleteLessonsFromScheduleAnchor(
+  client: PoolClient,
+  scheduleId: string,
+  tutorId: string,
+  fromStartUtc: Date | string,
+): Promise<void> {
+  const iso = typeof fromStartUtc === 'string' ? fromStartUtc : fromStartUtc.toISOString();
+  await client.query(
+    `DELETE FROM lessons
+     WHERE recurring_schedule_id = $1
+       AND tutor_id = $2
+       AND start_utc >= $3`,
+    [scheduleId, tutorId, iso],
+  );
+}
+
+export async function skipRecurringOccurrence(
+  client: PoolClient,
+  recurringScheduleId: string,
+  startUtc: Date | string,
+): Promise<void> {
+  const iso = typeof startUtc === 'string' ? startUtc : startUtc.toISOString();
+  await client.query(
+    `INSERT INTO recurring_schedule_skips (recurring_schedule_id, start_utc)
+     VALUES ($1, $2)
+     ON CONFLICT DO NOTHING`,
+    [recurringScheduleId, iso],
+  );
 }
 
 export async function topUpRecurringSchedules(tutorId: string): Promise<void> {

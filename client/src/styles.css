@@ -221,8 +221,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--surf); flex-wrap: wrap; flex-shrink: 0; }
 .top__l { display: flex; align-items: center; gap: 22px; }
 .top__title { font-size: 21px; }
-.weeknav { display: flex; align-items: center; gap: 6px; }
-.weeknav__label { font-size: 14px; font-weight: 600; min-width: 118px; text-align: center; }
+.weeknav { display: flex; align-items: center; gap: 8px; }
+.weeknav__range { display: flex; align-items: center; gap: 2px; }
+.weeknav__label { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .top__r { display: flex; align-items: center; gap: 12px; }
 
 /* segmented control */
@@ -734,6 +735,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   cursor: pointer;
 }
 .confirm__balance-opt input { margin-top: 3px; flex-shrink: 0; }
+.confirm__balance-opt--spaced { margin-top: 10px; }
 .confirm__actions {
   display: flex;
   justify-content: center;

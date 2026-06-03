@@ -12,6 +12,8 @@ import { requireAuth } from '../middleware/requireAuth.js';
 import {
   getTutorSchedulePrefs,
   horizonEndDateFromNow,
+  deleteFutureLessonsForSchedule,
+  deleteLessonsFromScheduleAnchor,
   materializeRecurringSchedule,
   topUpRecurringSchedules,
   resolveMaterializeHorizon,
@@ -58,10 +60,7 @@ const patchRecurringScheduleSchema = z
   });
 
 const deleteRecurringQuerySchema = z.object({
-  deleteFutureLessons: z
-    .enum(['true', 'false'])
-    .optional()
-    .transform((v) => v === 'true'),
+  fromLessonId: z.string().uuid(),
 });
 
 const RECURRING_COLUMNS = `id, tutor_id, student_id, weekdays, start_minutes, duration_min, academic_units,
@@ -225,14 +224,7 @@ recurringSchedulesRouter.patch('/:id', async (req, res, next) => {
     }
 
     if (body.active === false) {
-      await client.query(
-        `DELETE FROM lessons
-         WHERE recurring_schedule_id = $1
-           AND tutor_id = $2
-           AND status = 'planned'
-           AND start_utc > now()`,
-        [existing.id, req.tutorId],
-      );
+      await deleteFutureLessonsForSchedule(client, existing.id, req.tutorId!);
     }
 
     await client.query('COMMIT');
@@ -252,16 +244,28 @@ recurringSchedulesRouter.delete('/:id', async (req, res, next) => {
     await client.query('BEGIN');
     await fetchOwnedSchedule(req.tutorId!, req.params.id);
 
-    if (q.deleteFutureLessons) {
-      await client.query(
-        `DELETE FROM lessons
-         WHERE recurring_schedule_id = $1
-           AND tutor_id = $2
-           AND status = 'planned'
-           AND start_utc > now()`,
-        [req.params.id, req.tutorId],
-      );
+    const anchorLesson = await client.query<{ start_utc: Date; recurring_schedule_id: string | null }>(
+      `SELECT start_utc, recurring_schedule_id
+       FROM lessons
+       WHERE id = $1 AND tutor_id = $2`,
+      [q.fromLessonId, req.tutorId],
+    );
+    const anchor = anchorLesson.rows[0];
+    if (!anchor) {
+      throw new AppError('NOT_FOUND', 404, 'Lesson not found');
     }
+    if (anchor.recurring_schedule_id !== req.params.id) {
+      throw new AppError('VALIDATION', 400, 'Lesson does not belong to this series', {
+        fromLessonId: 'invalid',
+      });
+    }
+
+    await deleteLessonsFromScheduleAnchor(
+      client,
+      req.params.id,
+      req.tutorId!,
+      anchor.start_utc,
+    );
 
     await client.query(
       'DELETE FROM recurring_schedules WHERE id = $1 AND tutor_id = $2',

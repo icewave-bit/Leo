@@ -50,28 +50,11 @@ export function useRecurringScheduleActions() {
     return schedule;
   };
 
-  const pauseRecurringSchedule = async (id: string) => {
-    const updated = await api.patchRecurringSchedule(id, { active: false });
-    setRecurring((prev) => prev.map((s) => (s.id === id ? updated : s)));
+  const deleteRecurringSchedule = async (scheduleId: string, fromLessonId: string) => {
+    setRecurring((prev) => prev.filter((s) => s.id !== scheduleId));
+    await api.deleteRecurringSchedule(scheduleId, fromLessonId);
     await reload();
   };
 
-  const resumeRecurringSchedule = async (id: string) => {
-    const updated = await api.patchRecurringSchedule(id, { active: true });
-    setRecurring((prev) => prev.map((s) => (s.id === id ? updated : s)));
-    await reload();
-  };
-
-  const deleteRecurringSchedule = async (id: string, deleteFutureLessons = true) => {
-    setRecurring((prev) => prev.filter((s) => s.id !== id));
-    await api.deleteRecurringSchedule(id, { deleteFutureLessons });
-    await reload();
-  };
-
-  return {
-    createRecurringSchedule,
-    pauseRecurringSchedule,
-    resumeRecurringSchedule,
-    deleteRecurringSchedule,
-  };
+  return { createRecurringSchedule, deleteRecurringSchedule };
 }

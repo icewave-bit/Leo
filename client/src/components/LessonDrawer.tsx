@@ -12,6 +12,10 @@ import { useStudent } from '../hooks/useStudentMap';
 import type { ViewLesson, UiLessonStatus } from '../utils/schedule';
 import { ConfirmDialog } from './ConfirmDialog';
 import { LessonBalanceConfirmOptions } from './LessonBalanceConfirmOptions';
+import {
+  LessonDeleteScopeOptions,
+  type LessonDeleteScope,
+} from './LessonDeleteScopeOptions';
 import { RecurrenceIcon } from './RecurrenceFields';
 import { Wallet } from './Wallet';
 import { TypeIcon } from './schedule/LessonChrome';
@@ -22,10 +26,19 @@ interface LessonDrawerProps {
   onStatus: (id: string, status: UiLessonStatus) => void;
   onPaid: (id: string, paid: boolean) => void;
   onDelete: (id: string, opts?: { restoreBalance?: boolean }) => Promise<void>;
+  onDeleteSeries?: (scheduleId: string, fromLessonId: string) => Promise<void>;
 }
 
-export function LessonDrawer({ lesson, onClose, onStatus, onPaid, onDelete }: LessonDrawerProps) {
+export function LessonDrawer({
+  lesson,
+  onClose,
+  onStatus,
+  onPaid,
+  onDelete,
+  onDeleteSeries,
+}: LessonDrawerProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleteScope, setDeleteScope] = useState<LessonDeleteScope>('lesson');
   const [restoreBalance, setRestoreBalance] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +67,11 @@ export function LessonDrawer({ lesson, onClose, onStatus, onPaid, onDelete }: Le
   const pastByTime = isLessonPast(lesson.startUtc, lesson.durationMin);
   const showBalanceOnDelete = pastByTime;
 
+  const isRecurring = Boolean(lesson.recurringScheduleId && onDeleteSeries);
+  const deleteSeries = isRecurring && deleteScope === 'series';
+
   const openDeleteConfirm = () => {
+    setDeleteScope('lesson');
     setRestoreBalance(lesson.balanceCharged);
     setConfirmOpen(true);
   };
@@ -63,10 +80,14 @@ export function LessonDrawer({ lesson, onClose, onStatus, onPaid, onDelete }: Le
     setDeleting(true);
     setError(null);
     try {
-      await onDelete(
-        lesson.id,
-        showBalanceOnDelete ? { restoreBalance } : undefined,
-      );
+      if (deleteSeries && lesson.recurringScheduleId) {
+        await onDeleteSeries!(lesson.recurringScheduleId, lesson.id);
+      } else {
+        await onDelete(
+          lesson.id,
+          showBalanceOnDelete ? { restoreBalance } : undefined,
+        );
+      }
       setConfirmOpen(false);
       onClose();
     } catch (e) {
@@ -79,9 +100,13 @@ export function LessonDrawer({ lesson, onClose, onStatus, onPaid, onDelete }: Le
     <>
       <ConfirmDialog
         open={confirmOpen}
-        title="Удалить урок?"
-        description={`Урок с ${stu.name} (${lessonWhen}) будет удалён без возможности восстановления.`}
-        confirmLabel="Удалить"
+        title={deleteSeries ? 'Удалить серию?' : 'Удалить урок?'}
+        description={
+          deleteSeries
+            ? `Повторяющаяся серия с ${stu.name} будет удалена.`
+            : `Урок с ${stu.name} (${lessonWhen})`
+        }
+        confirmLabel={deleteSeries ? 'Удалить серию' : 'Удалить'}
         cancelLabel="Отмена"
         variant="danger"
         loading={deleting}
@@ -90,7 +115,10 @@ export function LessonDrawer({ lesson, onClose, onStatus, onPaid, onDelete }: Le
           if (!deleting) setConfirmOpen(false);
         }}
       >
-        {showBalanceOnDelete ? (
+        {isRecurring ? (
+          <LessonDeleteScopeOptions scope={deleteScope} onScopeChange={setDeleteScope} />
+        ) : null}
+        {!deleteSeries && showBalanceOnDelete ? (
           <LessonBalanceConfirmOptions
             balanceKind={stu.balanceKind}
             academicUnits={lesson.academicUnits}

@@ -6,15 +6,12 @@ import {
   activeDayAtom,
   lessonDraftAtom,
   lessonsAtom,
-  recurringSchedulesAtom,
-  recurringSchedulesOpenAtom,
   scheduleVariantAtom,
   selectedLessonIdAtom,
   weekStartAtom,
 } from '../atoms/schedule';
 import { AddLessonDrawer } from '../components/AddLessonDrawer';
 import { LessonDrawer } from '../components/LessonDrawer';
-import { RecurringSchedulesDrawer } from '../components/RecurringSchedulesDrawer';
 import { AgendaList } from '../components/schedule/AgendaList';
 import { FocusTimeline } from '../components/schedule/FocusTimeline';
 import { WeekGrid } from '../components/schedule/WeekGrid';
@@ -49,7 +46,6 @@ function Topbar({
   onNextWeek,
   onToday,
   onAddLesson,
-  onRecurring,
 }: {
   variant: 'week' | 'timeline' | 'agenda';
   setVariant: (v: 'week' | 'timeline' | 'agenda') => void;
@@ -61,7 +57,6 @@ function Topbar({
   onNextWeek: () => void;
   onToday: () => void;
   onAddLesson: () => void;
-  onRecurring: () => void;
 }) {
   return (
     <header className="top">
@@ -69,13 +64,15 @@ function Topbar({
         <h1 className="top__title">Расписание</h1>
         {!mobile && (
           <div className="weeknav">
-            <button type="button" className="iconbtn" aria-label="Назад" onClick={onPrevWeek}>
-              ‹
-            </button>
-            <span className="weeknav__label">{weekLabel}</span>
-            <button type="button" className="iconbtn" aria-label="Вперёд" onClick={onNextWeek}>
-              ›
-            </button>
+            <div className="weeknav__range">
+              <button type="button" className="iconbtn" aria-label="Назад" onClick={onPrevWeek}>
+                ‹
+              </button>
+              <span className="weeknav__label">{weekLabel}</span>
+              <button type="button" className="iconbtn" aria-label="Вперёд" onClick={onNextWeek}>
+                ›
+              </button>
+            </div>
             <button type="button" className="btn btn--ghost btn--sm" onClick={onToday}>
               Сегодня
             </button>
@@ -95,9 +92,6 @@ function Topbar({
             </button>
           ))}
         </div>
-        <button type="button" className="btn btn--ghost btn--sm" onClick={onRecurring}>
-          Повторы
-        </button>
         <button type="button" className="btn btn--primary btn--sm" onClick={onAddLesson}>
           + Урок
         </button>
@@ -169,8 +163,6 @@ export function SchedulePage() {
   const location = useLocation();
   const tutor = useAtomValue(tutorAtom);
   const lessons = useAtomValue(lessonsAtom);
-  const recurringSchedules = useAtomValue(recurringSchedulesAtom);
-  const [recurringOpen, setRecurringOpen] = useAtom(recurringSchedulesOpenAtom);
   const [variant, setVariant] = useAtom(scheduleVariantAtom);
   const weekStart = useAtomValue(weekStartAtom);
   const [selectedId, setSelectedId] = useAtom(selectedLessonIdAtom);
@@ -178,7 +170,7 @@ export function SchedulePage() {
   const [prefillStudentId, setPrefillStudentId] = useState<string | undefined>();
   const setActiveDay = useSetAtom(activeDayAtom);
   const { setStatus, setPaid, createLesson, deleteLesson, rescheduleLesson } = useLessonActions();
-  const { createRecurringSchedule } = useRecurringScheduleActions();
+  const { createRecurringSchedule, deleteRecurringSchedule } = useRecurringScheduleActions();
   const store = useAppStore();
 
   const tz = tutor?.timezone ?? 'UTC';
@@ -254,10 +246,6 @@ export function SchedulePage() {
         onNextWeek={onNextWeek}
         onToday={onToday}
         onAddLesson={() => openCreate(todayDayIndex(weekStart, tz) ?? 0, 10)}
-        onRecurring={() => {
-          setSelectedId(null);
-          setRecurringOpen(true);
-        }}
       />
       <div className="app__content">
         <main className="board">
@@ -287,12 +275,6 @@ export function SchedulePage() {
           onCreateRecurring={onRecurringCreated}
         />
       )}
-      {recurringOpen && !draft && (
-        <RecurringSchedulesDrawer
-          schedules={recurringSchedules}
-          onClose={() => setRecurringOpen(false)}
-        />
-      )}
       {selected && !draft && (
         <LessonDrawer
           lesson={selected}
@@ -300,6 +282,9 @@ export function SchedulePage() {
           onStatus={setStatus}
           onPaid={setPaid}
           onDelete={deleteLesson}
+          onDeleteSeries={(scheduleId, fromLessonId) =>
+            deleteRecurringSchedule(scheduleId, fromLessonId)
+          }
         />
       )}
     </div>

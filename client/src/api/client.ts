@@ -105,10 +105,8 @@ export const api = {
     id: string,
     body: Partial<Pick<RecurringSchedule, 'active' | 'endDate' | 'notes'>>,
   ) => request<RecurringSchedule>(`/api/recurring-schedules/${id}`, { method: 'PATCH', json: body }),
-  deleteRecurringSchedule: (id: string, opts?: { deleteFutureLessons?: boolean }) => {
-    const params = new URLSearchParams();
-    if (opts?.deleteFutureLessons) params.set('deleteFutureLessons', 'true');
-    const qs = params.toString();
-    return request<void>(`/api/recurring-schedules/${id}${qs ? `?${qs}` : ''}`, { method: 'DELETE' });
+  deleteRecurringSchedule: (id: string, fromLessonId: string) => {
+    const params = new URLSearchParams({ fromLessonId });
+    return request<void>(`/api/recurring-schedules/${id}?${params}`, { method: 'DELETE' });
   },
 };

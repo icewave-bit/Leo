@@ -63,9 +63,9 @@ export function fmtTime(t: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-const MONTHS_RU = [
-  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+const MONTHS_SHORT_RU = [
+  'янв', 'фев', 'мар', 'апр', 'май', 'июн',
+  'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
 ];
 
 export function fmtWeekLabel(weekStart: Date, timezone: string): string {
@@ -74,11 +74,7 @@ export function fmtWeekLabel(weekStart: Date, timezone: string): string {
   const endDay = dayInTz(end, timezone);
   const startMonth = monthInTz(weekStart, timezone);
   const endMonth = monthInTz(end, timezone);
-  const year = yearInTz(end, timezone);
-  if (startMonth === endMonth) {
-    return `${startDay}–${endDay} ${MONTHS_RU[startMonth]} ${year}`;
-  }
-  return `${startDay} ${MONTHS_RU[startMonth]} – ${endDay} ${MONTHS_RU[endMonth]} ${year}`;
+  return `${startDay} ${MONTHS_SHORT_RU[startMonth]} – ${endDay} ${MONTHS_SHORT_RU[endMonth]}`;
 }
 
 function addDays(d: Date, n: number): Date {
@@ -99,8 +95,3 @@ function monthInTz(iso: Date, tz: string): number {
   ) - 1;
 }
 
-function yearInTz(iso: Date, tz: string): number {
-  return Number(
-    new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric' }).format(iso),
-  );
-}

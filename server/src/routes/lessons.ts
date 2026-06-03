@@ -17,7 +17,7 @@ import { toLesson, type LessonRow } from '../mappers.js';
 import type { AcademicUnits } from '../types.js';
 import { validate } from '../validate.js';
 import { requireAuth } from '../middleware/requireAuth.js';
-import { topUpRecurringSchedules } from '../recurringSchedule.js';
+import { skipRecurringOccurrence, topUpRecurringSchedules } from '../recurringSchedule.js';
 
 const lessonStatusEnum = z.enum(['planned', 'completed', 'cancelled', 'no_show']);
 const lessonTypeEnum = z.enum(['solo', 'group']);
@@ -186,6 +186,14 @@ lessonsRouter.patch('/:id', async (req, res, next) => {
       await reverseLessonBalanceCharge(client, row);
     }
 
+    if (body.startUtc !== undefined && row.recurring_schedule_id) {
+      const newStart = new Date(body.startUtc).toISOString();
+      const oldStart = row.start_utc.toISOString();
+      if (newStart !== oldStart) {
+        await skipRecurringOccurrence(client, row.recurring_schedule_id, row.start_utc);
+      }
+    }
+
     const fields: string[] = [];
     const values: unknown[] = [];
     let idx = 1;
@@ -292,6 +300,10 @@ lessonsRouter.delete('/:id', async (req, res, next) => {
 
     if (q.restoreBalance && row.balance_charged) {
       await reverseLessonBalanceCharge(client, row);
+    }
+
+    if (row.recurring_schedule_id) {
+      await skipRecurringOccurrence(client, row.recurring_schedule_id, row.start_utc);
     }
 
     await client.query('DELETE FROM lessons WHERE id = $1 AND tutor_id = $2', [
