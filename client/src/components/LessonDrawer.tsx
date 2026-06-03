@@ -4,6 +4,12 @@ import { STATUS_LABELS } from '../constants/status';
 import { academicUnitsShort, lessonPrice } from '../utils/academicHour';
 import { fmtMoney, fmtTime } from '../utils/format';
 import { isLessonPast } from '../utils/lessonBalance';
+import {
+  completedPayHint,
+  lessonPayToggleDisabled,
+  payToggleLabel,
+  plannedPayPreview,
+} from '../utils/lessonPay';
 import { weekDates, weekDayNames } from '../utils/schedule';
 import { recurringSchedulesAtom } from '../atoms/schedule';
 import { tutorAtom } from '../atoms/auth';
@@ -66,6 +72,10 @@ export function LessonDrawer({
     : null;
   const pastByTime = isLessonPast(lesson.startUtc, lesson.durationMin);
   const showBalanceOnDelete = pastByTime;
+  const payDisabled = lessonPayToggleDisabled(lesson.status);
+  const payPreview = plannedPayPreview(stu, lesson.academicUnits);
+  const payLabel = payToggleLabel(lesson, stu);
+  const payToggleOn = lesson.status === 'planned' ? (payPreview?.paid ?? false) : lesson.paid;
 
   const isRecurring = Boolean(lesson.recurringScheduleId && onDeleteSeries);
   const deleteSeries = isRecurring && deleteScope === 'series';
@@ -205,14 +215,30 @@ export function LessonDrawer({
             ) : (
               <span className="drawer__price">по ставке группы</span>
             )}
+            {lesson.status === 'completed' ? (
+              <span className="drawer__pay-hint">{completedPayHint(lesson)}</span>
+            ) : lesson.status === 'cancelled' || lesson.status === 'no-show' ? (
+              <span className="drawer__pay-hint">
+                Списать стоимость урока с баланса (штраф)
+              </span>
+            ) : payPreview ? (
+              <span className="drawer__pay-hint">{payPreview.label}</span>
+            ) : null}
           </div>
           <button
             type="button"
-            className={'toggle' + (lesson.paid ? ' is-on' : '')}
-            onClick={() => onPaid(lesson.id, !lesson.paid)}
+            className={
+              'toggle' +
+              (payToggleOn ? ' is-on' : '') +
+              (payDisabled ? ' toggle--disabled' : '')
+            }
+            disabled={payDisabled}
+            onClick={() => {
+              if (!payDisabled) onPaid(lesson.id, !lesson.paid);
+            }}
           >
             <span className="toggle__knob" />
-            <span className="toggle__label">{lesson.paid ? 'Оплачен' : 'Не оплачен'}</span>
+            <span className="toggle__label">{payLabel}</span>
           </button>
         </div>
 

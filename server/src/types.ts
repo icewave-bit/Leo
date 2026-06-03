@@ -49,6 +49,8 @@ export interface Lesson {
   paid: boolean;
   notes: string | null;
   balanceCharged: boolean;
+  chargeDebtDelta: number;
+  balancePaidApplied: boolean;
   recurringScheduleId: UUID | null;
   createdAt: string;
   updatedAt: string;

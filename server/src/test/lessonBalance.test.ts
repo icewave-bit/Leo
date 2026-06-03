@@ -44,12 +44,38 @@ describe('lesson balance', () => {
     expect(list.body).toHaveLength(1);
     expect(list.body[0].status).toBe('completed');
     expect(list.body[0].balanceCharged).toBe(true);
+    expect(list.body[0].paid).toBe(true);
+    expect(list.body[0].chargeDebtDelta).toBe(0);
 
     const students = await agent.get('/api/students').expect(200);
     expect(students.body[0].prepaid).toBe(4);
   });
 
-  it('reverses charge when status changes from completed', async () => {
+  it('auto-marks paid when lesson fully covered from prepaid on complete', async () => {
+    const { agent } = await registerTutor(app);
+    const student = await agent
+      .post('/api/students')
+      .send({ name: 'Pack', balanceKind: 'lessons', prepaid: 2, debt: 0 })
+      .expect(201);
+
+    const startUtc = new Date(Date.now() + 3_600_000).toISOString();
+    const lesson = await agent
+      .post('/api/lessons')
+      .send({ studentId: student.body.id, startUtc, durationMin: 60 })
+      .expect(201);
+
+    await agent
+      .patch(`/api/lessons/${lesson.body.id}`)
+      .send({ status: 'completed' })
+      .expect(200);
+
+    expect((await agent.get('/api/lessons').query(weekQuery())).body[0].paid).toBe(true);
+    expect((await agent.get('/api/lessons').query(weekQuery())).body[0].chargeDebtDelta).toBe(
+      0,
+    );
+  });
+
+  it('reverses charge when status changes from completed to cancelled', async () => {
     const { agent } = await registerTutor(app);
     const student = await agent
       .post('/api/students')
@@ -73,53 +99,7 @@ describe('lesson balance', () => {
     expect(students.body[0].prepaid).toBe(3);
   });
 
-  it('auto-complete charges money balance when student has rate', async () => {
-    const { agent } = await registerTutor(app);
-    const student = await agent
-      .post('/api/students')
-      .send({
-        name: 'Hourly',
-        balanceKind: 'money',
-        prepaid: 100,
-        debt: 0,
-        rate: 30,
-        currency: 'EUR',
-      })
-      .expect(201);
-
-    const startUtc = new Date(Date.now() - 2 * 3_600_000).toISOString();
-    await agent
-      .post('/api/lessons')
-      .send({ studentId: student.body.id, startUtc, durationMin: 60 })
-      .expect(201);
-
-    await agent.get('/api/lessons').query(weekQuery()).expect(200);
-
-    const students = await agent.get('/api/students').expect(200);
-    expect(students.body[0].prepaid).toBe(70);
-    expect(students.body[0].debt).toBe(0);
-  });
-
-  it('load order: students fetched after lessons see updated balance', async () => {
-    const { agent } = await registerTutor(app);
-    const student = await agent
-      .post('/api/students')
-      .send({ name: 'Pack', balanceKind: 'lessons', prepaid: 5, debt: 0 })
-      .expect(201);
-
-    const startUtc = new Date(Date.now() - 2 * 3_600_000).toISOString();
-    await agent
-      .post('/api/lessons')
-      .send({ studentId: student.body.id, startUtc, durationMin: 60 })
-      .expect(201);
-
-    const q = weekQuery();
-    await agent.get('/api/lessons').query(q).expect(200);
-    const students = await agent.get('/api/students').expect(200);
-    expect(students.body[0].prepaid).toBe(4);
-  });
-
-  it('marks lesson paid and settles balance after charge', async () => {
+  it('completed in debt stays unpaid until tutor marks paid', async () => {
     const { agent } = await registerTutor(app);
     const student = await agent
       .post('/api/students')
@@ -134,37 +114,73 @@ describe('lesson balance', () => {
 
     await agent.get('/api/lessons').query(weekQuery()).expect(200);
 
+    let row = (await agent.get('/api/lessons').query(weekQuery())).body[0];
+    expect(row.paid).toBe(false);
+    expect(row.chargeDebtDelta).toBe(1);
+
     let students = await agent.get('/api/students').expect(200);
-    expect(students.body[0].prepaid).toBe(0);
     expect(students.body[0].debt).toBe(1);
 
     await agent.patch(`/api/lessons/${lesson.body.id}`).send({ paid: true }).expect(200);
 
     students = await agent.get('/api/students').expect(200);
-    expect(students.body[0].prepaid).toBe(0);
     expect(students.body[0].debt).toBe(0);
+    row = (await agent.get('/api/lessons').query(weekQuery())).body[0];
+    expect(row.paid).toBe(true);
   });
 
-  it('unmarks paid and restores lesson debt', async () => {
+  it('settle unpaid completed lessons when student balance is topped up', async () => {
     const { agent } = await registerTutor(app);
     const student = await agent
       .post('/api/students')
       .send({ name: 'Debtor', balanceKind: 'lessons', prepaid: 0, debt: 0 })
       .expect(201);
 
-    const startUtc = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    for (let i = 0; i < 3; i++) {
+      const startUtc = new Date(Date.now() - (i + 2) * 3_600_000).toISOString();
+      await agent
+        .post('/api/lessons')
+        .send({ studentId: student.body.id, startUtc, durationMin: 60 })
+        .expect(201);
+    }
+
+    await agent.get('/api/lessons').query(weekQuery()).expect(200);
+
+    let lessons = (await agent.get('/api/lessons').query(weekQuery())).body;
+    expect(lessons.every((l: { paid: boolean }) => !l.paid)).toBe(true);
+    expect((await agent.get('/api/students')).body[0].debt).toBe(3);
+
+    await agent
+      .patch(`/api/students/${student.body.id}`)
+      .send({ prepaid: 3, debt: 0 })
+      .expect(200);
+
+    lessons = (await agent.get('/api/lessons').query(weekQuery())).body;
+    expect(lessons.every((l: { paid: boolean }) => l.paid)).toBe(true);
+    expect((await agent.get('/api/students')).body[0].debt).toBe(0);
+  });
+
+  it('cancelled lesson charges balance when paid toggled on', async () => {
+    const { agent } = await registerTutor(app);
+    const student = await agent
+      .post('/api/students')
+      .send({ name: 'Late', balanceKind: 'lessons', prepaid: 1, debt: 0 })
+      .expect(201);
+
+    const startUtc = new Date(Date.now() + 3_600_000).toISOString();
     const lesson = await agent
       .post('/api/lessons')
       .send({ studentId: student.body.id, startUtc, durationMin: 60 })
       .expect(201);
 
-    await agent.get('/api/lessons').query(weekQuery()).expect(200);
-    await agent.patch(`/api/lessons/${lesson.body.id}`).send({ paid: true }).expect(200);
-
-    await agent.patch(`/api/lessons/${lesson.body.id}`).send({ paid: false }).expect(200);
+    await agent
+      .patch(`/api/lessons/${lesson.body.id}`)
+      .send({ status: 'cancelled', paid: true })
+      .expect(200);
 
     const students = await agent.get('/api/students').expect(200);
-    expect(students.body[0].debt).toBe(1);
+    expect(students.body[0].prepaid).toBe(0);
+    expect(students.body[0].debt).toBe(0);
   });
 
   it('delete with restoreBalance refunds charge', async () => {

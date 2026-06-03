@@ -28,7 +28,10 @@ export function useLessonActions() {
       const updated = await api.patchLesson(id, { status: toApiStatus(status) });
       patchLocal(id, {
         status: toUiStatus(updated.status),
+        paid: updated.paid,
         balanceCharged: updated.balanceCharged,
+        chargeDebtDelta: updated.chargeDebtDelta,
+        balancePaidApplied: updated.balancePaidApplied,
       });
       await reload();
     } catch {
@@ -40,7 +43,12 @@ export function useLessonActions() {
     patchLocal(id, { paid });
     try {
       const updated = await api.patchLesson(id, { paid });
-      patchLocal(id, { paid: updated.paid });
+      patchLocal(id, {
+        paid: updated.paid,
+        balanceCharged: updated.balanceCharged,
+        chargeDebtDelta: updated.chargeDebtDelta,
+        balancePaidApplied: updated.balancePaidApplied,
+      });
       await reload();
     } catch {
       await reload();

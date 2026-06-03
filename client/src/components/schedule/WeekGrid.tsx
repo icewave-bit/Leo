@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import { useAtomValue } from 'jotai';
 import { tutorAtom } from '../../atoms/auth';
 import { lessonsAtom, weekStartAtom } from '../../atoms/schedule';
@@ -20,6 +20,12 @@ import {
   type ViewStudent,
 } from '../../utils/schedule';
 import {
+  layoutDayLessons,
+  weekGridLessonLayoutClass,
+  weekGridLessonPositionStyle,
+  type WeekGridLessonLayout,
+} from '../../utils/weekGridLayout';
+import {
   fmtTime,
   lessonCardClass,
   lessonCardVars,
@@ -34,6 +40,7 @@ function LessonEvent({
   lesson,
   student,
   start,
+  layout,
   ghost,
   onPointerDown,
   onClick,
@@ -41,6 +48,7 @@ function LessonEvent({
   lesson: ViewLesson;
   student: ViewStudent;
   start: number;
+  layout?: WeekGridLessonLayout;
   ghost?: boolean;
   onPointerDown?: (e: React.PointerEvent) => void;
   onClick?: () => void;
@@ -49,12 +57,18 @@ function LessonEvent({
   const height = lesson.dur * WG_PX_PER_HOUR - 4;
   const tight = height < 42;
   const hint = lessonGridHint(lesson);
+  const colsClass = weekGridLessonLayoutClass(layout);
 
   return (
     <button
       type="button"
-      className={lessonCardClass(lesson, { tight, ghost })}
-      style={{ top, height, ...lessonCardVars(student) }}
+      className={lessonCardClass(lesson, { tight, ghost }) + (colsClass ? ` ${colsClass}` : '')}
+      style={{
+        top,
+        height,
+        ...lessonCardVars(student),
+        ...weekGridLessonPositionStyle(layout),
+      }}
       title={`${student.name} · ${lessonEventLabel(lesson)}`}
       aria-label={`${student.name}, ${fmtTime(start)}, ${lessonEventLabel(lesson)}`}
       onPointerDown={onPointerDown}
@@ -124,6 +138,25 @@ export function WeekGrid({
 
   const hours = Array.from({ length: WG_DAY_HOURS }, (_, h) => h);
   const colH = WG_DAY_HOURS * WG_PX_PER_HOUR;
+
+  const layoutByDay = useMemo(() => {
+    const byDay = new Map<number, Map<string, WeekGridLessonLayout>>();
+    for (let di = 0; di < 7; di++) {
+      const dayLessons = lessons.filter((l) => l.day === di);
+      const ghost =
+        dragLesson && preview?.day === di
+          ? { ...dragLesson, day: di, start: preview.start }
+          : null;
+      const forLayout = ghost
+        ? [
+            ...dayLessons.filter((l) => l.id !== dragLesson?.id),
+            ghost,
+          ]
+        : dayLessons;
+      byDay.set(di, layoutDayLessons(forLayout));
+    }
+    return byDay;
+  }, [lessons, dragLesson, preview]);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -202,12 +235,14 @@ export function WeekGrid({
                   if (!stu) return null;
                   const isDragging = dragLesson?.id === l.id;
                   if (isDragging) return null;
+                  const layout = layoutByDay.get(di)?.get(l.id);
                   return (
                     <LessonEvent
                       key={l.id}
                       lesson={l}
                       student={stu}
                       start={l.start}
+                      layout={layout}
                       onPointerDown={(e) => onPointerDown(e, l)}
                       onClick={() => onLessonClick(l.id)}
                     />
@@ -219,12 +254,14 @@ export function WeekGrid({
                 (() => {
                   const stu = studentMap.get(dragLesson.studentId);
                   if (!stu) return null;
+                  const layout = layoutByDay.get(di)?.get(dragLesson.id);
                   return (
                     <LessonEvent
                       key={`${dragLesson.id}-ghost`}
                       lesson={dragLesson}
                       student={stu}
                       start={preview.start}
+                      layout={layout}
                       ghost
                     />
                   );

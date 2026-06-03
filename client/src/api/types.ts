@@ -70,6 +70,8 @@ export interface Lesson {
   paid: boolean;
   notes: string | null;
   balanceCharged: boolean;
+  chargeDebtDelta: number;
+  balancePaidApplied: boolean;
   recurringScheduleId: string | null;
   createdAt: string;
   updatedAt: string;

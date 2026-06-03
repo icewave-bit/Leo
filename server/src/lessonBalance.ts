@@ -33,6 +33,7 @@ type LessonBalanceRow = Pick<
   | 'duration_min'
   | 'academic_units'
   | 'status'
+  | 'paid'
   | 'balance_charged'
   | 'balance_paid_applied'
   | 'charge_prepaid_delta'
@@ -44,7 +45,7 @@ async function reloadLessonBalanceRow(
   lessonId: string,
 ): Promise<LessonBalanceRow> {
   const result = await client.query<LessonBalanceRow>(
-    `SELECT id, student_id, start_utc, duration_min, academic_units, status,
+    `SELECT id, student_id, start_utc, duration_min, academic_units, status, paid,
             balance_charged, balance_paid_applied,
             charge_prepaid_delta, charge_debt_delta
      FROM lessons WHERE id = $1`,
@@ -57,12 +58,12 @@ async function reloadLessonBalanceRow(
 
 type StudentBalanceRow = Pick<
   StudentRow,
-  'id' | 'balance_kind' | 'prepaid' | 'debt' | 'rate'
+  'id' | 'balance_kind' | 'prepaid' | 'debt' | 'rate' | 'is_group'
 >;
 
 async function loadStudent(client: PoolClient, studentId: string): Promise<StudentBalanceRow> {
   const result = await client.query<StudentBalanceRow>(
-    `SELECT id, balance_kind, prepaid, debt, rate
+    `SELECT id, balance_kind, prepaid, debt, rate, is_group
      FROM students WHERE id = $1 FOR UPDATE`,
     [studentId],
   );
@@ -71,12 +72,28 @@ async function loadStudent(client: PoolClient, studentId: string): Promise<Stude
   return row;
 }
 
+async function setLessonPaidFlag(
+  client: PoolClient,
+  lessonId: string,
+  paid: boolean,
+): Promise<void> {
+  await client.query(
+    `UPDATE lessons SET paid = $1, updated_at = now() WHERE id = $2`,
+    [paid, lessonId],
+  );
+}
+
+export function lessonOpenDebtAmount(lesson: LessonBalanceRow): number {
+  if (!lesson.balance_charged || lesson.balance_paid_applied) return 0;
+  return Number(lesson.charge_debt_delta);
+}
+
 export async function applyLessonBalanceCharge(
   client: PoolClient,
   lesson: LessonBalanceRow,
   student: StudentBalanceRow,
 ): Promise<void> {
-  if (lesson.balance_charged) return;
+  if (lesson.balance_charged || student.is_group) return;
 
   const chargeAmount = computeChargeAmount(
     student.balance_kind,
@@ -104,22 +121,19 @@ export async function applyLessonBalanceCharge(
   );
 }
 
+/** Settles only the debt portion of a lesson charge (real money received). */
 export async function applyLessonBalancePayment(
   client: PoolClient,
   lesson: LessonBalanceRow,
 ): Promise<void> {
   if (!lesson.balance_charged || lesson.balance_paid_applied) return;
 
-  const fromPrepaid = Number(lesson.charge_prepaid_delta);
   const toDebt = Number(lesson.charge_debt_delta);
-  if (fromPrepaid === 0 && toDebt === 0) return;
+  if (toDebt <= 0) return;
 
   await client.query(
-    `UPDATE students
-     SET prepaid = prepaid + $1,
-         debt = GREATEST(0, debt - $2)
-     WHERE id = $3`,
-    [fromPrepaid, toDebt, lesson.student_id],
+    `UPDATE students SET debt = GREATEST(0, debt - $1) WHERE id = $2`,
+    [toDebt, lesson.student_id],
   );
   await client.query(
     `UPDATE lessons
@@ -136,12 +150,11 @@ export async function reverseLessonBalancePayment(
 ): Promise<void> {
   if (!lesson.balance_paid_applied) return;
 
-  const fromPrepaid = Number(lesson.charge_prepaid_delta);
   const toDebt = Number(lesson.charge_debt_delta);
 
   await client.query(
-    `UPDATE students SET prepaid = prepaid - $1, debt = debt + $2 WHERE id = $3`,
-    [fromPrepaid, toDebt, lesson.student_id],
+    `UPDATE students SET debt = debt + $1 WHERE id = $2`,
+    [toDebt, lesson.student_id],
   );
   await client.query(
     `UPDATE lessons
@@ -178,23 +191,45 @@ export async function reverseLessonBalanceCharge(
   );
 }
 
+async function syncPaidAfterCompletedCharge(
+  client: PoolClient,
+  lessonId: string,
+  requestPaid: boolean,
+): Promise<void> {
+  const lesson = await reloadLessonBalanceRow(client, lessonId);
+  const openDebt = lessonOpenDebtAmount(lesson);
+
+  if (openDebt === 0 && lesson.balance_charged) {
+    await setLessonPaidFlag(client, lessonId, true);
+    return;
+  }
+
+  if (requestPaid) {
+    await applyLessonBalancePayment(client, lesson);
+    await setLessonPaidFlag(client, lessonId, true);
+    return;
+  }
+
+  await setLessonPaidFlag(client, lessonId, false);
+}
+
 export async function syncLessonBalanceForStatus(
   client: PoolClient,
   lesson: LessonBalanceRow,
+  previousStatus: LessonStatus,
   nextStatus: LessonStatus,
-  paid: boolean,
+  requestPaid: boolean,
 ): Promise<void> {
   if (nextStatus === 'completed') {
     const student = await loadStudent(client, lesson.student_id);
     await applyLessonBalanceCharge(client, lesson, student);
-    if (paid) {
-      const charged = await reloadLessonBalanceRow(client, lesson.id);
-      await applyLessonBalancePayment(client, charged);
-    }
+    await syncPaidAfterCompletedCharge(client, lesson.id, requestPaid);
     return;
   }
-  if (lesson.balance_charged) {
+
+  if (previousStatus === 'completed' && lesson.balance_charged) {
     await reverseLessonBalanceCharge(client, lesson);
+    await setLessonPaidFlag(client, lesson.id, false);
   }
 }
 
@@ -203,11 +238,80 @@ export async function syncLessonBalanceForPaid(
   lesson: LessonBalanceRow,
   nextPaid: boolean,
 ): Promise<void> {
-  if (nextPaid) {
-    await applyLessonBalancePayment(client, lesson);
+  const status = lesson.status;
+
+  if (status === 'completed') {
+    if (nextPaid) {
+      const fresh = await reloadLessonBalanceRow(client, lesson.id);
+      await applyLessonBalancePayment(client, fresh);
+      await setLessonPaidFlag(client, lesson.id, true);
+    } else {
+      await reverseLessonBalancePayment(client, lesson);
+      await setLessonPaidFlag(client, lesson.id, false);
+    }
     return;
   }
-  await reverseLessonBalancePayment(client, lesson);
+
+  if (status === 'cancelled' || status === 'no_show') {
+    if (nextPaid) {
+      const student = await loadStudent(client, lesson.student_id);
+      await applyLessonBalanceCharge(client, lesson, student);
+      const charged = await reloadLessonBalanceRow(client, lesson.id);
+      if (lessonOpenDebtAmount(charged) > 0) {
+        await setLessonPaidFlag(client, lesson.id, true);
+      } else if (charged.balance_charged) {
+        await setLessonPaidFlag(client, lesson.id, true);
+      } else {
+        await setLessonPaidFlag(client, lesson.id, true);
+      }
+    } else {
+      if (lesson.balance_charged) {
+        await reverseLessonBalanceCharge(client, lesson);
+      }
+      await setLessonPaidFlag(client, lesson.id, false);
+    }
+  }
+}
+
+const LESSON_BALANCE_SELECT = `id, student_id, start_utc, duration_min, academic_units, status, paid,
+            balance_charged, balance_paid_applied,
+            charge_prepaid_delta, charge_debt_delta`;
+
+/** After balance top-up, mark oldest completed lessons with open debt as paid. */
+export async function settleLessonsFromBalanceTopUp(
+  client: PoolClient,
+  studentId: string,
+  prepaidBefore: number,
+  debtBefore: number,
+  prepaidAfter: number,
+  debtAfter: number,
+): Promise<void> {
+  const netBefore = prepaidBefore - debtBefore;
+  const netAfter = prepaidAfter - debtAfter;
+  let credit = netAfter - netBefore;
+  if (credit <= 0) return;
+
+  const result = await client.query<LessonBalanceRow>(
+    `SELECT ${LESSON_BALANCE_SELECT}
+     FROM lessons
+     WHERE student_id = $1
+       AND status = 'completed'
+       AND balance_charged = true
+       AND balance_paid_applied = false
+       AND charge_debt_delta > 0
+       AND paid = false
+     ORDER BY start_utc ASC`,
+    [studentId],
+  );
+
+  for (const row of result.rows) {
+    const need = Number(row.charge_debt_delta);
+    if (credit < need) break;
+
+    await applyLessonBalancePayment(client, row);
+    await setLessonPaidFlag(client, row.id, true);
+    credit -= need;
+  }
 }
 
 export async function runAutoCompleteForTutor(
@@ -221,10 +325,8 @@ export async function runAutoCompleteForTutor(
     params.push(opts.from.toISOString(), opts.to.toISOString());
   }
 
-  const due = await query<LessonBalanceRow & { student_id: string }>(
-    `SELECT id, student_id, start_utc, duration_min, academic_units, status,
-            balance_charged, balance_paid_applied,
-            charge_prepaid_delta, charge_debt_delta
+  const due = await query<LessonBalanceRow>(
+    `SELECT ${LESSON_BALANCE_SELECT}
      FROM lessons
      WHERE tutor_id = $1
        AND status = 'planned'
@@ -239,9 +341,7 @@ export async function runAutoCompleteForTutor(
     await client.query('BEGIN');
     for (const lesson of due.rows) {
       const locked = await client.query<LessonBalanceRow>(
-        `SELECT id, student_id, start_utc, duration_min, academic_units, status,
-                balance_charged, balance_paid_applied,
-                charge_prepaid_delta, charge_debt_delta
+        `SELECT ${LESSON_BALANCE_SELECT}
          FROM lessons WHERE id = $1 FOR UPDATE`,
         [lesson.id],
       );
@@ -256,6 +356,7 @@ export async function runAutoCompleteForTutor(
       const updated = { ...row, status: 'completed' as LessonStatus };
       const student = await loadStudent(client, row.student_id);
       await applyLessonBalanceCharge(client, updated, student);
+      await syncPaidAfterCompletedCharge(client, row.id, false);
     }
     await client.query('COMMIT');
   } catch (err) {

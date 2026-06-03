@@ -8,6 +8,7 @@ import {
   lessonCardClass,
   lessonCardVars,
   LessonMetaLine,
+  LessonPayMark,
   TypeIcon,
 } from './LessonChrome';
 
@@ -49,6 +50,7 @@ export function AgendaList({ onSelect }: { onSelect: (id: string) => void }) {
                     style={lessonCardVars(stu)}
                     onClick={() => onSelect(l.id)}
                   >
+                    <LessonPayMark lesson={l} />
                     <span className="ag__time">
                       <strong>{fmtTime(l.start)}</strong>
                       <span>{fmtTime(l.start + l.dur)}</span>

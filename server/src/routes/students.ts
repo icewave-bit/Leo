@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { query } from '../db.js';
+import { getPool, query } from '../db.js';
+import { settleLessonsFromBalanceTopUp } from '../lessonBalance.js';
 import { AppError } from '../errors.js';
 import { deriveInitials } from '../auth/password.js';
 import { toStudent, type StudentRow } from '../mappers.js';
@@ -136,8 +137,20 @@ studentsRouter.post('/', async (req, res, next) => {
 });
 
 studentsRouter.patch('/:id', async (req, res, next) => {
+  const client = await getPool().connect();
   try {
     const body = validate(patchStudentSchema, req.body);
+
+    await client.query('BEGIN');
+
+    const before = await client.query<StudentRow>(
+      `SELECT ${STUDENT_COLUMNS} FROM students WHERE id = $1 AND tutor_id = $2 FOR UPDATE`,
+      [req.params.id, req.tutorId],
+    );
+    const beforeRow = before.rows[0];
+    if (!beforeRow) {
+      throw new AppError('NOT_FOUND', 404, 'Student not found');
+    }
 
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -196,11 +209,16 @@ studentsRouter.patch('/:id', async (req, res, next) => {
       values.push(body.debt);
     }
 
+    if (fields.length === 0) {
+      await client.query('ROLLBACK');
+      throw new AppError('VALIDATION', 400, 'No fields to update');
+    }
+
     values.push(req.params.id, req.tutorId);
     const idParam = idx++;
     const tutorParam = idx;
 
-    const result = await query<StudentRow>(
+    const result = await client.query<StudentRow>(
       `UPDATE students SET ${fields.join(', ')}
        WHERE id = $${idParam} AND tutor_id = $${tutorParam}
        RETURNING ${STUDENT_COLUMNS}`,
@@ -210,9 +228,25 @@ studentsRouter.patch('/:id', async (req, res, next) => {
     if (!row) {
       throw new AppError('NOT_FOUND', 404, 'Student not found');
     }
+
+    if (body.prepaid !== undefined || body.debt !== undefined) {
+      await settleLessonsFromBalanceTopUp(
+        client,
+        row.id,
+        Number(beforeRow.prepaid),
+        Number(beforeRow.debt),
+        Number(row.prepaid),
+        Number(row.debt),
+      );
+    }
+
+    await client.query('COMMIT');
     res.json(toStudent(row));
   } catch (err) {
+    await client.query('ROLLBACK');
     next(err);
+  } finally {
+    client.release();
   }
 });
 

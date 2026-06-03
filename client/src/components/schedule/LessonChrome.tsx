@@ -1,4 +1,5 @@
 import { PAY_LABELS, STATUS_LABELS } from '../../constants/status';
+import { lessonDebtClosed, lessonHasOpenDebt } from '../../utils/lessonPay';
 import { fmtTime } from '../../utils/format';
 import type { ViewLesson, ViewStudent } from '../../utils/schedule';
 
@@ -7,13 +8,15 @@ export function lessonCardVars(student: ViewStudent): React.CSSProperties {
 }
 
 export function lessonCardClass(
-  lesson: Pick<ViewLesson, 'status' | 'paid' | 'type'>,
+  lesson: Pick<ViewLesson, 'status' | 'paid' | 'balanceCharged' | 'chargeDebtDelta' | 'balancePaidApplied' | 'type'>,
   opts?: { tight?: boolean; ghost?: boolean },
 ): string {
+  const settled =
+    lesson.status === 'completed' ? lessonDebtClosed(lesson) : lesson.paid;
   return [
     'ev',
     `ev--${lesson.status}`,
-    lesson.paid ? 'ev--paid' : 'ev--unpaid',
+    settled ? 'ev--paid' : 'ev--unpaid',
     lesson.type === 'group' ? 'ev--group' : '',
     opts?.tight ? 'ev--tight' : '',
     opts?.ghost ? 'ev--ghost' : '',
@@ -22,21 +25,43 @@ export function lessonCardClass(
     .join(' ');
 }
 
-/** Unpaid completed lesson — small corner mark (no circles that clip). */
+/** Conducted lesson — corner check: green if lesson debt closed, red if open debt. */
 export function LessonPayMark({
   lesson,
 }: {
-  lesson: Pick<ViewLesson, 'status' | 'paid'>;
+  lesson: Pick<
+    ViewLesson,
+    'status' | 'paid' | 'balanceCharged' | 'chargeDebtDelta' | 'balancePaidApplied'
+  >;
 }) {
-  if (lesson.paid || lesson.status !== 'completed') return null;
-  return <span className="ev__mark" aria-label="Не оплачен" />;
+  if (lesson.status !== 'completed' || !lesson.balanceCharged) return null;
+  const ok = lessonDebtClosed(lesson);
+  return (
+    <span
+      className={'ev__mark' + (ok ? ' ev__mark--ok' : ' ev__mark--debt')}
+      aria-label={ok ? 'Долг по уроку закрыт' : PAY_LABELS.unpaid.ru}
+    >
+      <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
+        <path
+          d="M2.2 6.1 4.8 8.6 9.8 3.4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
+  );
 }
 
-/** List / timeline caption — one quiet line, accent only when unpaid. */
 export function LessonMetaLine({
   lesson,
 }: {
-  lesson: Pick<ViewLesson, 'status' | 'paid'>;
+  lesson: Pick<
+    ViewLesson,
+    'status' | 'paid' | 'balanceCharged' | 'chargeDebtDelta' | 'balancePaidApplied'
+  >;
 }) {
   const status = lesson.status;
   if (status === 'planned') return null;
@@ -50,8 +75,14 @@ export function LessonMetaLine({
       {showPay ? (
         <>
           <span className="ev-meta__sep"> · </span>
-          <span className={lesson.paid ? 'ev-meta__ok' : 'ev-meta__warn'}>
-            {lesson.paid ? PAY_LABELS.paid.ru.toLowerCase() : PAY_LABELS.unpaid.ru.toLowerCase()}
+          <span
+            className={
+              lessonDebtClosed(lesson) ? 'ev-meta__ok' : 'ev-meta__warn'
+            }
+          >
+            {lessonDebtClosed(lesson)
+              ? PAY_LABELS.paid.ru.toLowerCase()
+              : PAY_LABELS.unpaid.ru.toLowerCase()}
           </span>
         </>
       ) : null}
@@ -59,17 +90,29 @@ export function LessonMetaLine({
   );
 }
 
-export function lessonGridHint(lesson: Pick<ViewLesson, 'status' | 'paid'>): string | null {
+export function lessonGridHint(
+  lesson: Pick<
+    ViewLesson,
+    'status' | 'paid' | 'balanceCharged' | 'chargeDebtDelta' | 'balancePaidApplied'
+  >,
+): string | null {
   if (lesson.status === 'planned') return null;
   const label = STATUS_LABELS[lesson.status].short;
-  if (lesson.status === 'completed' && !lesson.paid) return `${label} · долг`;
+  if (lesson.status === 'completed' && lessonHasOpenDebt(lesson)) {
+    return `${label} · долг`;
+  }
   return label;
 }
 
-export function lessonEventLabel(lesson: Pick<ViewLesson, 'status' | 'paid'>): string {
+export function lessonEventLabel(
+  lesson: Pick<
+    ViewLesson,
+    'status' | 'paid' | 'balanceCharged' | 'chargeDebtDelta' | 'balancePaidApplied'
+  >,
+): string {
   const status = STATUS_LABELS[lesson.status].ru;
   if (lesson.status !== 'completed') return status;
-  const pay = lesson.paid ? PAY_LABELS.paid.ru : PAY_LABELS.unpaid.ru;
+  const pay = lessonDebtClosed(lesson) ? PAY_LABELS.paid.ru : PAY_LABELS.unpaid.ru;
   return `${status}, ${pay}`;
 }
 

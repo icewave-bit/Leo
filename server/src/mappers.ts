@@ -131,6 +131,8 @@ export function toLesson(row: LessonRow): Lesson {
     paid: row.paid,
     notes: row.notes,
     balanceCharged: row.balance_charged,
+    chargeDebtDelta: Number(row.charge_debt_delta),
+    balancePaidApplied: row.balance_paid_applied,
     recurringScheduleId: row.recurring_schedule_id,
     createdAt: toIsoUtc(row.created_at),
     updatedAt: toIsoUtc(row.updated_at),

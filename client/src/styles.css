@@ -264,6 +264,13 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   background: oklch(0.955 0.038 var(--ev-hue));
   border-color: oklch(0.84 0.045 var(--ev-hue));
 }
+.ev--completed.ev--paid {
+  background: oklch(0.97 0.022 var(--ev-hue));
+  border-color: oklch(0.88 0.03 var(--ev-hue));
+}
+.ev--completed.ev--paid::before {
+  background: oklch(0.7 0.085 var(--ev-hue));
+}
 /* No-show: soft student tint + diagonal stripes */
 .ev--no-show {
   isolation: isolate;
@@ -327,12 +334,17 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   position: absolute;
   top: 5px;
   right: 5px;
-  width: 5px;
-  height: 5px;
-  border-radius: 1px;
-  background: var(--c-debt);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
   pointer-events: none;
 }
+.ev__mark--ok { color: var(--c-credit); }
+.ev__mark--debt { color: var(--c-debt); }
+.ev--completed .ev__head,
+.ev--completed .ft__card-head,
+.ev--completed .ag__head { padding-right: 14px; }
 .ev__head {
   display: flex;
   align-items: center;
@@ -417,6 +429,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 }
 .wg .ev:hover { box-shadow: var(--sh); transform: translateY(-1px); z-index: 4; }
 .wg .ev:active { cursor: grabbing; }
+.wg .ev.ev--cols { box-sizing: border-box; }
+.wg .ev.ev--cols-div { border-right: 2px solid var(--border); }
 .ev--ghost {
   z-index: 5;
   box-shadow: var(--sh-lg);
@@ -788,6 +802,11 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .toggle__knob { width: 16px; height: 16px; border-radius: 50%; background: var(--c-debt); transition: .16s; }
 .toggle.is-on { background: color-mix(in oklch, var(--c-credit), transparent 85%); border-color: color-mix(in oklch, var(--c-credit), transparent 50%); color: var(--c-credit); }
 .toggle.is-on .toggle__knob { background: var(--c-credit); }
+.toggle--disabled { opacity: 0.72; cursor: not-allowed; pointer-events: none; }
+.drawer__pay-hint { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; max-width: 220px; line-height: 1.35; }
+.wallet__net { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.wallet__net-primary { font-weight: 700; font-size: 13px; }
+.wallet__net-secondary { font-size: 11px; color: var(--muted); font-weight: 600; }
 
 /* ---------- mobile ---------- */
 .botnav { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: flex; justify-content: space-around; background: var(--surf); border-top: 1px solid var(--border); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }

@@ -181,6 +181,7 @@ lessonsRouter.patch('/:id', async (req, res, next) => {
     if (!row) {
       throw new AppError('NOT_FOUND', 404, 'Lesson not found');
     }
+    const previousStatus = row.status;
 
     if (body.restoreBalance === true && row.balance_charged) {
       await reverseLessonBalanceCharge(client, row);
@@ -254,7 +255,13 @@ lessonsRouter.patch('/:id', async (req, res, next) => {
 
     if (body.status !== undefined) {
       const paidAfterUpdate = body.paid !== undefined ? body.paid : updated.paid;
-      await syncLessonBalanceForStatus(client, updated, body.status, paidAfterUpdate);
+      await syncLessonBalanceForStatus(
+        client,
+        updated,
+        previousStatus,
+        body.status,
+        paidAfterUpdate,
+      );
       const refreshed = await client.query<LessonRow>(
         `SELECT ${LESSON_COLUMNS} FROM lessons WHERE id = $1`,
         [updated.id],

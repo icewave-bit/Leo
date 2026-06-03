@@ -124,7 +124,14 @@ function RightRail({ lessons }: { lessons: ViewLesson[] }) {
   const today = todayDayIndex(weekStart, tz) ?? 0;
 
   const todayCount = lessons.filter((l) => l.day === today && l.status !== 'cancelled').length;
-  const unpaid = lessons.filter((l) => l.status !== 'cancelled' && !l.paid).length;
+  const unpaid = lessons.filter(
+    (l) =>
+      l.status === 'completed' &&
+      l.balanceCharged &&
+      l.chargeDebtDelta > 0 &&
+      !l.balancePaidApplied &&
+      !l.paid,
+  ).length;
   const hours = lessons
     .filter((l) => l.status !== 'cancelled')
     .reduce((a, l) => a + l.dur, 0);

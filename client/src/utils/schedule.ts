@@ -23,6 +23,8 @@ export interface ViewLesson {
   status: UiLessonStatus;
   paid: boolean;
   balanceCharged: boolean;
+  chargeDebtDelta: number;
+  balancePaidApplied: boolean;
   recurringScheduleId: string | null;
   type: 'solo' | 'group';
   notes: string | null;
@@ -260,6 +262,8 @@ export function lessonToView(
     status: toUiStatus(lesson.status),
     paid: lesson.paid,
     balanceCharged: lesson.balanceCharged,
+    chargeDebtDelta: lesson.chargeDebtDelta,
+    balancePaidApplied: lesson.balancePaidApplied,
     recurringScheduleId: lesson.recurringScheduleId,
     type: lesson.type,
     notes: lesson.notes,
