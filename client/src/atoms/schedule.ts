@@ -16,3 +16,7 @@ export const scheduleVariantAtom = atom<'week' | 'timeline' | 'agenda'>('week');
 export const activeDayAtom = atom(0);
 export const selectedStudentIdAtom = atom<string | null>(null);
 export const studentDrawerModeAtom = atom<'create' | 'edit' | null>(null);
+/** Student id when the balance replenish dialog is open. */
+export const balanceReplenishStudentIdAtom = atom<string | null>(null);
+/** Increment to refetch lesson lists after balance top-up. */
+export const studentLessonsBumpAtom = atom(0);

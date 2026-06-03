@@ -1,11 +1,13 @@
 import { useAtom, useAtomValue } from 'jotai';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
+  balanceReplenishStudentIdAtom,
   selectedStudentIdAtom,
   studentDrawerModeAtom,
   studentsAtom,
 } from '../atoms/schedule';
+import { BalanceReplenishDialog } from '../components/students/BalanceReplenishDialog';
 import { StudentDrawer } from '../components/students/StudentDrawer';
 import { fmtBalanceNet, fmtMoney } from '../utils/format';
 
@@ -13,12 +15,16 @@ export function StudentsPage() {
   const students = useAtomValue(studentsAtom);
   const [drawerMode, setDrawerMode] = useAtom(studentDrawerModeAtom);
   const [selectedId, setSelectedId] = useAtom(selectedStudentIdAtom);
+  const [replenishId, setReplenishId] = useAtom(balanceReplenishStudentIdAtom);
   const [query, setQuery] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
   const { studentId: routeId } = useParams();
   const navigate = useNavigate();
 
   const openId = routeId ?? searchParams.get('id') ?? selectedId;
+  const replenishStudent = replenishId
+    ? students.find((s) => s.id === replenishId)
+    : undefined;
 
   useEffect(() => {
     if (routeId) {
@@ -67,6 +73,12 @@ export function StudentsPage() {
     navigate(`/students/${id}`, { replace: true });
   };
 
+  const openReplenish = (id: string, e?: MouseEvent) => {
+    e?.stopPropagation();
+    e?.preventDefault();
+    setReplenishId(id);
+  };
+
   const drawerOpen = drawerMode !== null;
   const showDrawer = drawerOpen && (drawerMode === 'create' || (drawerMode === 'edit' && openId));
 
@@ -107,7 +119,7 @@ export function StudentsPage() {
               const net = s.prepaid - s.debt;
               const balanceLabel = fmtBalanceNet(s.prepaid, s.debt, s.balanceKind, s.currency);
               return (
-                <li key={s.id}>
+                <li key={s.id} className="students-list__row">
                   <button
                     type="button"
                     className="students-row"
@@ -129,11 +141,22 @@ export function StudentsPage() {
                     <span
                       className={
                         'students-row__balance' +
-                        (net > 0 ? ' students-row__balance--credit' : net < 0 ? ' students-row__balance--debt' : '')
+                        (net > 0
+                          ? ' students-row__balance--credit'
+                          : net < 0
+                            ? ' students-row__balance--debt'
+                            : '')
                       }
                     >
                       {balanceLabel}
                     </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--sm btn--ghost students-replenish"
+                    onClick={(e) => openReplenish(s.id, e)}
+                  >
+                    + Пополнить
                   </button>
                 </li>
               );
@@ -148,6 +171,14 @@ export function StudentsPage() {
           studentId={drawerMode === 'edit' ? openId ?? undefined : undefined}
           onClose={closeDrawer}
           onCreated={(id) => openEdit(id)}
+        />
+      ) : null}
+
+      {replenishStudent ? (
+        <BalanceReplenishDialog
+          student={replenishStudent}
+          open={Boolean(replenishId)}
+          onClose={() => setReplenishId(null)}
         />
       ) : null}
     </div>

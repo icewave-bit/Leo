@@ -3,12 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import type { BalanceKind, Lesson } from '../../api/types';
 import { api } from '../../api/client';
 import { tutorAtom } from '../../atoms/auth';
-import { useAtomValue } from 'jotai';
+import { useAtomValue, useSetAtom } from 'jotai';
 import { STATUS_LABELS } from '../../constants/status';
 import { useStudentActions } from '../../hooks/useStudentActions';
 import { useStudent } from '../../hooks/useStudentMap';
 import { fmtLessonWhen, studentLessonRange } from '../../utils/format';
 import { toUiStatus } from '../../utils/schedule';
+import { balanceReplenishStudentIdAtom, studentLessonsBumpAtom } from '../../atoms/schedule';
 import { BalanceKindSeg } from '../BalanceKindSeg';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { Wallet } from '../Wallet';
@@ -108,6 +109,7 @@ export function StudentDrawer({ mode, studentId, onClose, onCreated }: StudentDr
   const tutor = useAtomValue(tutorAtom);
   const existing = useStudent(studentId);
   const { createStudent, updateStudent, deleteStudent } = useStudentActions();
+  const setReplenishId = useSetAtom(balanceReplenishStudentIdAtom);
   const navigate = useNavigate();
   const defaultTz = tutor?.timezone ?? 'UTC';
 
@@ -124,6 +126,8 @@ export function StudentDrawer({ mode, studentId, onClose, onCreated }: StudentDr
   useEffect(() => {
     if (mode === 'edit' && existing) setForm(fromStudent(existing));
   }, [mode, existing]);
+
+  const lessonsBump = useAtomValue(studentLessonsBumpAtom);
 
   useEffect(() => {
     if (mode !== 'edit' || !studentId) return;
@@ -144,7 +148,7 @@ export function StudentDrawer({ mode, studentId, onClose, onCreated }: StudentDr
     return () => {
       cancelled = true;
     };
-  }, [mode, studentId]);
+  }, [lessonsBump, mode, studentId]);
 
   const previewStudent = useMemo((): ViewStudent | null => {
     const base = existing ?? {
@@ -187,13 +191,31 @@ export function StudentDrawer({ mode, studentId, onClose, onCreated }: StudentDr
     setSaving(true);
     setError(null);
     try {
-      const payload = toPayload(form);
       if (mode === 'create') {
-        const id = await createStudent(payload);
+        const id = await createStudent(toPayload(form));
         if (onCreated) onCreated(id);
         else onClose();
       } else if (studentId) {
-        await updateStudent(studentId, payload);
+        const members = form.membersText
+          .split('\n')
+          .map((m) => m.trim())
+          .filter(Boolean);
+        const rate = form.rate.trim() ? Number(form.rate) : null;
+        await updateStudent(studentId, {
+          name: form.name.trim(),
+          initials: form.initials.trim() || undefined,
+          hue: form.hue,
+          tz: form.tz.trim(),
+          meetUrl: form.meetUrl.trim() || null,
+          rate: rate != null && !Number.isNaN(rate) ? rate : null,
+          currency: form.currency,
+          note: form.note.trim() || null,
+          isGroup: form.isGroup,
+          members: form.isGroup ? members : [],
+          balanceKind: form.balanceKind,
+          prepaid: balanceAmount(form, 'prepaid'),
+          debt: balanceAmount(form, 'debt'),
+        });
         onClose();
       }
     } catch (e) {
@@ -380,44 +402,74 @@ export function StudentDrawer({ mode, studentId, onClose, onCreated }: StudentDr
           </section>
 
           <section className="drawer__section">
-            <h4 className="drawer__section-title">Баланс</h4>
+            <div className="drawer__section-head">
+              <h4 className="drawer__section-title">Баланс</h4>
+              {mode === 'edit' && studentId ? (
+                <button
+                  type="button"
+                  className="btn btn--sm btn--primary"
+                  onClick={() => setReplenishId(studentId)}
+                >
+                  + Пополнить
+                </button>
+              ) : null}
+            </div>
             <BalanceKindSeg
               value={form.balanceKind}
               onChange={(balanceKind) => set('balanceKind', balanceKind)}
             />
-            <div className="field field--inline">
-              <label className="field">
-                <span className="field__label">
-                  {form.balanceKind === 'lessons' ? 'Оплачено уроков' : 'Предоплата'}
-                </span>
-                <input
-                  className="field__control"
-                  type="number"
-                  min={0}
-                  step={form.balanceKind === 'lessons' ? 1 : 0.01}
-                  value={form.prepaid}
-                  onChange={(e) => set('prepaid', e.target.value)}
-                />
-              </label>
-              <label className="field">
-                <span className="field__label">
-                  {form.balanceKind === 'lessons' ? 'Долг (уроков)' : 'Долг'}
-                </span>
-                <input
-                  className="field__control"
-                  type="number"
-                  min={0}
-                  step={form.balanceKind === 'lessons' ? 1 : 0.01}
-                  value={form.debt}
-                  onChange={(e) => set('debt', e.target.value)}
-                />
-              </label>
-            </div>
             {previewStudent ? (
               <div className="drawer__wallet">
                 <Wallet student={previewStudent} />
               </div>
             ) : null}
+            {mode === 'edit' ? (
+              <p className="drawer__hint">
+                Для обычной оплаты используйте «Пополнить». Ручная настройка — ниже, если нужно
+                задать или исправить баланс целиком.
+              </p>
+            ) : null}
+
+            <details className="balance-manual">
+              <summary className="balance-manual__summary">
+                {mode === 'create' ? 'Начальная настройка баланса' : 'Ручная настройка баланса'}
+              </summary>
+              <div className="balance-manual__body">
+                <p className="drawer__hint balance-manual__hint">
+                  {mode === 'create'
+                    ? 'Задайте стартовые значения перед первым уроком. Обычно долг оставляют нулевым.'
+                    : 'Прямое редактирование предоплаты и долга. Сохраните карточку, чтобы применить.'}
+                </p>
+                <div className="field field--inline">
+                  <label className="field">
+                    <span className="field__label">
+                      {form.balanceKind === 'lessons' ? 'Оплачено уроков' : 'Предоплата'}
+                    </span>
+                    <input
+                      className="field__control"
+                      type="number"
+                      min={0}
+                      step={form.balanceKind === 'lessons' ? 1 : 0.01}
+                      value={form.prepaid}
+                      onChange={(e) => set('prepaid', e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="field__label">
+                      {form.balanceKind === 'lessons' ? 'Долг (уроков)' : 'Долг'}
+                    </span>
+                    <input
+                      className="field__control"
+                      type="number"
+                      min={0}
+                      step={form.balanceKind === 'lessons' ? 1 : 0.01}
+                      value={form.debt}
+                      onChange={(e) => set('debt', e.target.value)}
+                    />
+                  </label>
+                </div>
+              </div>
+            </details>
           </section>
 
           {mode === 'edit' && studentId ? (

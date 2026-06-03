@@ -762,12 +762,81 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
+/* balance replenish */
+.replenish { width: min(420px, 100%); text-align: left; padding: 22px 22px 18px; }
+.replenish__head { margin-bottom: 14px; text-align: center; }
+.replenish__title { font-size: 18px; margin: 0 0 4px; }
+.replenish__student { margin: 0; font-size: 14px; color: var(--muted); }
+.replenish__wallet { margin-bottom: 14px; padding: 10px 12px; border-radius: var(--r); background: var(--surf-2); border: 1px solid var(--border); }
+.replenish__wallet .wallet { margin: 0; }
+.replenish__field { margin: 0; }
+.replenish__input { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.replenish__presets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.replenish__preset {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surf-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: .12s;
+}
+.replenish__preset:hover { border-color: var(--c-primary); }
+.replenish__preset.is-active {
+  background: color-mix(in oklch, var(--c-primary), transparent 88%);
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+  font-weight: 600;
+}
+.replenish__preview { margin: 12px 0 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.replenish__preview strong { color: var(--text); }
+.replenish__preview-sub { display: block; margin-top: 2px; font-size: 12px; }
+.replenish__hint { margin: 10px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.replenish__error { margin: 10px 0 0; font-size: 13px; color: var(--c-debt); font-weight: 600; }
+.replenish__actions { margin-top: 18px; justify-content: flex-end; }
+.replenish-layer { z-index: 60; }
+
+.balance-manual {
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--surf-2);
+}
+.balance-manual__summary {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.balance-manual__summary::-webkit-details-marker { display: none; }
+.balance-manual__summary::after {
+  content: "▾";
+  float: right;
+  font-size: 11px;
+  opacity: .6;
+  transition: transform .15s;
+}
+.balance-manual[open] .balance-manual__summary::after { transform: rotate(180deg); }
+.balance-manual[open] .balance-manual__summary { color: var(--text); }
+.balance-manual__body {
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--border);
+}
+.balance-manual__hint { margin: 10px 0 12px; }
+
 /* students page */
 .students-board { flex: 1; overflow: auto; padding: 20px 24px 28px; }
 .students-search { min-width: 200px; max-width: 280px; }
 .students-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-height: 240px; color: var(--muted); text-align: center; }
 .students-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
-.students-row { width: 100%; display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r); background: var(--surf); font: inherit; text-align: left; cursor: pointer; transition: .14s; }
+.students-list__row { display: flex; align-items: stretch; gap: 8px; }
+.students-row { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r); background: var(--surf); font: inherit; text-align: left; cursor: pointer; transition: .14s; }
+.students-replenish { flex-shrink: 0; align-self: center; white-space: nowrap; border: 1px solid var(--border); border-radius: var(--r); background: var(--surf); }
+.students-replenish:hover { border-color: var(--c-primary); color: var(--c-primary); background: color-mix(in oklch, var(--c-primary), transparent 94%); }
 .students-row:hover { box-shadow: var(--sh); transform: translateY(-1px); }
 .students-row__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .students-row__main strong { font-size: 15px; }
