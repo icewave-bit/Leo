@@ -10,6 +10,7 @@ import { authRouter } from './routes/auth.js';
 import { studentsRouter } from './routes/students.js';
 import { lessonsRouter } from './routes/lessons.js';
 import { recurringSchedulesRouter } from './routes/recurringSchedules.js';
+import { balanceMovementsRouter } from './routes/balanceMovements.js';
 
 const PgSession = connectPgSimple(session);
 
@@ -47,6 +48,7 @@ export async function createApp(): Promise<express.Express> {
   app.use('/api/students', studentsRouter);
   app.use('/api/lessons', lessonsRouter);
   app.use('/api/recurring-schedules', recurringSchedulesRouter);
+  app.use('/api/balance-movements', balanceMovementsRouter);
 
   app.use(
     (

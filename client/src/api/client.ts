@@ -1,5 +1,6 @@
 import type {
   ApiError,
+  BalanceMovement,
   CreateStudentBody,
   Lesson,
   LessonType,
@@ -55,6 +56,12 @@ export const api = {
   register: (body: { email: string; password: string; name: string; timezone?: string }) =>
     request<{ tutor: Tutor }>('/api/auth/register', { method: 'POST', json: body }),
   logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
+
+  balanceMovements: (from: string, to: string, studentId?: string) => {
+    const params = new URLSearchParams({ from, to });
+    if (studentId) params.set('studentId', studentId);
+    return request<BalanceMovement[]>(`/api/balance-movements?${params}`);
+  },
 
   students: () => request<Student[]>('/api/students'),
   getStudent: (id: string) => request<Student>(`/api/students/${id}`),

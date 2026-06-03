@@ -12,6 +12,7 @@ import { SchedulePage } from './pages/SchedulePage';
 import { StudentsPage } from './pages/StudentsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
+import { PaymentsPage } from './pages/PaymentsPage';
 
 function GuestOnly({ children }: { children: React.ReactNode }) {
   const loading = useAtomValue(authLoadingAtom);
@@ -57,7 +58,7 @@ export function App() {
             <Route path="schedule" element={<SchedulePage />} />
             <Route path="students" element={<StudentsPage />} />
             <Route path="students/:studentId" element={<StudentsPage />} />
-            <Route path="payments" element={<PlaceholderPage title="Оплаты" />} />
+            <Route path="payments" element={<PaymentsPage />} />
             <Route path="analytics" element={<PlaceholderPage title="Аналитика" />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>

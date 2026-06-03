@@ -58,6 +58,25 @@ export type CreateStudentBody = {
 
 export type UpdateStudentBody = Partial<CreateStudentBody>;
 
+export type BalanceMovementKind =
+  | 'replenish'
+  | 'manual'
+  | 'lesson_charge'
+  | 'lesson_paid'
+  | 'lesson_reverse';
+
+export interface BalanceMovement {
+  id: string;
+  studentId: string;
+  lessonId: string | null;
+  occurredAt: string;
+  kind: BalanceMovementKind;
+  prepaidDelta: number;
+  debtDelta: number;
+  prepaidAfter: number;
+  debtAfter: number;
+}
+
 export interface Lesson {
   id: string;
   tutorId: string;

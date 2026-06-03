@@ -1,17 +1,21 @@
 import { fmtBalanceAmount, fmtMoney, lessonCountLabel } from '../utils/format';
+import {
+  balanceNetAsLessons,
+  balanceNetAsMoney,
+} from '../utils/balanceConvert';
 import type { ViewStudent } from '../utils/schedule';
 
-function balanceAsLessons(student: ViewStudent): number | null {
-  const net = student.prepaid - student.debt;
-  if (student.balanceKind === 'lessons') return net;
-  if (student.rate == null || student.rate <= 0) return null;
-  return net / student.rate;
+function signedNetLabel(net: number, formatAbs: (n: number) => string): string {
+  if (net === 0) return formatAbs(0);
+  const sign = net < 0 ? '−' : '+';
+  return sign + formatAbs(Math.abs(net));
 }
 
 export function Wallet({ student, compact }: { student: ViewStudent; compact?: boolean }) {
-  const { prepaid, debt, currency, balanceKind } = student;
+  const { prepaid, debt, currency, balanceKind, rate } = student;
   const net = prepaid - debt;
-  const lessonsNet = balanceAsLessons(student);
+  const lessonsNet = balanceNetAsLessons(prepaid, debt, balanceKind, rate);
+  const moneyNet = balanceNetAsMoney(prepaid, debt, balanceKind, rate);
   const max = Math.max(Math.abs(prepaid), Math.abs(debt), 1);
   const ratio = Math.max(-1, Math.min(1, net / max));
   const tilt = -ratio * 9;
@@ -20,16 +24,20 @@ export function Wallet({ student, compact }: { student: ViewStudent; compact?: b
   const prepaidLabel = balanceKind === 'lessons' ? 'Оплачено уроков' : 'Предоплата';
   const debtLabel = balanceKind === 'lessons' ? 'Долг (уроков)' : 'Долг';
 
-  const netLessonsLabel =
-    lessonsNet != null
-      ? (lessonsNet < 0 ? '−' : lessonsNet > 0 ? '+' : '') +
-        lessonCountLabel(Math.abs(lessonsNet))
-      : fmtStored(net);
-  const netMoneyLabel =
-    balanceKind === 'lessons' && student.rate != null
-      ? fmtMoney(lessonsNet! * student.rate, currency)
-      : balanceKind === 'money'
-        ? fmtStored(net)
+  const primaryNetLabel =
+    balanceKind === 'lessons'
+      ? lessonsNet != null
+        ? signedNetLabel(lessonsNet, lessonCountLabel)
+        : fmtStored(net)
+      : moneyNet != null
+        ? signedNetLabel(moneyNet, (n) => fmtMoney(n, currency))
+        : fmtStored(net);
+
+  const secondaryNetLabel =
+    balanceKind === 'lessons' && moneyNet != null
+      ? signedNetLabel(moneyNet, (n) => fmtMoney(n, currency))
+      : balanceKind === 'money' && lessonsNet != null
+        ? signedNetLabel(lessonsNet, lessonCountLabel)
         : null;
 
   return (
@@ -66,9 +74,9 @@ export function Wallet({ student, compact }: { student: ViewStudent; compact?: b
             'Баланс нулевой'
           ) : (
             <>
-              <span className="wallet__net-primary">{netLessonsLabel}</span>
-              {netMoneyLabel ? (
-                <span className="wallet__net-secondary">{netMoneyLabel}</span>
+              <span className="wallet__net-primary">{primaryNetLabel}</span>
+              {secondaryNetLabel ? (
+                <span className="wallet__net-secondary">{secondaryNetLabel}</span>
               ) : null}
             </>
           )}

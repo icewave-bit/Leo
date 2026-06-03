@@ -7,6 +7,7 @@ import { useAtomValue, useSetAtom } from 'jotai';
 import { STATUS_LABELS } from '../../constants/status';
 import { useStudentActions } from '../../hooks/useStudentActions';
 import { useStudent } from '../../hooks/useStudentMap';
+import { convertBalanceField } from '../../utils/balanceConvert';
 import { fmtLessonWhen, studentLessonRange } from '../../utils/format';
 import { toUiStatus } from '../../utils/schedule';
 import { balanceReplenishStudentIdAtom, studentLessonsBumpAtom } from '../../atoms/schedule';
@@ -167,17 +168,44 @@ export function StudentDrawer({ mode, studentId, onClose, onCreated }: StudentDr
       prepaid: balanceAmount(form, 'prepaid'),
       debt: balanceAmount(form, 'debt'),
     };
+    const rateRaw = form.rate.trim() ? Number(form.rate) : null;
+    const rate =
+      rateRaw != null && !Number.isNaN(rateRaw) && rateRaw > 0 ? rateRaw : base.rate;
     return {
       ...base,
       name: form.name || base.name,
       initials: form.initials || base.initials,
       hue: form.hue,
+      rate,
       balanceKind: form.balanceKind,
       prepaid: balanceAmount(form, 'prepaid'),
       debt: balanceAmount(form, 'debt'),
       currency: form.currency,
     };
   }, [existing, form]);
+
+  const onBalanceKindChange = (next: BalanceKind) => {
+    if (next === form.balanceKind) return;
+    const rateRaw = form.rate.trim() ? Number(form.rate) : null;
+    const rate = rateRaw != null && !Number.isNaN(rateRaw) && rateRaw > 0 ? rateRaw : null;
+    if (rate == null) {
+      set('balanceKind', next);
+      return;
+    }
+    const prepaid = convertBalanceField(
+      balanceAmount(form, 'prepaid'),
+      form.balanceKind,
+      next,
+      rate,
+    );
+    const debt = convertBalanceField(balanceAmount(form, 'debt'), form.balanceKind, next, rate);
+    setForm((f) => ({
+      ...f,
+      balanceKind: next,
+      prepaid: String(prepaid),
+      debt: String(debt),
+    }));
+  };
 
   const set = <K extends keyof StudentFormValues>(key: K, value: StudentFormValues[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -414,10 +442,7 @@ export function StudentDrawer({ mode, studentId, onClose, onCreated }: StudentDr
                 </button>
               ) : null}
             </div>
-            <BalanceKindSeg
-              value={form.balanceKind}
-              onChange={(balanceKind) => set('balanceKind', balanceKind)}
-            />
+            <BalanceKindSeg value={form.balanceKind} onChange={onBalanceKindChange} />
             {previewStudent ? (
               <div className="drawer__wallet">
                 <Wallet student={previewStudent} />

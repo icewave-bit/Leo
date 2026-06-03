@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { getPool, query } from '../db.js';
+import { recordStudentBalancePatch } from '../balanceMovements.js';
 import { settleLessonsFromBalanceTopUp } from '../lessonBalance.js';
 import { AppError } from '../errors.js';
 import { deriveInitials } from '../auth/password.js';
@@ -230,6 +231,14 @@ studentsRouter.patch('/:id', async (req, res, next) => {
     }
 
     if (body.prepaid !== undefined || body.debt !== undefined) {
+      await recordStudentBalancePatch(
+        client,
+        row.id,
+        Number(beforeRow.prepaid),
+        Number(beforeRow.debt),
+        Number(row.prepaid),
+        Number(row.debt),
+      );
       await settleLessonsFromBalanceTopUp(
         client,
         row.id,

@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg';
+import { recordBalanceMovement } from './balanceMovements.js';
 import { getPool, query } from './db.js';
 import type { AcademicUnits, BalanceKind, LessonStatus } from './types.js';
 import type { LessonRow, StudentRow } from './mappers.js';
@@ -119,6 +120,15 @@ export async function applyLessonBalanceCharge(
      WHERE id = $3`,
     [fromPrepaid, toDebt, lesson.id],
   );
+
+  await recordBalanceMovement(client, {
+    studentId: student.id,
+    lessonId: lesson.id,
+    occurredAt: lesson.start_utc,
+    kind: 'lesson_charge',
+    prepaidDelta: -fromPrepaid,
+    debtDelta: toDebt,
+  });
 }
 
 /** Settles only the debt portion of a lesson charge (real money received). */
@@ -142,6 +152,14 @@ export async function applyLessonBalancePayment(
      WHERE id = $1`,
     [lesson.id],
   );
+
+  await recordBalanceMovement(client, {
+    studentId: lesson.student_id,
+    lessonId: lesson.id,
+    kind: 'lesson_paid',
+    prepaidDelta: 0,
+    debtDelta: -toDebt,
+  });
 }
 
 export async function reverseLessonBalancePayment(
@@ -189,6 +207,14 @@ export async function reverseLessonBalanceCharge(
      WHERE id = $1`,
     [lesson.id],
   );
+
+  await recordBalanceMovement(client, {
+    studentId: lesson.student_id,
+    lessonId: lesson.id,
+    kind: 'lesson_reverse',
+    prepaidDelta: fromPrepaid,
+    debtDelta: -toDebt,
+  });
 }
 
 async function syncPaidAfterCompletedCharge(

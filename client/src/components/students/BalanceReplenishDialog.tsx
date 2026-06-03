@@ -163,10 +163,16 @@ export function BalanceReplenishDialog({
                 student.currency,
               )}
             </strong>
-            {student.balanceKind === 'money' && student.rate != null && student.rate > 0 ? (
+            {student.rate != null && student.rate > 0 ? (
               <span className="replenish__preview-sub">
                 {' '}
-                (~{fmtMoney(afterNet * student.rate, student.currency)} по ставке)
+                (
+                {student.balanceKind === 'lessons' ? (
+                  <>~{fmtMoney(afterNet! * student.rate, student.currency)}</>
+                ) : (
+                  <>~{lessonCountLabel(afterNet! / student.rate)}</>
+                )}{' '}
+                по ставке)
               </span>
             ) : null}
           </p>
