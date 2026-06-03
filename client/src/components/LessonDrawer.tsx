@@ -23,7 +23,7 @@ import {
   type LessonDeleteScope,
 } from './LessonDeleteScopeOptions';
 import { RecurrenceIcon } from './RecurrenceFields';
-import { Wallet } from './Wallet';
+import { StudentBalance } from './StudentBalance';
 import { TypeIcon } from './schedule/LessonChrome';
 
 interface LessonDrawerProps {
@@ -242,9 +242,9 @@ export function LessonDrawer({
           </button>
         </div>
 
-        <div className="drawer__wallet">
+        <div className="drawer__balance">
           <span className="drawer__k">Баланс ученика</span>
-          <Wallet student={stu} />
+          <StudentBalance student={stu} />
         </div>
 
         {stu.note ? (

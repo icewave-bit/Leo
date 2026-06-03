@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { BalanceKind, Lesson } from '../../api/types';
 import { api } from '../../api/client';
@@ -7,16 +7,27 @@ import { useAtomValue, useSetAtom } from 'jotai';
 import { STATUS_LABELS } from '../../constants/status';
 import { useStudentActions } from '../../hooks/useStudentActions';
 import { useStudent } from '../../hooks/useStudentMap';
-import { convertBalanceField } from '../../utils/balanceConvert';
+import {
+  convertBalanceNet,
+  formatBalanceNetInput,
+  parseBalanceNetInput,
+  partsFromBalanceNet,
+} from '../../utils/balanceConvert';
 import { fmtLessonWhen, studentLessonRange } from '../../utils/format';
-import { toUiStatus } from '../../utils/schedule';
+import { toUiStatus, type ViewStudent } from '../../utils/schedule';
 import { balanceReplenishStudentIdAtom, studentLessonsBumpAtom } from '../../atoms/schedule';
 import { BalanceKindSeg } from '../BalanceKindSeg';
 import { ConfirmDialog } from '../ConfirmDialog';
-import { Wallet } from '../Wallet';
-import type { ViewStudent } from '../../utils/schedule';
+import { StudentBalance } from '../StudentBalance';
 
 const CURRENCIES = ['EUR', 'RUB', 'USD'] as const;
+
+const LESSON_STATUS_TONE: Record<string, 'credit' | 'debt' | 'neutral'> = {
+  planned: 'neutral',
+  completed: 'credit',
+  cancelled: 'neutral',
+  'no-show': 'debt',
+};
 
 export interface StudentFormValues {
   name: string;
@@ -30,8 +41,7 @@ export interface StudentFormValues {
   isGroup: boolean;
   membersText: string;
   balanceKind: BalanceKind;
-  prepaid: string;
-  debt: string;
+  balanceNet: string;
 }
 
 function emptyForm(tz: string): StudentFormValues {
@@ -47,8 +57,7 @@ function emptyForm(tz: string): StudentFormValues {
     isGroup: false,
     membersText: '',
     balanceKind: 'money',
-    prepaid: '0',
-    debt: '0',
+    balanceNet: '0',
   };
 }
 
@@ -65,14 +74,13 @@ function fromStudent(s: ViewStudent): StudentFormValues {
     isGroup: s.group,
     membersText: s.members.join('\n'),
     balanceKind: s.balanceKind,
-    prepaid: String(s.prepaid),
-    debt: String(s.debt),
+    balanceNet: formatBalanceNetInput(s.prepaid, s.debt, s.balanceKind),
   };
 }
 
-function balanceAmount(form: StudentFormValues, field: 'prepaid' | 'debt'): number {
-  const raw = Math.max(0, Number(form[field]) || 0);
-  return form.balanceKind === 'lessons' ? Math.round(raw) : raw;
+function balancePartsFromForm(form: StudentFormValues) {
+  const net = parseBalanceNetInput(form.balanceNet, form.balanceKind);
+  return partsFromBalanceNet(net, form.balanceKind);
 }
 
 function toPayload(form: StudentFormValues) {
@@ -94,16 +102,46 @@ function toPayload(form: StudentFormValues) {
     isGroup: form.isGroup,
     members: form.isGroup ? members : [],
     balanceKind: form.balanceKind,
-    prepaid: balanceAmount(form, 'prepaid'),
-    debt: balanceAmount(form, 'debt'),
+    ...balancePartsFromForm(form),
   };
 }
+
+function payloadEquals(
+  a: ReturnType<typeof toPayload>,
+  b: ReturnType<typeof toPayload>,
+): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+const AUTOSAVE_MS = 500;
 
 interface StudentDrawerProps {
   mode: 'create' | 'edit';
   studentId?: string;
   onClose: () => void;
   onCreated?: (id: string) => void;
+}
+
+function DrawerPanel({
+  title,
+  action,
+  children,
+  className,
+}: {
+  title: string;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={'drawer-panel' + (className ? ` ${className}` : '')}>
+      <header className="drawer-panel__head">
+        <h2 className="drawer-panel__title">{title}</h2>
+        {action}
+      </header>
+      <div className="drawer-panel__body">{children}</div>
+    </section>
+  );
 }
 
 export function StudentDrawer({ mode, studentId, onClose, onCreated }: StudentDrawerProps) {
@@ -123,10 +161,21 @@ export function StudentDrawer({ mode, studentId, onClose, onCreated }: StudentDr
   const [deleting, setDeleting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const loadedStudentIdRef = useRef<string | null>(null);
+  const createLockRef = useRef(false);
 
   useEffect(() => {
-    if (mode === 'edit' && existing) setForm(fromStudent(existing));
-  }, [mode, existing]);
+    if (mode === 'create') {
+      loadedStudentIdRef.current = null;
+      setForm(emptyForm(defaultTz));
+      createLockRef.current = false;
+      return;
+    }
+    if (mode === 'edit' && existing && studentId && loadedStudentIdRef.current !== studentId) {
+      setForm(fromStudent(existing));
+      loadedStudentIdRef.current = studentId;
+    }
+  }, [mode, studentId, existing, defaultTz]);
 
   const lessonsBump = useAtomValue(studentLessonsBumpAtom);
 
@@ -165,22 +214,31 @@ export function StudentDrawer({ mode, studentId, onClose, onCreated }: StudentDr
       group: form.isGroup,
       members: [],
       balanceKind: form.balanceKind,
-      prepaid: balanceAmount(form, 'prepaid'),
-      debt: balanceAmount(form, 'debt'),
+      ...balancePartsFromForm(form),
     };
     const rateRaw = form.rate.trim() ? Number(form.rate) : null;
     const rate =
       rateRaw != null && !Number.isNaN(rateRaw) && rateRaw > 0 ? rateRaw : base.rate;
+    const initials =
+      form.initials.trim() ||
+      form.name
+        .trim()
+        .split(/\s+/)
+        .map((w) => w[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase() ||
+      base.initials;
     return {
       ...base,
       name: form.name || base.name,
-      initials: form.initials || base.initials,
+      initials,
       hue: form.hue,
       rate,
       balanceKind: form.balanceKind,
-      prepaid: balanceAmount(form, 'prepaid'),
-      debt: balanceAmount(form, 'debt'),
+      ...balancePartsFromForm(form),
       currency: form.currency,
+      group: form.isGroup,
     };
   }, [existing, form]);
 
@@ -188,22 +246,16 @@ export function StudentDrawer({ mode, studentId, onClose, onCreated }: StudentDr
     if (next === form.balanceKind) return;
     const rateRaw = form.rate.trim() ? Number(form.rate) : null;
     const rate = rateRaw != null && !Number.isNaN(rateRaw) && rateRaw > 0 ? rateRaw : null;
+    const net = parseBalanceNetInput(form.balanceNet, form.balanceKind);
     if (rate == null) {
-      set('balanceKind', next);
+      setForm((f) => ({ ...f, balanceKind: next }));
       return;
     }
-    const prepaid = convertBalanceField(
-      balanceAmount(form, 'prepaid'),
-      form.balanceKind,
-      next,
-      rate,
-    );
-    const debt = convertBalanceField(balanceAmount(form, 'debt'), form.balanceKind, next, rate);
+    const newNet = convertBalanceNet(net, form.balanceKind, next, rate);
     setForm((f) => ({
       ...f,
       balanceKind: next,
-      prepaid: String(prepaid),
-      debt: String(debt),
+      balanceNet: String(newNet),
     }));
   };
 
@@ -211,46 +263,54 @@ export function StudentDrawer({ mode, studentId, onClose, onCreated }: StudentDr
     setForm((f) => ({ ...f, [key]: value }));
   };
 
-  const submit = async () => {
-    if (!form.name.trim()) {
-      setError('Укажите имя ученика');
-      return;
+  useEffect(() => {
+    if (mode === 'create') {
+      if (!form.name.trim() || createLockRef.current) return;
+      const timer = window.setTimeout(() => {
+        if (createLockRef.current) return;
+        createLockRef.current = true;
+        setSaving(true);
+        setError(null);
+        void createStudent(toPayload(form))
+          .then((id) => {
+            if (onCreated) onCreated(id);
+            else onClose();
+          })
+          .catch((e) => {
+            createLockRef.current = false;
+            setError(e instanceof Error ? e.message : 'Не удалось создать');
+          })
+          .finally(() => setSaving(false));
+      }, AUTOSAVE_MS);
+      return () => window.clearTimeout(timer);
     }
-    setSaving(true);
-    setError(null);
-    try {
-      if (mode === 'create') {
-        const id = await createStudent(toPayload(form));
-        if (onCreated) onCreated(id);
-        else onClose();
-      } else if (studentId) {
-        const members = form.membersText
-          .split('\n')
-          .map((m) => m.trim())
-          .filter(Boolean);
-        const rate = form.rate.trim() ? Number(form.rate) : null;
-        await updateStudent(studentId, {
-          name: form.name.trim(),
-          initials: form.initials.trim() || undefined,
-          hue: form.hue,
-          tz: form.tz.trim(),
-          meetUrl: form.meetUrl.trim() || null,
-          rate: rate != null && !Number.isNaN(rate) ? rate : null,
-          currency: form.currency,
-          note: form.note.trim() || null,
-          isGroup: form.isGroup,
-          members: form.isGroup ? members : [],
-          balanceKind: form.balanceKind,
-          prepaid: balanceAmount(form, 'prepaid'),
-          debt: balanceAmount(form, 'debt'),
-        });
-        onClose();
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Не удалось сохранить');
-      setSaving(false);
-    }
-  };
+
+    if (mode !== 'edit' || !studentId || !existing) return;
+    const payload = toPayload(form);
+    if (!payload.name) return;
+    if (payloadEquals(payload, toPayload(fromStudent(existing)))) return;
+
+    const timer = window.setTimeout(() => {
+      setSaving(true);
+      setError(null);
+      void updateStudent(studentId, payload)
+        .catch((e) => {
+          setError(e instanceof Error ? e.message : 'Не удалось сохранить');
+        })
+        .finally(() => setSaving(false));
+    }, AUTOSAVE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    form,
+    mode,
+    studentId,
+    existing,
+    createStudent,
+    updateStudent,
+    onCreated,
+    onClose,
+  ]);
 
   const onDelete = async () => {
     if (!studentId) return;
@@ -276,6 +336,54 @@ export function StudentDrawer({ mode, studentId, onClose, onCreated }: StudentDr
     .filter((l) => new Date(l.startUtc) < new Date() || l.status === 'cancelled')
     .reverse();
 
+  const avatarInitials = previewStudent?.initials.slice(0, 2) ?? '??';
+
+  const balancePanel = (
+    <DrawerPanel
+      title="Баланс"
+      className="drawer-panel--balance"
+      action={
+        mode === 'edit' && studentId ? (
+          <button
+            type="button"
+            className="btn btn--primary btn--sm"
+            onClick={() => setReplenishId(studentId)}
+          >
+            Пополнить
+          </button>
+        ) : undefined
+      }
+    >
+      {previewStudent ? <StudentBalance student={previewStudent} /> : null}
+      <BalanceKindSeg value={form.balanceKind} onChange={onBalanceKindChange} />
+      <details className="balance-manual balance-manual--panel" open={mode === 'create'}>
+        <summary className="balance-manual__summary">
+          {mode === 'create' ? 'Стартовый баланс' : 'Ручная настройка'}
+        </summary>
+        <div className="balance-manual__body">
+          <p className="drawer-panel__hint">
+            {mode === 'create'
+              ? 'Отрицательное значение — долг.'
+              : 'Положительное — предоплата, отрицательное — долг.'}
+          </p>
+          <label className="field">
+            <span className="field__label">
+              {form.balanceKind === 'lessons' ? 'Баланс, уроков' : `Баланс, ${form.currency}`}
+            </span>
+            <input
+              className="field__control tnum"
+              type="number"
+              step={form.balanceKind === 'lessons' ? 1 : 0.01}
+              inputMode={form.balanceKind === 'lessons' ? 'numeric' : 'decimal'}
+              value={form.balanceNet}
+              onChange={(e) => set('balanceNet', e.target.value)}
+            />
+          </label>
+        </div>
+      </details>
+    </DrawerPanel>
+  );
+
   return (
     <>
       <ConfirmDialog
@@ -292,250 +400,212 @@ export function StudentDrawer({ mode, studentId, onClose, onCreated }: StudentDr
         }}
       />
       <div className="scrim" onClick={onClose} role="presentation" />
-      <aside className="drawer drawer--wide" role="dialog" aria-label={mode === 'create' ? 'Новый ученик' : 'Ученик'}>
-        <header className="drawer__head">
-          {previewStudent ? (
-            <span
-              className="avatar avatar--lg"
-              style={{ background: `oklch(0.62 0.13 ${previewStudent.hue})` }}
-            >
-              {previewStudent.initials.slice(0, 2)}
-            </span>
-          ) : null}
-          <div className="drawer__head-txt">
-            <h3>{mode === 'create' ? 'Новый ученик' : previewStudent?.name}</h3>
-            <span className="drawer__sub">
-              {form.isGroup ? 'Группа' : 'Индивидуально'} · {form.tz || defaultTz}
-            </span>
+      <aside
+        className="drawer drawer--student"
+        role="dialog"
+        aria-label={mode === 'create' ? 'Новый ученик' : 'Профиль ученика'}
+      >
+        <header
+          className="student-drawer__hero"
+          style={{ ['--student-hue' as string]: String(form.hue) }}
+        >
+          <span
+            className="avatar avatar--lg student-drawer__avatar"
+            style={{ background: `oklch(0.62 0.13 ${form.hue})` }}
+          >
+            {avatarInitials}
+          </span>
+          <div className="student-drawer__hero-main">
+            <input
+              className="student-drawer__name"
+              value={form.name}
+              onChange={(e) => set('name', e.target.value)}
+              placeholder={mode === 'create' ? 'Имя ученика' : 'Имя'}
+              required
+              aria-label="Имя ученика"
+            />
+            <div className="seg seg--student-kind" role="group" aria-label="Тип ученика">
+              <button
+                type="button"
+                className={'seg__btn' + (!form.isGroup ? ' is-active' : '')}
+                onClick={() => set('isGroup', false)}
+              >
+                Индивидуально
+              </button>
+              <button
+                type="button"
+                className={'seg__btn' + (form.isGroup ? ' is-active' : '')}
+                onClick={() => set('isGroup', true)}
+              >
+                Группа
+              </button>
+            </div>
           </div>
-          <button type="button" className="iconbtn" onClick={onClose} aria-label="Закрыть">
+          <button type="button" className="iconbtn student-drawer__close" onClick={onClose} aria-label="Закрыть">
             ✕
           </button>
         </header>
 
-        <form
-          className="drawer__form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void submit();
-          }}
-        >
-          <section className="drawer__section">
-            <h4 className="drawer__section-title">Профиль</h4>
-            <label className="field">
-              <span className="field__label">Имя</span>
-              <input
-                className="field__control"
-                value={form.name}
-                onChange={(e) => set('name', e.target.value)}
-                required
-                autoFocus
-              />
-            </label>
-            <label className="field">
-              <span className="field__label">Инициалы (необязательно)</span>
-              <input
-                className="field__control"
-                value={form.initials}
-                onChange={(e) => set('initials', e.target.value)}
-                maxLength={4}
-                placeholder="Авто из имени"
-              />
-            </label>
-            <label className="field field--row">
-              <input
-                type="checkbox"
-                checked={form.isGroup}
-                onChange={(e) => set('isGroup', e.target.checked)}
-              />
-              <span className="field__label">Групповой ученик</span>
-            </label>
-            {form.isGroup ? (
+        <div className="student-drawer__form">
+          <div className="student-drawer__scroll">
+            {mode === 'edit' ? balancePanel : null}
+
+            <DrawerPanel title="Контакты и ставка">
+              <div className="drawer-panel__grid drawer-panel__grid--2">
+                <label className="field">
+                  <span className="field__label">Инициалы</span>
+                  <input
+                    className="field__control"
+                    value={form.initials}
+                    onChange={(e) => set('initials', e.target.value)}
+                    maxLength={4}
+                    placeholder="Авто"
+                  />
+                </label>
+                <label className="field">
+                  <span className="field__label">Часовой пояс</span>
+                  <input
+                    className="field__control"
+                    value={form.tz}
+                    onChange={(e) => set('tz', e.target.value)}
+                    placeholder="Europe/Moscow"
+                  />
+                </label>
+              </div>
               <label className="field">
-                <span className="field__label">Участники (по одному на строку)</span>
-                <textarea
-                  className="field__control field__control--area"
-                  value={form.membersText}
-                  rows={3}
-                  onChange={(e) => set('membersText', e.target.value)}
-                />
-              </label>
-            ) : null}
-            <label className="field">
-              <span className="field__label">Цвет (оттенок)</span>
-              <input
-                className="field__control field__control--hue"
-                type="range"
-                min={0}
-                max={360}
-                value={form.hue}
-                onChange={(e) => set('hue', Number(e.target.value))}
-              />
-            </label>
-            <label className="field">
-              <span className="field__label">Часовой пояс</span>
-              <input
-                className="field__control"
-                value={form.tz}
-                onChange={(e) => set('tz', e.target.value)}
-                placeholder="Europe/Moscow"
-              />
-            </label>
-            <label className="field">
-              <span className="field__label">Ссылка Meet</span>
-              <input
-                className="field__control"
-                type="url"
-                value={form.meetUrl}
-                onChange={(e) => set('meetUrl', e.target.value)}
-                placeholder="https://meet.google.com/…"
-              />
-            </label>
-            <div className="field field--inline">
-              <label className="field">
-                <span className="field__label">Ставка за ак. час</span>
+                <span className="field__label">Ссылка Meet</span>
                 <input
                   className="field__control"
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={form.rate}
-                  onChange={(e) => set('rate', e.target.value)}
+                  type="url"
+                  value={form.meetUrl}
+                  onChange={(e) => set('meetUrl', e.target.value)}
+                  placeholder="https://meet.google.com/…"
                 />
               </label>
-              <label className="field">
-                <span className="field__label">Валюта</span>
-                <select
-                  className="field__control"
-                  value={form.currency}
-                  onChange={(e) => set('currency', e.target.value)}
-                >
-                  {CURRENCIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <label className="field">
-              <span className="field__label">Заметка</span>
-              <textarea
-                className="field__control field__control--area"
-                value={form.note}
-                rows={2}
-                onChange={(e) => set('note', e.target.value)}
-              />
-            </label>
-          </section>
-
-          <section className="drawer__section">
-            <div className="drawer__section-head">
-              <h4 className="drawer__section-title">Баланс</h4>
-              {mode === 'edit' && studentId ? (
-                <button
-                  type="button"
-                  className="btn btn--sm btn--primary"
-                  onClick={() => setReplenishId(studentId)}
-                >
-                  + Пополнить
-                </button>
-              ) : null}
-            </div>
-            <BalanceKindSeg value={form.balanceKind} onChange={onBalanceKindChange} />
-            {previewStudent ? (
-              <div className="drawer__wallet">
-                <Wallet student={previewStudent} />
+              <div className="drawer-panel__grid drawer-panel__grid--2">
+                <label className="field">
+                  <span className="field__label">Ставка / ак. ч</span>
+                  <input
+                    className="field__control"
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={form.rate}
+                    onChange={(e) => set('rate', e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span className="field__label">Валюта</span>
+                  <select
+                    className="field__control"
+                    value={form.currency}
+                    onChange={(e) => set('currency', e.target.value)}
+                  >
+                    {CURRENCIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
-            ) : null}
-            {mode === 'edit' ? (
-              <p className="drawer__hint">
-                Для обычной оплаты используйте «Пополнить». Ручная настройка — ниже, если нужно
-                задать или исправить баланс целиком.
-              </p>
-            ) : null}
+            </DrawerPanel>
 
-            <details className="balance-manual">
-              <summary className="balance-manual__summary">
-                {mode === 'create' ? 'Начальная настройка баланса' : 'Ручная настройка баланса'}
-              </summary>
-              <div className="balance-manual__body">
-                <p className="drawer__hint balance-manual__hint">
-                  {mode === 'create'
-                    ? 'Задайте стартовые значения перед первым уроком. Обычно долг оставляют нулевым.'
-                    : 'Прямое редактирование предоплаты и долга. Сохраните карточку, чтобы применить.'}
-                </p>
-                <div className="field field--inline">
-                  <label className="field">
-                    <span className="field__label">
-                      {form.balanceKind === 'lessons' ? 'Оплачено уроков' : 'Предоплата'}
-                    </span>
-                    <input
-                      className="field__control"
-                      type="number"
-                      min={0}
-                      step={form.balanceKind === 'lessons' ? 1 : 0.01}
-                      value={form.prepaid}
-                      onChange={(e) => set('prepaid', e.target.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span className="field__label">
-                      {form.balanceKind === 'lessons' ? 'Долг (уроков)' : 'Долг'}
-                    </span>
-                    <input
-                      className="field__control"
-                      type="number"
-                      min={0}
-                      step={form.balanceKind === 'lessons' ? 1 : 0.01}
-                      value={form.debt}
-                      onChange={(e) => set('debt', e.target.value)}
-                    />
-                  </label>
+            <DrawerPanel title="Оформление">
+              <label className="field student-drawer__hue">
+                <span className="field__label">Цвет аватара</span>
+                <div className="student-drawer__hue-row">
+                  <span
+                    className="avatar avatar--sm"
+                    style={{ background: `oklch(0.62 0.13 ${form.hue})` }}
+                  >
+                    {avatarInitials}
+                  </span>
+                  <input
+                    className="field__control field__control--hue"
+                    type="range"
+                    min={0}
+                    max={360}
+                    value={form.hue}
+                    onChange={(e) => set('hue', Number(e.target.value))}
+                    aria-valuetext={`${form.hue}°`}
+                  />
                 </div>
-              </div>
-            </details>
-          </section>
+              </label>
+              {form.isGroup ? (
+                <label className="field">
+                  <span className="field__label">Участники группы</span>
+                  <textarea
+                    className="field__control field__control--area"
+                    value={form.membersText}
+                    rows={3}
+                    placeholder="По одному имени на строку"
+                    onChange={(e) => set('membersText', e.target.value)}
+                  />
+                </label>
+              ) : null}
+              <label className="field">
+                <span className="field__label">Заметка</span>
+                <textarea
+                  className="field__control field__control--area"
+                  value={form.note}
+                  rows={3}
+                  placeholder="Важное про ученика…"
+                  onChange={(e) => set('note', e.target.value)}
+                />
+              </label>
+            </DrawerPanel>
 
-          {mode === 'edit' && studentId ? (
-            <section className="drawer__section">
-              <div className="drawer__section-head">
-                <h4 className="drawer__section-title">Расписание</h4>
-                <button type="button" className="link" onClick={openSchedule}>
-                  + Урок в расписании
-                </button>
-              </div>
-              {lessonsLoading ? (
-                <p className="drawer__hint">Загрузка уроков…</p>
-              ) : lessons.length === 0 ? (
-                <p className="drawer__hint">Нет уроков в выбранном периоде.</p>
-              ) : (
-                <ul className="student-lessons">
-                  {upcoming.length > 0 ? (
-                    <>
-                      <li className="student-lessons__label">Предстоящие</li>
-                      {upcoming.map((l) => (
-                        <LessonRow key={l.id} lesson={l} tz={form.tz || defaultTz} />
-                      ))}
-                    </>
-                  ) : null}
-                  {past.length > 0 ? (
-                    <>
-                      <li className="student-lessons__label">Прошедшие</li>
-                      {past.slice(0, 12).map((l) => (
-                        <LessonRow key={l.id} lesson={l} tz={form.tz || defaultTz} />
-                      ))}
-                    </>
-                  ) : null}
-                </ul>
-              )}
-            </section>
-          ) : null}
+            {mode === 'create' ? balancePanel : null}
 
-          {error ? <p className="drawer__error">{error}</p> : null}
+            {mode === 'edit' && studentId ? (
+              <DrawerPanel
+                title="Уроки"
+                action={
+                  <button type="button" className="link" onClick={openSchedule}>
+                    + В расписании
+                  </button>
+                }
+              >
+                {lessonsLoading ? (
+                  <p className="drawer-panel__hint">Загрузка…</p>
+                ) : lessons.length === 0 ? (
+                  <p className="drawer-panel__hint">Нет уроков в выбранном периоде.</p>
+                ) : (
+                  <ul className="student-drawer-lessons">
+                    {upcoming.length > 0 ? (
+                      <li className="student-drawer-lessons__group">
+                        <span className="student-drawer-lessons__lbl">Предстоящие</span>
+                        <ul>
+                          {upcoming.map((l) => (
+                            <LessonRow key={l.id} lesson={l} tz={form.tz || defaultTz} />
+                          ))}
+                        </ul>
+                      </li>
+                    ) : null}
+                    {past.length > 0 ? (
+                      <li className="student-drawer-lessons__group">
+                        <span className="student-drawer-lessons__lbl">Прошедшие</span>
+                        <ul>
+                          {past.slice(0, 12).map((l) => (
+                            <LessonRow key={l.id} lesson={l} tz={form.tz || defaultTz} />
+                          ))}
+                        </ul>
+                      </li>
+                    ) : null}
+                  </ul>
+                )}
+              </DrawerPanel>
+            ) : null}
 
-          <div className="drawer__actions drawer__actions--spread">
-            {mode === 'edit' ? (
+            {error ? <p className="drawer__error student-drawer__error">{error}</p> : null}
+            {saving ? (
+              <p className="drawer-panel__hint student-drawer__saving">Сохранение…</p>
+            ) : null}
+          </div>
+
+          {mode === 'edit' ? (
+            <footer className="student-drawer__footer">
               <button
                 type="button"
                 className="btn btn--ghost btn--danger"
@@ -544,19 +614,9 @@ export function StudentDrawer({ mode, studentId, onClose, onCreated }: StudentDr
               >
                 Удалить
               </button>
-            ) : (
-              <span />
-            )}
-            <div className="drawer__actions-end">
-              <button type="button" className="btn btn--ghost" onClick={onClose} disabled={saving}>
-                Отмена
-              </button>
-              <button type="submit" className="btn btn--primary" disabled={saving || deleting}>
-                {saving ? 'Сохранение…' : mode === 'create' ? 'Добавить' : 'Сохранить'}
-              </button>
-            </div>
-          </div>
-        </form>
+            </footer>
+          ) : null}
+        </div>
       </aside>
     </>
   );
@@ -565,14 +625,20 @@ export function StudentDrawer({ mode, studentId, onClose, onCreated }: StudentDr
 function LessonRow({ lesson, tz }: { lesson: Lesson; tz: string }) {
   const ui = toUiStatus(lesson.status);
   const label = STATUS_LABELS[ui];
+  const tone = LESSON_STATUS_TONE[ui] ?? 'neutral';
 
   return (
-    <li className="student-lessons__item">
-      <span className="student-lessons__when">{fmtLessonWhen(lesson.startUtc, tz)}</span>
-      <span className="student-lessons__meta">
-        <i className="dot" style={{ background: label.dot }} />
-        {label.ru}
-        {lesson.paid ? ' · оплачен' : ' · не оплачен'}
+    <li className="student-drawer-lesson">
+      <div className="student-drawer-lesson__main">
+        <time className="student-drawer-lesson__when">{fmtLessonWhen(lesson.startUtc, tz)}</time>
+        <span className={'pay-op pay-op--' + tone}>{label.short}</span>
+      </div>
+      <span
+        className={
+          'student-drawer-lesson__pay' + (lesson.paid ? ' student-drawer-lesson__pay--ok' : '')
+        }
+      >
+        {lesson.paid ? 'Оплачен' : 'Не оплачен'}
       </span>
     </li>
   );

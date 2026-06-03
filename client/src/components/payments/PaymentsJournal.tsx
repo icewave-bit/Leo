@@ -17,8 +17,7 @@ import {
   periodDeltaSummary,
   periodRange,
 } from '../../utils/paymentJournal';
-import { fmtBalanceNet } from '../../utils/format';
-import { Wallet } from '../Wallet';
+import { StudentBalance } from '../StudentBalance';
 import { JournalEntryCard } from './JournalEntryCard';
 import { JournalStudentChip } from './JournalStudentChip';
 import { PeriodPicker } from './PeriodPicker';
@@ -61,48 +60,35 @@ export function PaymentsJournal() {
   return (
     <div className="pay-journal-page">
       <section className="pay-toolbar" aria-label="Фильтры журнала">
-        <span className="pay-toolbar__lbl pay-toolbar__lbl--student">Ученик</span>
-        <span className="pay-toolbar__lbl pay-toolbar__lbl--period">Период</span>
-        <span className="pay-toolbar__lbl pay-toolbar__lbl--actions" aria-hidden />
-
-        <div className="pay-toolbar__control pay-toolbar__control--student">
-          <StudentPicker students={students} value={studentId} onChange={setStudentId} />
+        <div className="pay-toolbar__fields">
+          <div className="pay-toolbar__field pay-toolbar__field--student">
+            <span className="pay-toolbar__lbl">Ученик</span>
+            <StudentPicker students={students} value={studentId} onChange={setStudentId} />
+          </div>
+          <div className="pay-toolbar__field pay-toolbar__field--period">
+            <span className="pay-toolbar__lbl">Период</span>
+            <PeriodPicker timezone={tz} />
+          </div>
         </div>
 
-        <div className="pay-toolbar__control pay-toolbar__control--period">
-          <PeriodPicker timezone={tz} />
-        </div>
-
-        <div className="pay-toolbar__actions">
+        <div className="pay-toolbar__bar">
+          <p className="pay-toolbar__range">{periodLabel}</p>
           {selectedStudent && !selectedStudent.group ? (
             <button
               type="button"
-              className="btn btn--primary btn--sm"
+              className="btn btn--primary btn--sm pay-toolbar__replenish"
               onClick={() => setReplenishId(selectedStudent.id)}
             >
               Пополнить
             </button>
           ) : null}
         </div>
-
-        <p className="pay-toolbar__range">{periodLabel}</p>
       </section>
 
       {selectedStudent ? (
         <section className="pay-summary">
-          <Wallet student={selectedStudent} compact />
+          <StudentBalance student={selectedStudent} compact />
           <div className="pay-summary__stats">
-            <div className="pay-summary__stat">
-              <span className="pay-summary__stat-lbl">Сейчас</span>
-              <strong className="pay-summary__stat-val tnum">
-                {fmtBalanceNet(
-                  selectedStudent.prepaid,
-                  selectedStudent.debt,
-                  selectedStudent.balanceKind,
-                  selectedStudent.currency,
-                )}
-              </strong>
-            </div>
             {summary ? (
               <>
                 <div className="pay-summary__stat">

@@ -1,5 +1,5 @@
 import { useAtom, useAtomValue } from 'jotai';
-import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   balanceReplenishStudentIdAtom,
@@ -8,8 +8,10 @@ import {
   studentsAtom,
 } from '../atoms/schedule';
 import { BalanceReplenishDialog } from '../components/students/BalanceReplenishDialog';
+import { StudentCard } from '../components/students/StudentCard';
+import { OrnamentalDivider } from '../components/OrnamentalDivider';
 import { StudentDrawer } from '../components/students/StudentDrawer';
-import { fmtBalanceNet, fmtMoney } from '../utils/format';
+import { studentCountLabel } from '../utils/format';
 
 export function StudentsPage() {
   const students = useAtomValue(studentsAtom);
@@ -73,14 +75,17 @@ export function StudentsPage() {
     navigate(`/students/${id}`, { replace: true });
   };
 
-  const openReplenish = (id: string, e?: MouseEvent) => {
-    e?.stopPropagation();
-    e?.preventDefault();
+  const openReplenish = (id: string) => {
     setReplenishId(id);
   };
 
   const drawerOpen = drawerMode !== null;
   const showDrawer = drawerOpen && (drawerMode === 'create' || (drawerMode === 'edit' && openId));
+
+  const countLabel =
+    filtered.length === students.length
+      ? studentCountLabel(students.length)
+      : `${studentCountLabel(filtered.length)} из ${studentCountLabel(students.length)}`;
 
   return (
     <div className="page">
@@ -88,81 +93,66 @@ export function StudentsPage() {
         <div className="top__l">
           <h1 className="top__title">Студенты</h1>
         </div>
-        <div className="top__r">
-          <input
-            className="students-search field__control"
-            type="search"
-            placeholder="Поиск по имени…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Поиск"
-          />
-          <button type="button" className="btn btn--primary btn--sm" onClick={openCreate}>
-            + Ученик
-          </button>
-        </div>
       </header>
 
       <div className="students-board">
-        {filtered.length === 0 ? (
-          <div className="students-empty">
-            <p>{students.length === 0 ? 'Пока нет учеников.' : 'Ничего не найдено.'}</p>
-            {students.length === 0 ? (
-              <button type="button" className="btn btn--primary" onClick={openCreate}>
-                Добавить первого ученика
+        <div className="students-page">
+          <section className="students-toolbar" aria-label="Ученики">
+            <div className="students-toolbar__row">
+              <input
+                className="students-toolbar__search"
+                type="search"
+                placeholder="Поиск"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Поиск"
+              />
+              <button
+                type="button"
+                className="btn btn--primary btn--sm students-toolbar__add"
+                onClick={openCreate}
+                aria-label="Добавить ученика"
+              >
+                +
               </button>
-            ) : null}
-          </div>
-        ) : (
-          <ul className="students-list">
-            {filtered.map((s) => {
-              const net = s.prepaid - s.debt;
-              const balanceLabel = fmtBalanceNet(s.prepaid, s.debt, s.balanceKind, s.currency);
-              return (
-                <li key={s.id} className="students-list__row">
-                  <button
-                    type="button"
-                    className="students-row"
-                    onClick={() => openEdit(s.id)}
-                  >
-                    <span
-                      className="avatar"
-                      style={{ background: `oklch(0.62 0.13 ${s.hue})` }}
-                    >
-                      {s.initials}
-                    </span>
-                    <span className="students-row__main">
-                      <strong>{s.name}</strong>
-                      <span className="students-row__sub">
-                        {s.group ? `Группа · ${s.members.length} уч.` : 'Индивидуально'}
-                        {s.rate != null ? ` · ${fmtMoney(s.rate, s.currency)}/ак. ч` : ''}
-                      </span>
-                    </span>
-                    <span
-                      className={
-                        'students-row__balance' +
-                        (net > 0
-                          ? ' students-row__balance--credit'
-                          : net < 0
-                            ? ' students-row__balance--debt'
-                            : '')
-                      }
-                    >
-                      {balanceLabel}
-                    </span>
+            </div>
+          </section>
+
+          <section className="students-feed" aria-label="Список учеников">
+            {filtered.length === 0 ? (
+              <div className="students-empty">
+                <p>{students.length === 0 ? 'Пока нет учеников.' : 'Ничего не найдено.'}</p>
+                {students.length === 0 ? (
+                  <button type="button" className="btn btn--primary" onClick={openCreate}>
+                    Добавить первого ученика
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn--sm btn--ghost students-replenish"
-                    onClick={(e) => openReplenish(s.id, e)}
-                  >
-                    + Пополнить
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                ) : null}
+              </div>
+            ) : (
+              <ul className="students-list">
+                {filtered.map((s) => (
+                  <li key={s.id}>
+                    <StudentCard
+                      student={s}
+                      onReplenish={() => openReplenish(s.id)}
+                      onOpenProfile={(e) => {
+                        e.stopPropagation();
+                        openEdit(s.id);
+                      }}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {filtered.length > 0 ? (
+            <footer className="students-page__foot">
+              <OrnamentalDivider />
+              <p className="students-page__count">{countLabel}</p>
+            </footer>
+          ) : null}
+        </div>
       </div>
 
       {showDrawer ? (

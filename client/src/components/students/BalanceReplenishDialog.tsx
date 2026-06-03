@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { ViewStudent } from '../../utils/schedule';
 import { useStudentActions } from '../../hooks/useStudentActions';
 import { fmtBalanceAmount, fmtBalanceNet, fmtMoney, lessonCountLabel } from '../../utils/format';
-import { Wallet } from '../Wallet';
+import { StudentBalance } from '../StudentBalance';
 
 const LESSON_PRESETS = [1, 4, 8, 12] as const;
 
@@ -101,8 +101,8 @@ export function BalanceReplenishDialog({
           <p className="replenish__student">{student.name}</p>
         </header>
 
-        <div className="replenish__wallet">
-          <Wallet student={student} compact />
+        <div className="replenish__balance">
+          <StudentBalance student={student} compact />
         </div>
 
         <label className="field replenish__field">

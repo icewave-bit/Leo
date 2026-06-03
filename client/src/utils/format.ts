@@ -10,6 +10,16 @@ export function lessonCountLabel(n: number): string {
   return `${abs} ${word}`;
 }
 
+export function studentCountLabel(n: number): string {
+  const abs = Math.abs(Math.round(n));
+  const mod10 = abs % 10;
+  const mod100 = abs % 100;
+  let word = 'учеников';
+  if (mod10 === 1 && mod100 !== 11) word = 'ученик';
+  else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) word = 'ученика';
+  return `${abs} ${word}`;
+}
+
 export function fmtBalanceAmount(
   amount: number,
   kind: BalanceKind,
