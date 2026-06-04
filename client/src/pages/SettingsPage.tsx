@@ -1,12 +1,18 @@
 import { useAtom } from 'jotai';
 import { useState } from 'react';
-import type { WeekStartsOn } from '../api/types';
+import { Link } from 'react-router-dom';
+import type { BalanceKind, WeekStartsOn } from '../api/types';
 import { api } from '../api/client';
 import { tutorAtom } from '../atoms/auth';
 import { weekStartAtom } from '../atoms/schedule';
 import { useAppStore } from '../hooks/useAppStore';
 import { loadSchedule } from '../state/loadSchedule';
 import { weekRangeUtc } from '../utils/schedule';
+import { BalanceKindSeg } from '../components/BalanceKindSeg';
+import {
+  SETTINGS_CARD_ICONS,
+  SettingsCardHeader,
+} from '../components/settings/SettingsCardHeader';
 import { ACADEMIC_HOUR_PRESETS, academicHourHint } from '../utils/academicHour';
 
 export function SettingsPage() {
@@ -15,6 +21,7 @@ export function SettingsPage() {
   const [customMin, setCustomMin] = useState(String(tutor?.academicHourMin ?? 60));
   const [saving, setSaving] = useState(false);
   const [weekSaving, setWeekSaving] = useState(false);
+  const [replenishSaving, setReplenishSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const store = useAppStore();
@@ -40,6 +47,22 @@ export function SettingsPage() {
       setError(e instanceof Error ? e.message : 'Не удалось сохранить');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveDefaultReplenishBalanceKind = async (defaultReplenishBalanceKind: BalanceKind) => {
+    if (defaultReplenishBalanceKind === tutor.defaultReplenishBalanceKind) return;
+    setReplenishSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const { tutor: updated } = await api.patchMe({ defaultReplenishBalanceKind });
+      setTutor(updated);
+      setSaved(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось сохранить');
+    } finally {
+      setReplenishSaving(false);
     }
   };
 
@@ -72,8 +95,40 @@ export function SettingsPage() {
       </header>
 
       <div className="settings-board">
-        <section className="settings-card">
-          <h2 className="settings-card__title">Начало недели</h2>
+        {error ? <p className="settings-board__error">{error}</p> : null}
+        {saved ? <p className="settings-board__ok">Сохранено</p> : null}
+
+        <div className="settings-grid">
+          <section className="settings-card">
+            <SettingsCardHeader icon={SETTINGS_CARD_ICONS.archive} title="Архив учеников" />
+          <p className="settings-card__desc">
+            Ученики, отправленные в архив: история уроков и оплат сохраняется, в расписании они не
+            отображаются.
+          </p>
+          <div className="settings-card__foot">
+            <Link to="/archive" className="btn btn--ghost btn--sm">
+              Открыть архив
+            </Link>
+          </div>
+          </section>
+
+          <section className="settings-card">
+            <SettingsCardHeader icon={SETTINGS_CARD_ICONS.replenish} title="Пополнение баланса" />
+          <p className="settings-card__desc">
+            Какой тип баланса выбирать по умолчанию при открытии окна пополнения: уроки или деньги.
+            Если у ученика другой тип, он переключится с пересчётом по ставке.
+          </p>
+          <div className="settings-card__seg">
+            <BalanceKindSeg
+              value={tutor.defaultReplenishBalanceKind ?? 'money'}
+              disabled={replenishSaving}
+              onChange={(kind) => void saveDefaultReplenishBalanceKind(kind)}
+            />
+          </div>
+          </section>
+
+          <section className="settings-card">
+            <SettingsCardHeader icon={SETTINGS_CARD_ICONS.week} title="Начало недели" />
           <p className="settings-card__desc">
             Как отображается неделя в расписании: с понедельника (Европа) или с воскресенья (США).
           </p>
@@ -81,7 +136,7 @@ export function SettingsPage() {
             <button
               type="button"
               className={'seg__btn' + (tutor.weekStartsOn === 'monday' ? ' is-active' : '')}
-              disabled={weekSaving}
+              disabled={weekSaving || replenishSaving}
               onClick={() => void saveWeekStartsOn('monday')}
             >
               Понедельник
@@ -89,16 +144,16 @@ export function SettingsPage() {
             <button
               type="button"
               className={'seg__btn' + (tutor.weekStartsOn === 'sunday' ? ' is-active' : '')}
-              disabled={weekSaving}
+              disabled={weekSaving || replenishSaving}
               onClick={() => void saveWeekStartsOn('sunday')}
             >
               Воскресенье
             </button>
           </div>
-        </section>
+          </section>
 
-        <section className="settings-card">
-          <h2 className="settings-card__title">Академический час</h2>
+          <section className="settings-card">
+            <SettingsCardHeader icon={SETTINGS_CARD_ICONS.academic} title="Академический час" />
           <p className="settings-card__desc">
             Сколько минут длится один оплачиваемый час у вас. В расписании уроки
             выбираются как одинарный или двойной ак. час; ставка ученика — за один ак. час,
@@ -114,7 +169,7 @@ export function SettingsPage() {
                 className={
                   'seg__btn' + (!custom && current === min ? ' is-active' : '')
                 }
-                disabled={saving}
+                disabled={saving || replenishSaving}
                 onClick={() => {
                   setCustom(false);
                   void save(min);
@@ -126,7 +181,7 @@ export function SettingsPage() {
             <button
               type="button"
               className={'seg__btn' + (custom || !isPreset ? ' is-active' : '')}
-              disabled={saving}
+              disabled={saving || replenishSaving}
               onClick={() => {
                 setCustom(true);
                 setCustomMin(String(current));
@@ -156,15 +211,31 @@ export function SettingsPage() {
                   required
                 />
               </label>
-              <button type="submit" className="btn btn--primary btn--sm" disabled={saving}>
+              <button
+                type="submit"
+                className="btn btn--primary btn--sm"
+                disabled={saving || replenishSaving}
+              >
                 {saving ? 'Сохранение…' : 'Сохранить'}
               </button>
             </form>
           ) : null}
 
-          {error ? <p className="drawer__error">{error}</p> : null}
-          {saved ? <p className="settings-card__ok">Сохранено</p> : null}
-        </section>
+          </section>
+
+          <section className="settings-card settings-card--muted">
+            <SettingsCardHeader
+              icon={SETTINGS_CARD_ICONS.development}
+              title="В разработке"
+              muted
+            />
+            <p className="settings-card__desc">
+              Tutor Monitor активно развивается — здесь появятся новые настройки и возможности.
+              Следите за обновлениями.
+            </p>
+            <p className="settings-card__badge">Скоро</p>
+          </section>
+        </div>
       </div>
     </div>
   );

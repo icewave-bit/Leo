@@ -7,6 +7,7 @@ import {
 } from '../academicHour.js';
 import { getPool, query } from '../db.js';
 import { AppError } from '../errors.js';
+import { assertActiveStudentOwned } from '../studentAccess.js';
 import { toRecurringSchedule, type RecurringScheduleRow } from '../mappers.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import {
@@ -70,16 +71,6 @@ export const recurringSchedulesRouter = Router();
 
 recurringSchedulesRouter.use(requireAuth);
 
-async function assertStudentOwned(tutorId: string, studentId: string): Promise<void> {
-  const result = await query<{ id: string }>(
-    'SELECT id FROM students WHERE id = $1 AND tutor_id = $2',
-    [studentId, tutorId],
-  );
-  if (result.rows.length === 0) {
-    throw new AppError('VALIDATION', 400, 'Student not found', { studentId: 'invalid' });
-  }
-}
-
 async function resolveTiming(
   tutorId: string,
   input: { academicUnits?: AcademicUnits; durationMin?: number },
@@ -118,10 +109,14 @@ async function fetchOwnedSchedule(
 recurringSchedulesRouter.get('/', async (req, res, next) => {
   try {
     const result = await query<RecurringScheduleRow>(
-      `SELECT ${RECURRING_COLUMNS}
-       FROM recurring_schedules
-       WHERE tutor_id = $1
-       ORDER BY active DESC, start_date, start_minutes`,
+      `SELECT rs.id, rs.tutor_id, rs.student_id, rs.weekdays, rs.start_minutes, rs.duration_min,
+              rs.academic_units, rs.type, rs.notes, rs.interval_weeks,
+              rs.start_date::text AS start_date, rs.end_date::text AS end_date,
+              rs.active, rs.created_at, rs.updated_at
+       FROM recurring_schedules rs
+       JOIN students s ON s.id = rs.student_id
+       WHERE rs.tutor_id = $1 AND s.archived_at IS NULL
+       ORDER BY rs.active DESC, rs.start_date, rs.start_minutes`,
       [req.tutorId],
     );
     res.json(result.rows.map(toRecurringSchedule));
@@ -134,7 +129,7 @@ recurringSchedulesRouter.post('/', async (req, res, next) => {
   const client = await getPool().connect();
   try {
     const body = validate(createRecurringScheduleSchema, req.body);
-    await assertStudentOwned(req.tutorId!, body.studentId);
+    await assertActiveStudentOwned(req.tutorId!, body.studentId);
     const timing = await resolveTiming(req.tutorId!, body);
     const prefs = await getTutorSchedulePrefs(req.tutorId!);
     const endDate = body.endDate ?? null;

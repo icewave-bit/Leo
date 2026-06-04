@@ -93,19 +93,76 @@ describe('students', () => {
     });
   });
 
-  it('delete student without lessons', async () => {
+  it('archive removes from active list; restore brings back', async () => {
     const { agent } = await registerTutor(app);
     const created = await agent.post('/api/students').send({ name: 'Temp' }).expect(201);
 
-    await agent.delete(`/api/students/${created.body.id}`).expect(204);
+    const archived = await agent
+      .post(`/api/students/${created.body.id}/archive`)
+      .expect(200);
+    expect(archived.body.archivedAt).toBeTruthy();
 
     const list = await agent.get('/api/students').expect(200);
     expect(list.body).toHaveLength(0);
+
+    const archivedList = await agent.get('/api/students/archived/list').expect(200);
+    expect(archivedList.body).toHaveLength(1);
+    expect(archivedList.body[0].id).toBe(created.body.id);
+
+    await agent.post(`/api/students/${created.body.id}/restore`).expect(200);
+
+    const activeAgain = await agent.get('/api/students').expect(200);
+    expect(activeAgain.body).toHaveLength(1);
+    expect(activeAgain.body[0].archivedAt).toBeNull();
   });
 
-  it('delete blocked when lessons exist', async () => {
+  it('archive cancels planned lessons and hides them from schedule list', async () => {
     const { agent } = await registerTutor(app);
     const created = await agent.post('/api/students').send({ name: 'Busy' }).expect(201);
+    const startUtc = new Date(Date.now() + 86_400_000).toISOString();
+
+    await agent
+      .post('/api/lessons')
+      .send({
+        studentId: created.body.id,
+        startUtc,
+        durationMin: 60,
+      })
+      .expect(201);
+
+    await agent.post(`/api/students/${created.body.id}/archive`).expect(200);
+
+    const from = new Date().toISOString();
+    const to = new Date(Date.now() + 14 * 86_400_000).toISOString();
+    const lessons = await agent.get(`/api/lessons?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`).expect(200);
+    expect(lessons.body).toHaveLength(0);
+
+    const history = await agent
+      .get(
+        `/api/lessons?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&studentId=${created.body.id}`,
+      )
+      .expect(200);
+    expect(history.body).toHaveLength(1);
+    expect(history.body[0].status).toBe('cancelled');
+  });
+
+  it('permanent delete only when archived', async () => {
+    const { agent } = await registerTutor(app);
+    const created = await agent.post('/api/students').send({ name: 'Gone' }).expect(201);
+
+    const res = await agent.delete(`/api/students/${created.body.id}`).expect(409);
+    expect(res.body.error.code).toBe('CONFLICT');
+
+    await agent.post(`/api/students/${created.body.id}/archive`).expect(200);
+    await agent.delete(`/api/students/${created.body.id}`).expect(204);
+
+    const archivedList = await agent.get('/api/students/archived/list').expect(200);
+    expect(archivedList.body).toHaveLength(0);
+  });
+
+  it('purge archived student removes lessons', async () => {
+    const { agent } = await registerTutor(app);
+    const created = await agent.post('/api/students').send({ name: 'Erase' }).expect(201);
 
     await agent
       .post('/api/lessons')
@@ -116,7 +173,9 @@ describe('students', () => {
       })
       .expect(201);
 
-    const res = await agent.delete(`/api/students/${created.body.id}`).expect(409);
-    expect(res.body.error.code).toBe('CONFLICT');
+    await agent.post(`/api/students/${created.body.id}/archive`).expect(200);
+    await agent.delete(`/api/students/${created.body.id}`).expect(204);
+
+    await agent.get(`/api/students/${created.body.id}`).expect(404);
   });
 });

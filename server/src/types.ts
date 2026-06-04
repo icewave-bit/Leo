@@ -15,6 +15,7 @@ export interface Tutor {
   timezone: string;
   academicHourMin: number;
   weekStartsOn: WeekStartsOn;
+  defaultReplenishBalanceKind: BalanceKind;
   createdAt: string;
 }
 
@@ -34,6 +35,7 @@ export interface Student {
   balanceKind: BalanceKind;
   prepaid: number;
   debt: number;
+  archivedAt: string | null;
   createdAt: string;
 }
 

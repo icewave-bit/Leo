@@ -67,6 +67,12 @@ export function studentLessonRange(): { from: string; to: string } {
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
+export function archivedStudentHistoryRange(): { from: string; to: string } {
+  const to = new Date();
+  to.setUTCFullYear(to.getUTCFullYear() + 2);
+  return { from: new Date(0).toISOString(), to: to.toISOString() };
+}
+
 export function fmtTime(t: number): string {
   const h = Math.floor(t);
   const m = Math.round((t - h) * 60);

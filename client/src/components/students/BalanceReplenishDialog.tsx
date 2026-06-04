@@ -1,7 +1,14 @@
-import { useEffect, useId, useRef, useState } from 'react';
-import type { ViewStudent } from '../../utils/schedule';
+import { useAtomValue } from 'jotai';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import type { BalanceKind } from '../../api/types';
+import { tutorAtom } from '../../atoms/auth';
+import { studentsAtom } from '../../atoms/schedule';
 import { useStudentActions } from '../../hooks/useStudentActions';
+import { useAppStore } from '../../hooks/useAppStore';
 import { fmtBalanceAmount, fmtBalanceNet, fmtMoney, lessonCountLabel } from '../../utils/format';
+import { patchForBalanceKind } from '../../utils/studentBalanceKind';
+import type { ViewStudent } from '../../utils/schedule';
+import { BalanceKindSeg } from '../BalanceKindSeg';
 import { StudentBalance } from '../StudentBalance';
 
 const LESSON_PRESETS = [1, 4, 8, 12] as const;
@@ -25,41 +32,70 @@ export function BalanceReplenishDialog({
   onClose,
   onReplenished,
 }: BalanceReplenishDialogProps) {
-  const { replenishBalance } = useStudentActions();
+  const tutor = useAtomValue(tutorAtom);
+  const preferred = tutor?.defaultReplenishBalanceKind ?? 'money';
+  const store = useAppStore();
+  const { replenishBalance, updateStudent } = useStudentActions();
   const titleId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [amount, setAmount] = useState('');
+  const [dialogKind, setDialogKind] = useState<BalanceKind>(student.balanceKind);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const busy = saving;
+
+  const persistBalanceKind = useCallback(
+    async (next: BalanceKind) => {
+      const current =
+        store.get(studentsAtom).find((s) => s.id === student.id) ?? student;
+      const patch = patchForBalanceKind(current, next);
+      if (!patch) return;
+      await updateStudent(student.id, patch);
+    },
+    [student, store, updateStudent],
+  );
+
+  const focusInput = () => {
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  };
 
   useEffect(() => {
     if (!open) return;
     setAmount('');
     setError(null);
     setSaving(false);
-    const t = window.setTimeout(() => inputRef.current?.focus(), 0);
-    return () => window.clearTimeout(t);
-  }, [open, student.id]);
+    setDialogKind(preferred);
+    focusInput();
+  }, [open, student.id, preferred]);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !saving) onClose();
+      if (e.key === 'Escape' && !busy) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, saving, onClose]);
+  }, [open, busy, onClose]);
 
-  const add = parseAmount(amount, student.balanceKind);
+  const kind = dialogKind;
+  const add = parseAmount(amount, kind);
   const net = student.prepaid - student.debt;
   const afterNet = add != null ? net + add : null;
-  const unitLabel = student.balanceKind === 'lessons' ? 'уроков' : student.currency;
+  const unitLabel = kind === 'lessons' ? 'уроков' : student.currency;
   const hasDebt = student.debt > 0;
+  const kindDiffers = kind !== student.balanceKind;
+
+  const onBalanceKindChange = (next: BalanceKind) => {
+    if (next === kind || saving) return;
+    setDialogKind(next);
+    setAmount('');
+    setError(null);
+  };
 
   const submit = async () => {
     if (add == null) {
       setError(
-        student.balanceKind === 'lessons'
+        kind === 'lessons'
           ? 'Укажите целое число уроков больше нуля'
           : 'Укажите сумму больше нуля',
       );
@@ -68,6 +104,11 @@ export function BalanceReplenishDialog({
     setSaving(true);
     setError(null);
     try {
+      const latest =
+        store.get(studentsAtom).find((s) => s.id === student.id) ?? student;
+      if (kind !== latest.balanceKind) {
+        await persistBalanceKind(kind);
+      }
       await replenishBalance(student.id, add);
       onReplenished?.();
       onClose();
@@ -85,7 +126,7 @@ export function BalanceReplenishDialog({
         type="button"
         className="confirm-layer__scrim"
         aria-label="Закрыть"
-        disabled={saving}
+        disabled={busy}
         onClick={onClose}
       />
       <div
@@ -105,18 +146,34 @@ export function BalanceReplenishDialog({
           <StudentBalance student={student} compact />
         </div>
 
+        <div className="replenish__kind">
+          <BalanceKindSeg
+            value={kind}
+            disabled={busy}
+            onChange={onBalanceKindChange}
+          />
+        </div>
+
+        {kindDiffers ? (
+          <p className="replenish__hint">
+            Пополнение в {kind === 'lessons' ? 'уроках' : student.currency}. При сохранении
+            переключим учёт с{' '}
+            {student.balanceKind === 'lessons' ? 'уроков' : student.currency}.
+          </p>
+        ) : null}
+
         <label className="field replenish__field">
           <span className="field__label">
-            {student.balanceKind === 'lessons' ? 'Добавить уроков' : `Сумма, ${student.currency}`}
+            {kind === 'lessons' ? 'Добавить уроков' : `Сумма, ${student.currency}`}
           </span>
           <input
             ref={inputRef}
             className="field__control replenish__input"
             type="number"
-            min={student.balanceKind === 'lessons' ? 1 : 0.01}
-            step={student.balanceKind === 'lessons' ? 1 : 0.01}
-            inputMode={student.balanceKind === 'lessons' ? 'numeric' : 'decimal'}
-            placeholder={student.balanceKind === 'lessons' ? '5' : '100'}
+            min={kind === 'lessons' ? 1 : 0.01}
+            step={kind === 'lessons' ? 1 : 0.01}
+            inputMode={kind === 'lessons' ? 'numeric' : 'decimal'}
+            placeholder={kind === 'lessons' ? '5' : '100'}
             value={amount}
             onChange={(e) => {
               setAmount(e.target.value);
@@ -128,18 +185,18 @@ export function BalanceReplenishDialog({
                 void submit();
               }
             }}
-            disabled={saving}
+            disabled={busy}
           />
         </label>
 
-        {student.balanceKind === 'lessons' ? (
+        {kind === 'lessons' ? (
           <div className="replenish__presets" role="group" aria-label="Быстрый выбор">
             {LESSON_PRESETS.map((n) => (
               <button
                 key={n}
                 type="button"
                 className={'replenish__preset' + (amount === String(n) ? ' is-active' : '')}
-                disabled={saving}
+                disabled={busy}
                 onClick={() => {
                   setAmount(String(n));
                   setError(null);
@@ -151,23 +208,18 @@ export function BalanceReplenishDialog({
           </div>
         ) : null}
 
-        {afterNet != null ? (
+        {afterNet != null && !kindDiffers ? (
           <p className="replenish__preview">
-            Баланс: {fmtBalanceNet(student.prepaid, student.debt, student.balanceKind, student.currency)}
+            Баланс: {fmtBalanceNet(student.prepaid, student.debt, kind, student.currency)}
             {' → '}
             <strong>
-              {fmtBalanceNet(
-                student.prepaid + add!,
-                student.debt,
-                student.balanceKind,
-                student.currency,
-              )}
+              {fmtBalanceNet(student.prepaid + add!, student.debt, kind, student.currency)}
             </strong>
             {student.rate != null && student.rate > 0 ? (
               <span className="replenish__preview-sub">
                 {' '}
                 (
-                {student.balanceKind === 'lessons' ? (
+                {kind === 'lessons' ? (
                   <>~{fmtMoney(afterNet! * student.rate, student.currency)}</>
                 ) : (
                   <>~{lessonCountLabel(afterNet! / student.rate)}</>
@@ -188,16 +240,16 @@ export function BalanceReplenishDialog({
         {error ? <p className="replenish__error">{error}</p> : null}
 
         <div className="confirm__actions replenish__actions">
-          <button type="button" className="btn btn--ghost" onClick={onClose} disabled={saving}>
+          <button type="button" className="btn btn--ghost" onClick={onClose} disabled={busy}>
             Отмена
           </button>
           <button
             type="button"
             className="btn btn--primary"
             onClick={() => void submit()}
-            disabled={saving || add == null}
+            disabled={busy || add == null}
           >
-            {saving ? 'Сохранение…' : `Пополнить${add != null ? ` +${fmtBalanceAmount(add, student.balanceKind, student.currency)}` : ''}`}
+            {busy ? 'Сохранение…' : `Пополнить${add != null ? ` +${fmtBalanceAmount(add, kind, student.currency)}` : ''}`}
           </button>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { useAtom } from 'jotai';
+import { useAtom, type PrimitiveAtom } from 'jotai';
 import {
   paymentsCustomFromAtom,
   paymentsCustomToAtom,
@@ -15,14 +15,27 @@ const PRESETS: { id: PaymentsPeriod; label: string }[] = [
   { id: 'custom', label: 'Свой' },
 ];
 
-export interface PeriodPickerProps {
-  timezone: string;
+export interface PeriodPickerAtoms {
+  period: PrimitiveAtom<PaymentsPeriod>;
+  customFrom: PrimitiveAtom<string>;
+  customTo: PrimitiveAtom<string>;
 }
 
-export function PeriodPicker({ timezone }: PeriodPickerProps) {
-  const [period, setPeriod] = useAtom(paymentsPeriodAtom);
-  const [customFrom, setCustomFrom] = useAtom(paymentsCustomFromAtom);
-  const [customTo, setCustomTo] = useAtom(paymentsCustomToAtom);
+const DEFAULT_ATOMS: PeriodPickerAtoms = {
+  period: paymentsPeriodAtom,
+  customFrom: paymentsCustomFromAtom,
+  customTo: paymentsCustomToAtom,
+};
+
+export interface PeriodPickerProps {
+  timezone: string;
+  atoms?: PeriodPickerAtoms;
+}
+
+export function PeriodPicker({ timezone, atoms = DEFAULT_ATOMS }: PeriodPickerProps) {
+  const [period, setPeriod] = useAtom(atoms.period);
+  const [customFrom, setCustomFrom] = useAtom(atoms.customFrom);
+  const [customTo, setCustomTo] = useAtom(atoms.customTo);
 
   const selectPeriod = (id: PaymentsPeriod) => {
     setPeriod(id);

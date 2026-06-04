@@ -13,12 +13,14 @@ export interface Tutor {
   timezone: string;
   academicHourMin: number;
   weekStartsOn: WeekStartsOn;
+  defaultReplenishBalanceKind: BalanceKind;
   createdAt: string;
 }
 
 export type PatchTutorBody = {
   academicHourMin?: number;
   weekStartsOn?: WeekStartsOn;
+  defaultReplenishBalanceKind?: BalanceKind;
 };
 
 export interface Student {
@@ -37,6 +39,7 @@ export interface Student {
   balanceKind: BalanceKind;
   prepaid: number;
   debt: number;
+  archivedAt: string | null;
   createdAt: string;
 }
 
@@ -75,6 +78,7 @@ export interface BalanceMovement {
   debtDelta: number;
   prepaidAfter: number;
   debtAfter: number;
+  balanceKind: BalanceKind;
 }
 
 export interface Lesson {

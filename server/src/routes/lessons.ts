@@ -18,6 +18,7 @@ import type { AcademicUnits } from '../types.js';
 import { validate } from '../validate.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { skipRecurringOccurrence, topUpRecurringSchedules } from '../recurringSchedule.js';
+import { assertActiveStudentOwned, assertStudentOwned } from '../studentAccess.js';
 
 const lessonStatusEnum = z.enum(['planned', 'completed', 'cancelled', 'no_show']);
 const lessonTypeEnum = z.enum(['solo', 'group']);
@@ -72,16 +73,6 @@ export const lessonsRouter = Router();
 
 lessonsRouter.use(requireAuth);
 
-async function assertStudentOwned(tutorId: string, studentId: string): Promise<void> {
-  const result = await query<{ id: string }>(
-    'SELECT id FROM students WHERE id = $1 AND tutor_id = $2',
-    [studentId, tutorId],
-  );
-  if (result.rows.length === 0) {
-    throw new AppError('VALIDATION', 400, 'Student not found', { studentId: 'invalid' });
-  }
-}
-
 async function resolveLessonTiming(
   tutorId: string,
   input: { academicUnits?: AcademicUnits; durationMin?: number },
@@ -120,6 +111,11 @@ lessonsRouter.get('/', async (req, res, next) => {
       await assertStudentOwned(req.tutorId!, q.studentId);
       studentFilter = ` AND student_id = $4`;
       params.push(q.studentId);
+    } else {
+      studentFilter = ` AND EXISTS (
+        SELECT 1 FROM students s
+        WHERE s.id = lessons.student_id AND s.archived_at IS NULL
+      )`;
     }
 
     const result = await query<LessonRow>(
@@ -138,7 +134,7 @@ lessonsRouter.get('/', async (req, res, next) => {
 lessonsRouter.post('/', async (req, res, next) => {
   try {
     const body = validate(createLessonSchema, req.body);
-    await assertStudentOwned(req.tutorId!, body.studentId);
+    await assertActiveStudentOwned(req.tutorId!, body.studentId);
     const startUtc = new Date(body.startUtc);
     const timing = await resolveLessonTiming(req.tutorId!, body);
 
@@ -167,7 +163,7 @@ lessonsRouter.patch('/:id', async (req, res, next) => {
   try {
     const body = validate(patchLessonSchema, req.body);
     if (body.studentId) {
-      await assertStudentOwned(req.tutorId!, body.studentId);
+      await assertActiveStudentOwned(req.tutorId!, body.studentId);
     }
 
     await client.query('BEGIN');

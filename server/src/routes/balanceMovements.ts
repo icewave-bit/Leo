@@ -21,6 +21,7 @@ export interface BalanceMovementRow {
   debt_delta: string;
   prepaid_after: string;
   debt_after: string;
+  balance_kind: 'money' | 'lessons';
 }
 
 export interface BalanceMovementDto {
@@ -33,6 +34,7 @@ export interface BalanceMovementDto {
   debtDelta: number;
   prepaidAfter: number;
   debtAfter: number;
+  balanceKind: 'money' | 'lessons';
 }
 
 function toMovement(row: BalanceMovementRow): BalanceMovementDto {
@@ -46,6 +48,7 @@ function toMovement(row: BalanceMovementRow): BalanceMovementDto {
     debtDelta: Number(row.debt_delta),
     prepaidAfter: Number(row.prepaid_after),
     debtAfter: Number(row.debt_after),
+    balanceKind: row.balance_kind,
   };
 }
 
@@ -61,11 +64,17 @@ balanceMovementsRouter.get('/', async (req, res, next) => {
     if (q.studentId) {
       studentFilter = ' AND m.student_id = $4';
       params.push(q.studentId);
+    } else {
+      studentFilter = ` AND EXISTS (
+        SELECT 1 FROM students s
+        WHERE s.id = m.student_id AND s.archived_at IS NULL
+      )`;
     }
 
     const result = await query<BalanceMovementRow>(
       `SELECT m.id, m.student_id, m.lesson_id, m.occurred_at, m.kind,
-              m.prepaid_delta, m.debt_delta, m.prepaid_after, m.debt_after
+              m.prepaid_delta, m.debt_delta, m.prepaid_after, m.debt_after,
+              m.balance_kind
        FROM balance_movements m
        WHERE m.tutor_id = $1
          AND m.occurred_at >= $2

@@ -45,6 +45,7 @@ export interface ViewStudent {
   balanceKind: BalanceKind;
   prepaid: number;
   debt: number;
+  archivedAt?: string | null;
 }
 
 const DAYS_MON = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const;
@@ -286,5 +287,6 @@ export function studentToView(s: Student): ViewStudent {
     balanceKind: s.balanceKind,
     prepaid: s.prepaid,
     debt: s.debt,
+    archivedAt: s.archivedAt,
   };
 }

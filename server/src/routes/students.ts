@@ -8,6 +8,11 @@ import { deriveInitials } from '../auth/password.js';
 import { toStudent, type StudentRow } from '../mappers.js';
 import { validate } from '../validate.js';
 import { requireAuth } from '../middleware/requireAuth.js';
+import {
+  archiveStudent,
+  purgeArchivedStudent,
+  restoreStudent,
+} from '../studentLifecycle.js';
 
 const studentFieldsSchema = {
   name: z.string().min(1),
@@ -62,7 +67,7 @@ const patchStudentSchema = z
   });
 
 const STUDENT_COLUMNS = `id, tutor_id, name, initials, hue, tz, meet_url, rate, currency, note,
-              is_group, members, balance_kind, prepaid, debt, created_at`;
+              is_group, members, balance_kind, prepaid, debt, archived_at, created_at`;
 
 export const studentsRouter = Router();
 
@@ -72,7 +77,22 @@ studentsRouter.get('/', async (req, res, next) => {
   try {
     const result = await query<StudentRow>(
       `SELECT ${STUDENT_COLUMNS}
-       FROM students WHERE tutor_id = $1 ORDER BY name`,
+       FROM students WHERE tutor_id = $1 AND archived_at IS NULL ORDER BY name`,
+      [req.tutorId],
+    );
+    res.json(result.rows.map(toStudent));
+  } catch (err) {
+    next(err);
+  }
+});
+
+studentsRouter.get('/archived/list', async (req, res, next) => {
+  try {
+    const result = await query<StudentRow>(
+      `SELECT ${STUDENT_COLUMNS}
+       FROM students
+       WHERE tutor_id = $1 AND archived_at IS NOT NULL
+       ORDER BY archived_at DESC`,
       [req.tutorId],
     );
     res.json(result.rows.map(toStudent));
@@ -151,6 +171,9 @@ studentsRouter.patch('/:id', async (req, res, next) => {
     const beforeRow = before.rows[0];
     if (!beforeRow) {
       throw new AppError('NOT_FOUND', 404, 'Student not found');
+    }
+    if (beforeRow.archived_at) {
+      throw new AppError('CONFLICT', 409, 'Cannot edit archived student');
     }
 
     const fields: string[] = [];
@@ -231,6 +254,12 @@ studentsRouter.patch('/:id', async (req, res, next) => {
     }
 
     if (body.prepaid !== undefined || body.debt !== undefined) {
+      const balanceKindChanged =
+        body.balanceKind !== undefined && body.balanceKind !== beforeRow.balance_kind;
+      const prepaidTopUp =
+        body.prepaid !== undefined &&
+        body.debt === undefined &&
+        Number(row.prepaid) > Number(beforeRow.prepaid);
       await recordStudentBalancePatch(
         client,
         row.id,
@@ -238,15 +267,18 @@ studentsRouter.patch('/:id', async (req, res, next) => {
         Number(beforeRow.debt),
         Number(row.prepaid),
         Number(row.debt),
+        { balanceKindChanged, prepaidTopUp },
       );
-      await settleLessonsFromBalanceTopUp(
-        client,
-        row.id,
-        Number(beforeRow.prepaid),
-        Number(beforeRow.debt),
-        Number(row.prepaid),
-        Number(row.debt),
-      );
+      if (!balanceKindChanged) {
+        await settleLessonsFromBalanceTopUp(
+          client,
+          row.id,
+          Number(beforeRow.prepaid),
+          Number(beforeRow.debt),
+          Number(row.prepaid),
+          Number(row.debt),
+        );
+      }
     }
 
     await client.query('COMMIT');
@@ -259,27 +291,35 @@ studentsRouter.patch('/:id', async (req, res, next) => {
   }
 });
 
+studentsRouter.post('/:id/archive', async (req, res, next) => {
+  try {
+    await archiveStudent(req.tutorId!, req.params.id);
+    const result = await query<StudentRow>(
+      `SELECT ${STUDENT_COLUMNS} FROM students WHERE id = $1 AND tutor_id = $2`,
+      [req.params.id, req.tutorId],
+    );
+    res.json(toStudent(result.rows[0]!));
+  } catch (err) {
+    next(err);
+  }
+});
+
+studentsRouter.post('/:id/restore', async (req, res, next) => {
+  try {
+    await restoreStudent(req.tutorId!, req.params.id);
+    const result = await query<StudentRow>(
+      `SELECT ${STUDENT_COLUMNS} FROM students WHERE id = $1 AND tutor_id = $2`,
+      [req.params.id, req.tutorId],
+    );
+    res.json(toStudent(result.rows[0]!));
+  } catch (err) {
+    next(err);
+  }
+});
+
 studentsRouter.delete('/:id', async (req, res, next) => {
   try {
-    const lessons = await query<{ id: string }>(
-      'SELECT id FROM lessons WHERE student_id = $1 AND tutor_id = $2 LIMIT 1',
-      [req.params.id, req.tutorId],
-    );
-    if (lessons.rows.length > 0) {
-      throw new AppError(
-        'CONFLICT',
-        409,
-        'Cannot delete student with existing lessons. Remove lessons first.',
-      );
-    }
-
-    const result = await query(
-      'DELETE FROM students WHERE id = $1 AND tutor_id = $2 RETURNING id',
-      [req.params.id, req.tutorId],
-    );
-    if (result.rowCount === 0) {
-      throw new AppError('NOT_FOUND', 404, 'Student not found');
-    }
+    await purgeArchivedStudent(req.tutorId!, req.params.id);
     res.status(204).send();
   } catch (err) {
     next(err);

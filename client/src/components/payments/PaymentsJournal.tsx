@@ -14,6 +14,7 @@ import { studentsAtom, balanceReplenishStudentIdAtom } from '../../atoms/schedul
 import {
   attachRunningBalance,
   enrichMovements,
+  movementsHaveMixedUnits,
   periodDeltaSummary,
   periodRange,
 } from '../../utils/paymentJournal';
@@ -47,11 +48,16 @@ export function PaymentsJournal() {
 
   const rows = useMemo(() => {
     const enriched = enrichMovements(movements, studentMap, tz);
-    return attachRunningBalance(enriched, selectedStudent);
-  }, [movements, studentMap, tz, selectedStudent]);
+    return attachRunningBalance(enriched);
+  }, [movements, studentMap, tz]);
 
   const summary = useMemo(
     () => periodDeltaSummary(movements, selectedStudent),
+    [movements, selectedStudent],
+  );
+
+  const summaryMixedUnits = useMemo(
+    () => movementsHaveMixedUnits(movements, selectedStudent),
     [movements, selectedStudent],
   );
 
@@ -108,6 +114,10 @@ export function PaymentsJournal() {
                   <span className="pay-summary__stat-val tnum">{summary.net}</span>
                 </div>
               </>
+            ) : summaryMixedUnits ? (
+              <p className="pay-summary__mixed-hint">
+                За период есть операции в рублях и в уроках — итог по строкам смотрите в списке.
+              </p>
             ) : null}
           </div>
         </section>

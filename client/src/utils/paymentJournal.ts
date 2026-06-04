@@ -1,5 +1,6 @@
 import type { BalanceMovement, BalanceMovementKind } from '../api/types';
 import type { PaymentsPeriod } from '../atoms/payments';
+import { balanceDeltaAsLessons, balanceDeltaAsMoney } from './balanceConvert';
 import { fmtBalanceAmount, fmtBalanceNet, fmtLessonWhen } from './format';
 import type { ViewStudent } from './schedule';
 
@@ -147,6 +148,52 @@ export function netBalance(prepaid: number, debt: number): number {
   return prepaid - debt;
 }
 
+/** Huge single-step prepaid jump — usually balance-kind conversion stored as replenish. */
+export function isMisclassifiedReplenishMovement(m: BalanceMovement): boolean {
+  if (m.kind !== 'replenish') return false;
+  const before = m.prepaidAfter - m.prepaidDelta;
+  if (before <= 0) return false;
+  const ratio = Math.abs(m.prepaidDelta) / Math.max(Math.abs(before), 1);
+  return ratio >= 10;
+}
+
+/** Unit stored on the movement (fallback: student’s current kind). */
+export function movementUnitKind(
+  m: BalanceMovement,
+  student?: ViewStudent,
+): ViewStudent['balanceKind'] {
+  return m.balanceKind ?? student?.balanceKind ?? 'money';
+}
+
+export function movementsHaveMixedUnits(
+  movements: BalanceMovement[],
+  student?: ViewStudent,
+): boolean {
+  if (movements.length === 0) return false;
+  const kinds = new Set(movements.map((m) => movementUnitKind(m, student)));
+  return kinds.size > 1;
+}
+
+export function replenishLessonsDelta(
+  m: BalanceMovement,
+  student: ViewStudent | undefined,
+): number | null {
+  if (m.kind !== 'replenish' || isMisclassifiedReplenishMovement(m)) return null;
+  return balanceDeltaAsLessons(
+    m.prepaidDelta,
+    movementUnitKind(m, student),
+    student?.rate ?? null,
+  );
+}
+
+export function movementDeltaAsMoney(
+  amount: number,
+  m: BalanceMovement,
+  student: ViewStudent | undefined,
+): number | null {
+  return balanceDeltaAsMoney(amount, movementUnitKind(m, student), student?.rate ?? null);
+}
+
 export interface JournalRow extends BalanceMovement {
   studentName: string;
   balanceKind: ViewStudent['balanceKind'];
@@ -159,10 +206,10 @@ export interface JournalRow extends BalanceMovement {
   tone: 'credit' | 'debt' | 'neutral' | 'manual';
 }
 
-function fmtDelta(n: number, student: ViewStudent): string {
+function fmtDelta(n: number, kind: ViewStudent['balanceKind'], currency: string): string {
   if (Math.abs(n) < 1e-9) return '—';
   const sign = n > 0 ? '+' : '−';
-  return sign + fmtBalanceAmount(Math.abs(n), student.balanceKind, student.currency);
+  return sign + fmtBalanceAmount(Math.abs(n), kind, currency);
 }
 
 export function enrichMovements(
@@ -172,64 +219,30 @@ export function enrichMovements(
 ): JournalRow[] {
   return movements.map((m) => {
     const st = students.get(m.studentId);
-    const kind = st?.balanceKind ?? 'money';
+    const unitKind = movementUnitKind(m, st);
     const currency = st?.currency ?? 'EUR';
-    const pseudo: ViewStudent = st ?? {
-      id: m.studentId,
-      name: '—',
-      initials: '?',
-      hue: 250,
-      tz: timezone,
-      rate: null,
-      currency,
-      meet: null,
-      note: null,
-      group: false,
-      members: [],
-      balanceKind: kind,
-      prepaid: m.prepaidAfter,
-      debt: m.debtAfter,
-    };
     return {
       ...m,
       studentName: st?.name ?? 'Ученик',
-      balanceKind: kind,
+      balanceKind: unitKind,
       currency,
       title: MOVEMENT_LABELS[m.kind],
-      prepaidLabel: fmtDelta(m.prepaidDelta, pseudo),
-      debtLabel: fmtDelta(m.debtDelta, pseudo),
-      netLabel: fmtBalanceNet(m.prepaidAfter, m.debtAfter, kind, currency),
+      prepaidLabel: fmtDelta(m.prepaidDelta, unitKind, currency),
+      debtLabel: fmtDelta(m.debtDelta, unitKind, currency),
+      netLabel: fmtBalanceNet(m.prepaidAfter, m.debtAfter, unitKind, currency),
       whenLabel: fmtLessonWhen(m.occurredAt, timezone),
       tone: MOVEMENT_TONE[m.kind],
     };
   });
 }
 
-/** Balance after each row (computed forward in time). */
+/** Balance after the operation (snapshot from DB, in that row’s units). */
 export function attachRunningBalance(
   rows: JournalRow[],
-  student: ViewStudent | undefined,
 ): Array<JournalRow & { runningNet: string }> {
-  if (!student || rows.length === 0) {
-    return rows.map((r) => ({ ...r, runningNet: r.netLabel }));
-  }
-
-  const asc = [...rows].reverse();
-  let prepaid = student.prepaid - asc.reduce((a, r) => a + r.prepaidDelta, 0);
-  let debt = student.debt - asc.reduce((a, r) => a + r.debtDelta, 0);
-  const running = new Map<string, string>();
-  for (const r of asc) {
-    prepaid += r.prepaidDelta;
-    debt += r.debtDelta;
-    running.set(
-      r.id,
-      fmtBalanceNet(prepaid, debt, student.balanceKind, student.currency),
-    );
-  }
-
   return rows.map((r) => ({
     ...r,
-    runningNet: running.get(r.id) ?? r.netLabel,
+    runningNet: r.netLabel,
   }));
 }
 
@@ -238,15 +251,17 @@ export function periodDeltaSummary(
   student: ViewStudent | undefined,
 ): { prepaid: string; debt: string; net: string } | null {
   if (!student || movements.length === 0) return null;
+  if (movementsHaveMixedUnits(movements, student)) return null;
+
+  const unitKind = movementUnitKind(movements[0]!, student);
+  const currency = student.currency;
   const prepaid = movements.reduce((a, m) => a + m.prepaidDelta, 0);
   const debt = movements.reduce((a, m) => a + m.debtDelta, 0);
   const netChange = prepaid - debt;
   const sign = netChange >= 0 ? '+' : '−';
   return {
-    prepaid: fmtDelta(prepaid, student),
-    debt: fmtDelta(debt, student),
-    net:
-      sign +
-      fmtBalanceAmount(Math.abs(netChange), student.balanceKind, student.currency),
+    prepaid: fmtDelta(prepaid, unitKind, currency),
+    debt: fmtDelta(debt, unitKind, currency),
+    net: sign + fmtBalanceAmount(Math.abs(netChange), unitKind, currency),
   };
 }

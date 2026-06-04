@@ -64,11 +64,16 @@ export const api = {
   },
 
   students: () => request<Student[]>('/api/students'),
+  archivedStudents: () => request<Student[]>('/api/students/archived/list'),
   getStudent: (id: string) => request<Student>(`/api/students/${id}`),
   createStudent: (body: CreateStudentBody) =>
     request<Student>('/api/students', { method: 'POST', json: body }),
   updateStudent: (id: string, body: UpdateStudentBody) =>
     request<Student>(`/api/students/${id}`, { method: 'PATCH', json: body }),
+  archiveStudent: (id: string) =>
+    request<Student>(`/api/students/${id}/archive`, { method: 'POST' }),
+  restoreStudent: (id: string) =>
+    request<Student>(`/api/students/${id}/restore`, { method: 'POST' }),
   deleteStudent: (id: string) =>
     request<void>(`/api/students/${id}`, { method: 'DELETE' }),
   lessons: (from: string, to: string, studentId?: string) => {

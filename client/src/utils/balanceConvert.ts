@@ -74,6 +74,28 @@ export function formatBalanceNetInput(
   return String(balanceNetFromParts(prepaid, debt, kind));
 }
 
+/** Convert a prepaid/debt delta or balance field to money for cross-student totals. */
+export function balanceDeltaAsMoney(
+  amount: number,
+  balanceKind: BalanceKind,
+  rate: number | null,
+): number | null {
+  if (balanceKind === 'money') return amount;
+  if (rate == null || rate <= 0) return null;
+  return convertBalanceField(amount, 'lessons', 'money', rate);
+}
+
+/** Convert a prepaid/debt delta or balance field to lessons for cross-student totals. */
+export function balanceDeltaAsLessons(
+  amount: number,
+  balanceKind: BalanceKind,
+  rate: number | null,
+): number | null {
+  if (balanceKind === 'lessons') return amount;
+  if (rate == null || rate <= 0) return null;
+  return convertBalanceField(amount, 'money', 'lessons', rate);
+}
+
 /** Convert signed net when switching balance kind (uses rate). */
 export function convertBalanceNet(
   net: number,

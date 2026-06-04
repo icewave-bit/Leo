@@ -73,6 +73,18 @@ describe('auth', () => {
       .expect(401);
   });
 
+  it('patch me updates defaultReplenishBalanceKind', async () => {
+    const { agent } = await registerTutor(app);
+    const me = await agent.get('/api/auth/me').expect(200);
+    expect(me.body.tutor.defaultReplenishBalanceKind).toBe('money');
+
+    const patched = await agent
+      .patch('/api/auth/me')
+      .send({ defaultReplenishBalanceKind: 'lessons' })
+      .expect(200);
+    expect(patched.body.tutor.defaultReplenishBalanceKind).toBe('lessons');
+  });
+
   it('patch me updates weekStartsOn', async () => {
     const { agent } = await registerTutor(app);
     const me = await agent.get('/api/auth/me').expect(200);

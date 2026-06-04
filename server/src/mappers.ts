@@ -19,6 +19,7 @@ interface TutorRow {
   timezone: string;
   academic_hour_min: number;
   week_starts_on: WeekStartsOn;
+  default_replenish_balance_kind: BalanceKind;
   created_at: Date;
 }
 
@@ -38,6 +39,7 @@ interface StudentRow {
   balance_kind: BalanceKind;
   prepaid: string;
   debt: string;
+  archived_at: Date | null;
   created_at: Date;
 }
 
@@ -93,6 +95,7 @@ export function toTutor(row: TutorRow): Tutor {
     timezone: row.timezone,
     academicHourMin: row.academic_hour_min,
     weekStartsOn: row.week_starts_on,
+    defaultReplenishBalanceKind: row.default_replenish_balance_kind,
     createdAt: toIsoUtc(row.created_at),
   };
 }
@@ -114,6 +117,7 @@ export function toStudent(row: StudentRow): Student {
     balanceKind: row.balance_kind,
     prepaid: Number(row.prepaid),
     debt: Number(row.debt),
+    archivedAt: row.archived_at ? toIsoUtc(row.archived_at) : null,
     createdAt: toIsoUtc(row.created_at),
   };
 }

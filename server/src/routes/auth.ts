@@ -23,12 +23,14 @@ const patchMeSchema = z
   .object({
     academicHourMin: z.number().int().min(15).max(180).optional(),
     weekStartsOn: z.enum(['monday', 'sunday']).optional(),
+    defaultReplenishBalanceKind: z.enum(['money', 'lessons']).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field is required',
   });
 
-const TUTOR_COLUMNS = `id, email, name, initials, subject, timezone, academic_hour_min, week_starts_on, created_at`;
+const TUTOR_COLUMNS = `id, email, name, initials, subject, timezone, academic_hour_min, week_starts_on,
+  default_replenish_balance_kind, created_at`;
 
 export const authRouter = Router();
 
@@ -122,6 +124,10 @@ authRouter.patch('/me', requireAuth, async (req, res, next) => {
     if (body.weekStartsOn !== undefined) {
       fields.push(`week_starts_on = $${idx++}`);
       values.push(body.weekStartsOn);
+    }
+    if (body.defaultReplenishBalanceKind !== undefined) {
+      fields.push(`default_replenish_balance_kind = $${idx++}`);
+      values.push(body.defaultReplenishBalanceKind);
     }
 
     values.push(req.tutorId);

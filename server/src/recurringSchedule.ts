@@ -194,11 +194,13 @@ export async function topUpRecurringSchedules(tutorId: string): Promise<void> {
   );
 
   const schedules = await query<RecurringScheduleRow>(
-    `SELECT id, tutor_id, student_id, weekdays, start_minutes, duration_min, academic_units,
-            type, notes, interval_weeks, start_date::text AS start_date, end_date::text AS end_date,
-            active, created_at, updated_at
-     FROM recurring_schedules
-     WHERE tutor_id = $1 AND active = true`,
+    `SELECT rs.id, rs.tutor_id, rs.student_id, rs.weekdays, rs.start_minutes, rs.duration_min,
+            rs.academic_units, rs.type, rs.notes, rs.interval_weeks,
+            rs.start_date::text AS start_date, rs.end_date::text AS end_date,
+            rs.active, rs.created_at, rs.updated_at
+     FROM recurring_schedules rs
+     JOIN students s ON s.id = rs.student_id
+     WHERE rs.tutor_id = $1 AND rs.active = true AND s.archived_at IS NULL`,
     [tutorId],
   );
 

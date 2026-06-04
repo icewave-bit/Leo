@@ -124,17 +124,10 @@ function RightRail({ lessons }: { lessons: ViewLesson[] }) {
   const today = todayDayIndex(weekStart, tz) ?? 0;
 
   const todayCount = lessons.filter((l) => l.day === today && l.status !== 'cancelled').length;
-  const unpaid = lessons.filter(
-    (l) =>
-      l.status === 'completed' &&
-      l.balanceCharged &&
-      l.chargeDebtDelta > 0 &&
-      !l.balancePaidApplied &&
-      !l.paid,
-  ).length;
-  const hours = lessons
+  const completedCount = lessons.filter((l) => l.status === 'completed').length;
+  const academicHours = lessons
     .filter((l) => l.status !== 'cancelled')
-    .reduce((a, l) => a + l.dur, 0);
+    .reduce((sum, l) => sum + l.academicUnits, 0);
 
   return (
     <aside className="rail">
@@ -146,14 +139,12 @@ function RightRail({ lessons }: { lessons: ViewLesson[] }) {
         </div>
         <div className="rail__split">
           <div className="stat stat--sm">
-            <span className="stat__big" style={{ color: 'var(--c-debt)' }}>
-              {unpaid}
-            </span>
-            <span className="stat__lbl">не оплачено</span>
+            <span className="stat__big">{completedCount}</span>
+            <span className="stat__lbl">проведено</span>
           </div>
           <div className="stat stat--sm">
             <span className="stat__big">
-              {hours.toFixed(1)}
+              {academicHours}
               <span className="stat__unit">ч</span>
             </span>
             <span className="stat__lbl">на неделе</span>
