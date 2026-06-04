@@ -362,7 +362,7 @@ export function SettingsPage() {
               muted
             />
             <p className="settings-card__desc">
-              Tutor Monitor активно развивается — здесь появятся новые настройки и возможности.
+              LeO активно развивается — здесь появятся новые настройки и возможности.
               Следите за обновлениями.
             </p>
             <p className="settings-card__badge">Скоро</p>

@@ -86,7 +86,10 @@ function SidebarNav({ mobile }: { mobile: boolean }) {
         <span className="logo">
           <span className="logo__mark" />
         </span>
-        <span className="logo__word">Tutor Monitor</span>
+        <span className="logo__copy">
+          <span className="logo__word">LeO</span>
+          <span className="logo__tagline">Сделано репетитором для репетиторов</span>
+        </span>
       </div>
       <nav className="side__nav">
         {NAV.map((n) => (
