@@ -24,13 +24,15 @@ const patchMeSchema = z
     academicHourMin: z.number().int().min(15).max(180).optional(),
     weekStartsOn: z.enum(['monday', 'sunday']).optional(),
     defaultReplenishBalanceKind: z.enum(['money', 'lessons']).optional(),
+    taxRatePercent: z.number().min(0).max(100).optional(),
+    taxDisplayCurrency: z.enum(['BYN', 'none']).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field is required',
   });
 
 const TUTOR_COLUMNS = `id, email, name, initials, subject, timezone, academic_hour_min, week_starts_on,
-  default_replenish_balance_kind, created_at`;
+  default_replenish_balance_kind, tax_rate_percent, tax_display_currency, created_at`;
 
 export const authRouter = Router();
 
@@ -128,6 +130,14 @@ authRouter.patch('/me', requireAuth, async (req, res, next) => {
     if (body.defaultReplenishBalanceKind !== undefined) {
       fields.push(`default_replenish_balance_kind = $${idx++}`);
       values.push(body.defaultReplenishBalanceKind);
+    }
+    if (body.taxRatePercent !== undefined) {
+      fields.push(`tax_rate_percent = $${idx++}`);
+      values.push(body.taxRatePercent);
+    }
+    if (body.taxDisplayCurrency !== undefined) {
+      fields.push(`tax_display_currency = $${idx++}`);
+      values.push(body.taxDisplayCurrency);
     }
 
     values.push(req.tutorId);

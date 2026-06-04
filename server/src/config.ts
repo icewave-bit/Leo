@@ -12,9 +12,14 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
   CORS_ORIGIN: z.string().min(1),
+  NBRB_API_URL: z.string().url().default('https://api.nbrb.by'),
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+export function getNbrbApiBase(): string {
+  return loadConfig().NBRB_API_URL.replace(/\/$/, '');
+}
 
 let cached: Env | null = null;
 

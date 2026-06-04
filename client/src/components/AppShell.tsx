@@ -28,6 +28,12 @@ const NAV = [
     icon: 'M3 7h18v10H3zM3 10h18M7 14h3',
   },
   {
+    id: 'taxes',
+    to: '/taxes',
+    label: 'Налоги',
+    icon: 'M4 4h16v4H4zM4 10h10v10H4zM16 10h4v4h-4v6h-4',
+  },
+  {
     id: 'analytics',
     to: '/analytics',
     label: 'Аналитика',

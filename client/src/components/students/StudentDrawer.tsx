@@ -53,6 +53,7 @@ export interface StudentFormValues {
   membersText: string;
   balanceKind: BalanceKind;
   balanceNet: string;
+  excludeFromTaxes: boolean;
 }
 
 function emptyForm(tz: string): StudentFormValues {
@@ -69,6 +70,7 @@ function emptyForm(tz: string): StudentFormValues {
     membersText: '',
     balanceKind: 'money',
     balanceNet: '0',
+    excludeFromTaxes: false,
   };
 }
 
@@ -86,6 +88,7 @@ function fromStudent(s: ViewStudent): StudentFormValues {
     membersText: s.members.join('\n'),
     balanceKind: s.balanceKind,
     balanceNet: formatBalanceNetInput(s.prepaid, s.debt, s.balanceKind),
+    excludeFromTaxes: s.excludeFromTaxes,
   };
 }
 
@@ -113,6 +116,7 @@ function toPayload(form: StudentFormValues, opts?: { includeBalance?: boolean })
     isGroup: form.isGroup,
     members: form.isGroup ? members : [],
     balanceKind: form.balanceKind,
+    excludeFromTaxes: form.excludeFromTaxes,
   };
   if (opts?.includeBalance) {
     return { ...base, ...balancePartsFromForm(form) };
@@ -359,6 +363,7 @@ export function StudentDrawer({
       ...balancePartsFromForm(form),
       currency: form.currency,
       group: form.isGroup,
+      excludeFromTaxes: form.excludeFromTaxes,
     };
   }, [existing, form]);
 
@@ -519,8 +524,7 @@ export function StudentDrawer({
     }
   };
 
-  const upcoming = lessons.filter((l) => new Date(l.startUtc) >= new Date() && l.status !== 'cancelled');
-  const past = lessons
+  const pastLessons = lessons
     .filter((l) => new Date(l.startUtc) < new Date() || l.status === 'cancelled')
     .reverse();
 
@@ -675,27 +679,15 @@ export function StudentDrawer({
             {mode === 'edit' ? balancePanel : null}
 
             <DrawerSpoiler title="Контакты и ставка">
-              <div className="drawer-panel__grid drawer-panel__grid--2">
-                <label className="field">
-                  <span className="field__label">Инициалы</span>
-                  <input
-                    className="field__control"
-                    value={form.initials}
-                    onChange={(e) => set('initials', e.target.value)}
-                    maxLength={4}
-                    placeholder="Авто"
-                  />
-                </label>
-                <label className="field">
-                  <span className="field__label">Часовой пояс</span>
-                  <input
-                    className="field__control"
-                    value={form.tz}
-                    onChange={(e) => set('tz', e.target.value)}
-                    placeholder="Europe/Moscow"
-                  />
-                </label>
-              </div>
+              <label className="field">
+                <span className="field__label">Часовой пояс</span>
+                <input
+                  className="field__control"
+                  value={form.tz}
+                  onChange={(e) => set('tz', e.target.value)}
+                  placeholder="Europe/Moscow"
+                />
+              </label>
               <label className="field">
                 <span className="field__label">Ссылка Meet</span>
                 <input
@@ -736,14 +728,25 @@ export function StudentDrawer({
             </DrawerSpoiler>
 
             <DrawerSpoiler title="Оформление">
-              <label className="field student-drawer__hue">
-                <span className="field__label">Цвет аватара</span>
+              <div className="field student-drawer__hue">
+                <span className="field__label">Аватар</span>
                 <div className="student-drawer__hue-row">
                   <span
-                    className="avatar avatar--sm"
-                    style={{ background: `oklch(0.62 0.13 ${form.hue})` }}
+                    className="avatar student-drawer__avatar-edit"
+                    style={{ backgroundColor: `oklch(0.62 0.13 ${form.hue})` }}
                   >
-                    {avatarInitials}
+                    {readOnly ? (
+                      avatarInitials
+                    ) : (
+                      <input
+                        className="student-drawer__avatar-input"
+                        value={form.initials}
+                        onChange={(e) => set('initials', e.target.value.slice(0, 2))}
+                        maxLength={2}
+                        placeholder={avatarInitials}
+                        aria-label="Инициалы"
+                      />
+                    )}
                   </span>
                   <input
                     className="field__control field__control--hue"
@@ -752,10 +755,11 @@ export function StudentDrawer({
                     max={360}
                     value={form.hue}
                     onChange={(e) => set('hue', Number(e.target.value))}
+                    aria-label="Цвет аватара"
                     aria-valuetext={`${form.hue}°`}
                   />
                 </div>
-              </label>
+              </div>
               {form.isGroup ? (
                 <label className="field">
                   <span className="field__label">Участники группы</span>
@@ -778,6 +782,15 @@ export function StudentDrawer({
                   onChange={(e) => set('note', e.target.value)}
                 />
               </label>
+              <label className="student-drawer-tax-opt">
+                <input
+                  type="checkbox"
+                  checked={form.excludeFromTaxes}
+                  disabled={readOnly}
+                  onChange={(e) => set('excludeFromTaxes', e.target.checked)}
+                />
+                <span>Не показывать во вкладке «Налоги»</span>
+              </label>
             </DrawerSpoiler>
 
             {mode === 'create' ? balancePanel : null}
@@ -786,21 +799,11 @@ export function StudentDrawer({
               <DrawerSpoiler title="История занятий">
                 {lessonsLoading ? (
                   <p className="drawer-panel__hint">Загрузка…</p>
-                ) : lessons.length === 0 ? (
-                  <p className="drawer-panel__hint">Нет уроков в выбранном периоде.</p>
+                ) : pastLessons.length === 0 ? (
+                  <p className="drawer-panel__hint">Нет прошедших занятий в выбранном периоде.</p>
                 ) : (
                   <ul className="student-drawer-lessons">
-                    {upcoming.length > 0 ? (
-                      <li className="student-drawer-lessons__group">
-                        <span className="student-drawer-lessons__lbl">Предстоящие</span>
-                        <ul>
-                          {upcoming.map((l) => (
-                            <LessonRow key={l.id} lesson={l} tz={form.tz || defaultTz} />
-                          ))}
-                        </ul>
-                      </li>
-                    ) : null}
-                    {past.slice(0, isArchive ? 80 : 12).map((l) => (
+                    {pastLessons.slice(0, isArchive ? 80 : 12).map((l) => (
                       <LessonRow key={l.id} lesson={l} tz={form.tz || defaultTz} />
                     ))}
                   </ul>

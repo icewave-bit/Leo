@@ -13,6 +13,7 @@ import { StudentsPage } from './pages/StudentsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ArchivePage } from './pages/ArchivePage';
 import { PaymentsPage } from './pages/PaymentsPage';
+import { TaxesPage } from './pages/TaxesPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 
 function GuestOnly({ children }: { children: React.ReactNode }) {
@@ -60,6 +61,7 @@ export function App() {
             <Route path="students" element={<StudentsPage />} />
             <Route path="students/:studentId" element={<StudentsPage />} />
             <Route path="payments" element={<PaymentsPage />} />
+            <Route path="taxes" element={<TaxesPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="archive" element={<ArchivePage />} />

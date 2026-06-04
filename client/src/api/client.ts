@@ -2,6 +2,7 @@ import type {
   ApiError,
   BalanceMovement,
   CreateStudentBody,
+  TaxReplenishment,
   Lesson,
   LessonType,
   RecurringSchedule,
@@ -62,6 +63,17 @@ export const api = {
     if (studentId) params.set('studentId', studentId);
     return request<BalanceMovement[]>(`/api/balance-movements?${params}`);
   },
+
+  taxReplenishments: (month: string, studentId?: string) => {
+    const params = new URLSearchParams({ month });
+    if (studentId) params.set('studentId', studentId);
+    return request<TaxReplenishment[]>(`/api/taxes?${params}`);
+  },
+  patchTaxReplenishment: (
+    movementId: string,
+    body: { taxPaid?: boolean; comment?: string; receivedOn?: string },
+  ) =>
+    request<void>(`/api/taxes/${movementId}`, { method: 'PATCH', json: body }),
 
   students: () => request<Student[]>('/api/students'),
   archivedStudents: () => request<Student[]>('/api/students/archived/list'),

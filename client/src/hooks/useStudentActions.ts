@@ -1,5 +1,5 @@
 import { useSetAtom } from 'jotai';
-import type { CreateStudentBody, UpdateStudentBody } from '../api/types';
+import type { BalanceKind, CreateStudentBody, UpdateStudentBody } from '../api/types';
 import { api } from '../api/client';
 import { archivedStudentsAtom } from '../atoms/archivedStudents';
 import { studentLessonsBumpAtom, studentsAtom } from '../atoms/schedule';
@@ -30,14 +30,22 @@ export function useStudentActions() {
     setStudents((prev) => prev.map((s) => (s.id === id ? view : s)));
   };
 
-  const replenishBalance = async (id: string, amount: number): Promise<void> => {
+  const replenishBalance = async (
+    id: string,
+    amount: number,
+    unit: BalanceKind,
+    receivedOn?: string,
+  ): Promise<void> => {
     const current = store.get(studentsAtom).find((s) => s.id === id);
     if (!current) throw new Error('Ученик не найден');
+    if (current.balanceKind !== unit) {
+      throw new Error('Режим учёта не совпадает — обновите страницу и попробуйте снова');
+    }
     const prepaid =
-      current.balanceKind === 'lessons'
+      unit === 'lessons'
         ? current.prepaid + Math.round(amount)
         : current.prepaid + amount;
-    await updateStudent(id, { prepaid });
+    await updateStudent(id, { prepaid, receivedOn });
     bumpLessons((n) => n + 1);
   };
 

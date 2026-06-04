@@ -5,6 +5,7 @@ export type LessonType = 'solo' | 'group';
 export type BalanceKind = 'money' | 'lessons';
 export type WeekStartsOn = 'monday' | 'sunday';
 export type AcademicUnits = 1 | 2;
+export type TaxDisplayCurrency = 'BYN' | 'none';
 
 export interface Tutor {
   id: UUID;
@@ -16,6 +17,8 @@ export interface Tutor {
   academicHourMin: number;
   weekStartsOn: WeekStartsOn;
   defaultReplenishBalanceKind: BalanceKind;
+  taxRatePercent: number;
+  taxDisplayCurrency: TaxDisplayCurrency;
   createdAt: string;
 }
 
@@ -35,6 +38,7 @@ export interface Student {
   balanceKind: BalanceKind;
   prepaid: number;
   debt: number;
+  excludeFromTaxes: boolean;
   archivedAt: string | null;
   createdAt: string;
 }

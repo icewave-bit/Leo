@@ -37,7 +37,8 @@ export function PaymentsJournal() {
   const setReplenishId = useSetAtom(balanceReplenishStudentIdAtom);
 
   const tz = tutor?.timezone ?? 'UTC';
-  const periodLabel = periodRange(period, tz, { from: customFrom, to: customTo }).label;
+  const weekStartsOn = tutor?.weekStartsOn ?? 'monday';
+  const periodLabel = periodRange(period, tz, { from: customFrom, to: customTo }, new Date(), weekStartsOn).label;
 
   const studentMap = useMemo(
     () => new Map(students.map((s) => [s.id, s])),

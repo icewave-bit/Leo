@@ -1,4 +1,5 @@
-import type { BalanceMovement, BalanceMovementKind } from '../api/types';
+import type { BalanceMovement, BalanceMovementKind, WeekStartsOn } from '../api/types';
+import { fmtDateParts } from './dateKey';
 import type { PaymentsPeriod } from '../atoms/payments';
 import { balanceDeltaAsLessons, balanceDeltaAsMoney } from './balanceConvert';
 import { fmtBalanceAmount, fmtBalanceNet, fmtLessonWhen } from './format';
@@ -17,13 +18,14 @@ export function periodRange(
   timezone: string,
   custom?: { from: string; to: string },
   now: Date = new Date(),
+  weekStartsOn: WeekStartsOn = 'monday',
 ): { from: string; to: string; label: string } {
   if (period === 'custom') {
     const fromKey = custom?.from ?? '';
     const toKey = custom?.to ?? '';
     if (!fromKey || !toKey) {
       const defaults = defaultCustomPeriod(timezone, now);
-      return periodRange('custom', timezone, defaults, now);
+      return periodRange('custom', timezone, defaults, now, weekStartsOn);
     }
     let fromParts = parseDateKey(fromKey);
     let toParts = parseDateKey(toKey);
@@ -36,7 +38,7 @@ export function periodRange(
     return {
       from: from.toISOString(),
       to: to.toISOString(),
-      label: fmtDateRangeLabel(fromParts, toParts),
+      label: fmtDateRangeLabel(fromParts, toParts, weekStartsOn),
     };
   }
 
@@ -83,11 +85,6 @@ export function periodRange(
   return { from: fromDate.toISOString(), to: toDate.toISOString(), label };
 }
 
-const MONTHS_SHORT_RU = [
-  'янв', 'фев', 'мар', 'апр', 'май', 'июн',
-  'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
-];
-
 function parseDateKey(key: string): { y: number; m: number; d: number } {
   const [y, m, d] = key.split('-').map(Number);
   return { y, m, d };
@@ -104,14 +101,12 @@ function dayStartUtc(y: number, m: number, d: number): Date {
 function fmtDateRangeLabel(
   from: { y: number; m: number; d: number },
   to: { y: number; m: number; d: number },
+  weekStartsOn: WeekStartsOn,
 ): string {
-  if (from.y === to.y && from.m === to.m && from.d === to.d) {
-    return `${from.d} ${MONTHS_SHORT_RU[from.m - 1]} ${from.y}`;
-  }
-  if (from.y === to.y) {
-    return `${from.d} ${MONTHS_SHORT_RU[from.m - 1]} – ${to.d} ${MONTHS_SHORT_RU[to.m - 1]} ${to.y}`;
-  }
-  return `${from.d} ${MONTHS_SHORT_RU[from.m - 1]} ${from.y} – ${to.d} ${MONTHS_SHORT_RU[to.m - 1]} ${to.y}`;
+  const a = fmtDateParts(from.y, from.m, from.d, weekStartsOn);
+  const b = fmtDateParts(to.y, to.m, to.d, weekStartsOn);
+  if (from.y === to.y && from.m === to.m && from.d === to.d) return a;
+  return `${a} – ${b}`;
 }
 
 export function dateKeyInTimezone(timezone: string, date: Date = new Date()): string {

@@ -21,10 +21,13 @@ export async function loadAnalytics(get: Getter, set: Setter): Promise<void> {
   const studentId = get(analyticsStudentIdAtom);
   const customFrom = get(analyticsCustomFromAtom);
   const customTo = get(analyticsCustomToAtom);
-  const { from, to } = periodRange(period, tutor.timezone, {
-    from: customFrom,
-    to: customTo,
-  });
+  const { from, to } = periodRange(
+    period,
+    tutor.timezone,
+    { from: customFrom, to: customTo },
+    new Date(),
+    tutor.weekStartsOn,
+  );
 
   set(analyticsLoadingAtom, true);
   set(analyticsErrorAtom, null);

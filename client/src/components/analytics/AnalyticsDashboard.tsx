@@ -53,7 +53,7 @@ export function AnalyticsDashboard() {
   const customTo = useAtomValue(analyticsCustomToAtom);
 
   const tz = tutor?.timezone ?? 'UTC';
-  const range = periodRange(period, tz, { from: customFrom, to: customTo });
+  const range = periodRange(period, tz, { from: customFrom, to: customTo }, new Date(), tutor?.weekStartsOn ?? 'monday');
 
   const kpis = useMemo(
     () => computeKpis(lessons, students, studentId),

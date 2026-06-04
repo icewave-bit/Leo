@@ -3,6 +3,7 @@ export type LessonType = 'solo' | 'group';
 export type BalanceKind = 'money' | 'lessons';
 export type WeekStartsOn = 'monday' | 'sunday';
 export type AcademicUnits = 1 | 2;
+export type TaxDisplayCurrency = 'BYN' | 'none';
 
 export interface Tutor {
   id: string;
@@ -14,6 +15,8 @@ export interface Tutor {
   academicHourMin: number;
   weekStartsOn: WeekStartsOn;
   defaultReplenishBalanceKind: BalanceKind;
+  taxRatePercent: number;
+  taxDisplayCurrency: TaxDisplayCurrency;
   createdAt: string;
 }
 
@@ -21,6 +24,8 @@ export type PatchTutorBody = {
   academicHourMin?: number;
   weekStartsOn?: WeekStartsOn;
   defaultReplenishBalanceKind?: BalanceKind;
+  taxRatePercent?: number;
+  taxDisplayCurrency?: TaxDisplayCurrency;
 };
 
 export interface Student {
@@ -39,6 +44,7 @@ export interface Student {
   balanceKind: BalanceKind;
   prepaid: number;
   debt: number;
+  excludeFromTaxes: boolean;
   archivedAt: string | null;
   createdAt: string;
 }
@@ -59,7 +65,10 @@ export type CreateStudentBody = {
   debt?: number;
 };
 
-export type UpdateStudentBody = Partial<CreateStudentBody>;
+export type UpdateStudentBody = Partial<CreateStudentBody> & {
+  /** YYYY-MM-DD — дата поступления при пополнении prepaid */
+  receivedOn?: string;
+};
 
 export type BalanceMovementKind =
   | 'replenish'
@@ -122,6 +131,22 @@ export interface RecurrenceConfig {
   intervalWeeks: number;
   weekdays: number[];
   endDate: string | null;
+}
+
+export interface TaxReplenishment {
+  movementId: string;
+  studentId: string;
+  studentName: string;
+  occurredAt: string;
+  replenishmentDate: string;
+  balanceKind: BalanceKind;
+  sourceAmount: number;
+  amount: number;
+  currency: string;
+  amountByn: number | null;
+  conversionError: string | null;
+  taxPaid: boolean;
+  comment: string;
 }
 
 export interface ApiError {

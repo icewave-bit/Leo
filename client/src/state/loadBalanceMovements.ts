@@ -20,10 +20,13 @@ export async function loadBalanceMovements(get: Getter, set: Setter): Promise<vo
   const studentId = get(paymentsStudentIdAtom);
   const customFrom = get(paymentsCustomFromAtom);
   const customTo = get(paymentsCustomToAtom);
-  const { from, to } = periodRange(period, tutor.timezone, {
-    from: customFrom,
-    to: customTo,
-  });
+  const { from, to } = periodRange(
+    period,
+    tutor.timezone,
+    { from: customFrom, to: customTo },
+    new Date(),
+    tutor.weekStartsOn,
+  );
 
   set(balanceMovementsLoadingAtom, true);
   set(balanceMovementsErrorAtom, null);

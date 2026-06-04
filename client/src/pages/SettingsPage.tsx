@@ -1,7 +1,7 @@
 import { useAtom } from 'jotai';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { BalanceKind, WeekStartsOn } from '../api/types';
+import type { BalanceKind, TaxDisplayCurrency, WeekStartsOn } from '../api/types';
 import { api } from '../api/client';
 import { tutorAtom } from '../atoms/auth';
 import { weekStartAtom } from '../atoms/schedule';
@@ -14,6 +14,7 @@ import {
   SettingsCardHeader,
 } from '../components/settings/SettingsCardHeader';
 import { ACADEMIC_HOUR_PRESETS, academicHourHint } from '../utils/academicHour';
+import { TAX_DISPLAY_OPTIONS, TAX_RATE_PRESETS } from '../utils/taxSettings';
 
 export function SettingsPage() {
   const [tutor, setTutor] = useAtom(tutorAtom);
@@ -22,6 +23,9 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [weekSaving, setWeekSaving] = useState(false);
   const [replenishSaving, setReplenishSaving] = useState(false);
+  const [taxSaving, setTaxSaving] = useState(false);
+  const [taxRateCustom, setTaxRateCustom] = useState(false);
+  const [taxRateDraft, setTaxRateDraft] = useState(String(tutor?.taxRatePercent ?? 10));
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const store = useAppStore();
@@ -30,6 +34,11 @@ export function SettingsPage() {
 
   const current = tutor.academicHourMin;
   const isPreset = ACADEMIC_HOUR_PRESETS.includes(current as (typeof ACADEMIC_HOUR_PRESETS)[number]);
+
+  const taxRate = tutor.taxRatePercent ?? 10;
+  const taxRateIsPreset = TAX_RATE_PRESETS.includes(
+    taxRate as (typeof TAX_RATE_PRESETS)[number],
+  );
 
   const save = async (academicHourMin: number) => {
     if (academicHourMin < 15 || academicHourMin > 180) {
@@ -64,6 +73,33 @@ export function SettingsPage() {
     } finally {
       setReplenishSaving(false);
     }
+  };
+
+  const saveTaxSettings = async (patch: {
+    taxRatePercent?: number;
+    taxDisplayCurrency?: TaxDisplayCurrency;
+  }) => {
+    setTaxSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const { tutor: updated } = await api.patchMe(patch);
+      setTutor(updated);
+      setSaved(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось сохранить');
+    } finally {
+      setTaxSaving(false);
+    }
+  };
+
+  const saveTaxRatePercent = async (taxRatePercent: number) => {
+    if (taxRatePercent < 0 || taxRatePercent > 100) {
+      setError('Ставка налога: от 0 до 100%');
+      return;
+    }
+    if (taxRatePercent === tutor.taxRatePercent) return;
+    await saveTaxSettings({ taxRatePercent });
   };
 
   const saveWeekStartsOn = async (weekStartsOn: WeekStartsOn) => {
@@ -131,6 +167,7 @@ export function SettingsPage() {
             <SettingsCardHeader icon={SETTINGS_CARD_ICONS.week} title="Начало недели" />
           <p className="settings-card__desc">
             Как отображается неделя в расписании: с понедельника (Европа) или с воскресенья (США).
+            От этого же зависит формат дат: dd/mm/yyyy или mm/dd/yyyy.
           </p>
           <div className="seg settings-presets">
             <button
@@ -221,6 +258,101 @@ export function SettingsPage() {
             </form>
           ) : null}
 
+          </section>
+
+          <section className="settings-card">
+            <SettingsCardHeader icon={SETTINGS_CARD_ICONS.taxes} title="Налоги" />
+            <p className="settings-card__desc">
+              Поведение вкладки «Налоги»: ставка для расчёта суммы налога и перевод пополнений в
+              белорусские рубли по курсу НБРБ на дату пополнения.
+            </p>
+
+            <p className="settings-card__hint">Ставка налога, %</p>
+            <div className="seg settings-presets">
+              {TAX_RATE_PRESETS.map((pct) => (
+                <button
+                  key={pct}
+                  type="button"
+                  className={
+                    'seg__btn' + (!taxRateCustom && taxRate === pct ? ' is-active' : '')
+                  }
+                  disabled={taxSaving || saving || weekSaving || replenishSaving}
+                  onClick={() => {
+                    setTaxRateCustom(false);
+                    void saveTaxRatePercent(pct);
+                  }}
+                >
+                  {pct}%
+                </button>
+              ))}
+              <button
+                type="button"
+                className={
+                  'seg__btn' + (taxRateCustom || !taxRateIsPreset ? ' is-active' : '')
+                }
+                disabled={taxSaving || saving || weekSaving || replenishSaving}
+                onClick={() => {
+                  setTaxRateCustom(true);
+                  setTaxRateDraft(String(taxRate));
+                }}
+              >
+                Другое
+              </button>
+            </div>
+
+            {taxRateCustom || !taxRateIsPreset ? (
+              <form
+                className="settings-custom"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void saveTaxRatePercent(Number(taxRateDraft));
+                }}
+              >
+                <label className="field">
+                  <span className="field__label">Процент</span>
+                  <input
+                    className="field__control"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.01}
+                    value={taxRateDraft}
+                    onChange={(e) => setTaxRateDraft(e.target.value)}
+                    required
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="btn btn--primary btn--sm"
+                  disabled={taxSaving || saving || weekSaving || replenishSaving}
+                >
+                  {taxSaving ? 'Сохранение…' : 'Сохранить'}
+                </button>
+              </form>
+            ) : null}
+
+            <p className="settings-card__hint" style={{ marginTop: 16 }}>
+              Валюта для отображения
+            </p>
+            <div className="seg settings-presets">
+              {TAX_DISPLAY_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={
+                    'seg__btn' +
+                    ((tutor.taxDisplayCurrency ?? 'BYN') === opt.id ? ' is-active' : '')
+                  }
+                  disabled={taxSaving || saving || weekSaving || replenishSaving}
+                  onClick={() => {
+                    if ((tutor.taxDisplayCurrency ?? 'BYN') === opt.id) return;
+                    void saveTaxSettings({ taxDisplayCurrency: opt.id });
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </section>
 
           <section className="settings-card settings-card--muted">

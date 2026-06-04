@@ -45,6 +45,7 @@ export interface ViewStudent {
   balanceKind: BalanceKind;
   prepaid: number;
   debt: number;
+  excludeFromTaxes: boolean;
   archivedAt?: string | null;
 }
 
@@ -287,6 +288,7 @@ export function studentToView(s: Student): ViewStudent {
     balanceKind: s.balanceKind,
     prepaid: s.prepaid,
     debt: s.debt,
+    excludeFromTaxes: s.excludeFromTaxes,
     archivedAt: s.archivedAt,
   };
 }

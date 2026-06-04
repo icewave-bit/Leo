@@ -14,6 +14,8 @@ export async function recordBalanceMovement(
     studentId: string;
     lessonId?: string | null;
     occurredAt?: Date;
+    /** YYYY-MM-DD — фактическая дата поступления средств */
+    receivedOn?: string;
     kind: BalanceMovementKind;
     prepaidDelta: number;
     debtDelta: number;
@@ -35,14 +37,15 @@ export async function recordBalanceMovement(
 
   await client.query(
     `INSERT INTO balance_movements (
-       tutor_id, student_id, lesson_id, occurred_at, kind,
+       tutor_id, student_id, lesson_id, occurred_at, received_on, kind,
        prepaid_delta, debt_delta, prepaid_after, debt_after, balance_kind
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
     [
       row.tutor_id,
       input.studentId,
       input.lessonId ?? null,
       (input.occurredAt ?? new Date()).toISOString(),
+      input.receivedOn ?? null,
       input.forceKind ?? input.kind,
       input.prepaidDelta,
       input.debtDelta,
@@ -60,7 +63,11 @@ export async function recordStudentBalancePatch(
   debtBefore: number,
   prepaidAfter: number,
   debtAfter: number,
-  opts?: { balanceKindChanged?: boolean; prepaidTopUp?: boolean },
+  opts?: {
+    balanceKindChanged?: boolean;
+    prepaidTopUp?: boolean;
+    receivedOn?: string;
+  },
 ): Promise<void> {
   // Unit conversion (lessons ↔ money) rewrites stored amounts; not a real balance event.
   if (opts?.balanceKindChanged) return;
@@ -79,5 +86,6 @@ export async function recordStudentBalancePatch(
     kind,
     prepaidDelta: prepaidAfter - prepaidBefore,
     debtDelta,
+    receivedOn: opts?.receivedOn,
   });
 }

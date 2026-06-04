@@ -73,6 +73,16 @@ describe('auth', () => {
       .expect(401);
   });
 
+  it('patch me updates tax settings', async () => {
+    const { agent } = await registerTutor(app);
+    const patched = await agent
+      .patch('/api/auth/me')
+      .send({ taxRatePercent: 13, taxDisplayCurrency: 'none' })
+      .expect(200);
+    expect(patched.body.tutor.taxRatePercent).toBe(13);
+    expect(patched.body.tutor.taxDisplayCurrency).toBe('none');
+  });
+
   it('patch me updates defaultReplenishBalanceKind', async () => {
     const { agent } = await registerTutor(app);
     const me = await agent.get('/api/auth/me').expect(200);

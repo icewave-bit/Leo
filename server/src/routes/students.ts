@@ -16,7 +16,7 @@ import {
 
 const studentFieldsSchema = {
   name: z.string().min(1),
-  initials: z.string().min(1).optional(),
+  initials: z.string().min(1).max(2).optional(),
   hue: z.number().int().min(0).max(360),
   tz: z.string().min(1),
   meetUrl: z.string().url().nullable(),
@@ -44,6 +44,7 @@ const createStudentSchema = z.object({
   balanceKind: studentFieldsSchema.balanceKind.default('money'),
   prepaid: studentFieldsSchema.prepaid.default(0),
   debt: studentFieldsSchema.debt.default(0),
+  excludeFromTaxes: z.boolean().optional(),
 });
 
 const patchStudentSchema = z
@@ -61,13 +62,15 @@ const patchStudentSchema = z
     balanceKind: studentFieldsSchema.balanceKind.optional(),
     prepaid: studentFieldsSchema.prepaid.optional(),
     debt: studentFieldsSchema.debt.optional(),
+    receivedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    excludeFromTaxes: z.boolean().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field is required',
   });
 
 const STUDENT_COLUMNS = `id, tutor_id, name, initials, hue, tz, meet_url, rate, currency, note,
-              is_group, members, balance_kind, prepaid, debt, archived_at, created_at`;
+              is_group, members, balance_kind, prepaid, debt, exclude_from_taxes, archived_at, created_at`;
 
 export const studentsRouter = Router();
 
@@ -232,6 +235,10 @@ studentsRouter.patch('/:id', async (req, res, next) => {
       fields.push(`debt = $${idx++}`);
       values.push(body.debt);
     }
+    if (body.excludeFromTaxes !== undefined) {
+      fields.push(`exclude_from_taxes = $${idx++}`);
+      values.push(body.excludeFromTaxes);
+    }
 
     if (fields.length === 0) {
       await client.query('ROLLBACK');
@@ -267,7 +274,11 @@ studentsRouter.patch('/:id', async (req, res, next) => {
         Number(beforeRow.debt),
         Number(row.prepaid),
         Number(row.debt),
-        { balanceKindChanged, prepaidTopUp },
+        {
+          balanceKindChanged,
+          prepaidTopUp,
+          receivedOn: prepaidTopUp ? body.receivedOn : undefined,
+        },
       );
       if (!balanceKindChanged) {
         await settleLessonsFromBalanceTopUp(

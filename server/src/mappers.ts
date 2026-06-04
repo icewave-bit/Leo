@@ -6,6 +6,7 @@ import type {
   LessonType,
   RecurringSchedule,
   Student,
+  TaxDisplayCurrency,
   Tutor,
   WeekStartsOn,
 } from './types.js';
@@ -20,6 +21,8 @@ interface TutorRow {
   academic_hour_min: number;
   week_starts_on: WeekStartsOn;
   default_replenish_balance_kind: BalanceKind;
+  tax_rate_percent: string;
+  tax_display_currency: TaxDisplayCurrency;
   created_at: Date;
 }
 
@@ -39,6 +42,7 @@ interface StudentRow {
   balance_kind: BalanceKind;
   prepaid: string;
   debt: string;
+  exclude_from_taxes: boolean;
   archived_at: Date | null;
   created_at: Date;
 }
@@ -96,6 +100,8 @@ export function toTutor(row: TutorRow): Tutor {
     academicHourMin: row.academic_hour_min,
     weekStartsOn: row.week_starts_on,
     defaultReplenishBalanceKind: row.default_replenish_balance_kind,
+    taxRatePercent: Number(row.tax_rate_percent),
+    taxDisplayCurrency: row.tax_display_currency,
     createdAt: toIsoUtc(row.created_at),
   };
 }
@@ -117,6 +123,7 @@ export function toStudent(row: StudentRow): Student {
     balanceKind: row.balance_kind,
     prepaid: Number(row.prepaid),
     debt: Number(row.debt),
+    excludeFromTaxes: row.exclude_from_taxes,
     archivedAt: row.archived_at ? toIsoUtc(row.archived_at) : null,
     createdAt: toIsoUtc(row.created_at),
   };

@@ -6,6 +6,7 @@ import { studentsAtom } from '../../atoms/schedule';
 import { useStudentActions } from '../../hooks/useStudentActions';
 import { useAppStore } from '../../hooks/useAppStore';
 import { fmtBalanceAmount, fmtBalanceNet, fmtMoney, lessonCountLabel } from '../../utils/format';
+import { fmtDateKey, todayDateKey } from '../../utils/dateKey';
 import { patchForBalanceKind } from '../../utils/studentBalanceKind';
 import type { ViewStudent } from '../../utils/schedule';
 import { BalanceKindSeg } from '../BalanceKindSeg';
@@ -34,11 +35,14 @@ export function BalanceReplenishDialog({
 }: BalanceReplenishDialogProps) {
   const tutor = useAtomValue(tutorAtom);
   const preferred = tutor?.defaultReplenishBalanceKind ?? 'money';
+  const weekStartsOn = tutor?.weekStartsOn ?? 'monday';
   const store = useAppStore();
   const { replenishBalance, updateStudent } = useStudentActions();
   const titleId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const kindTouchedRef = useRef(false);
   const [amount, setAmount] = useState('');
+  const [receivedOn, setReceivedOn] = useState(todayDateKey);
   const [dialogKind, setDialogKind] = useState<BalanceKind>(student.balanceKind);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,12 +65,14 @@ export function BalanceReplenishDialog({
 
   useEffect(() => {
     if (!open) return;
+    kindTouchedRef.current = false;
     setAmount('');
+    setReceivedOn(todayDateKey());
     setError(null);
     setSaving(false);
-    setDialogKind(preferred);
+    setDialogKind(student.balanceKind);
     focusInput();
-  }, [open, student.id, preferred]);
+  }, [open, student.id, student.balanceKind]);
 
   useEffect(() => {
     if (!open) return;
@@ -87,6 +93,7 @@ export function BalanceReplenishDialog({
 
   const onBalanceKindChange = (next: BalanceKind) => {
     if (next === kind || saving) return;
+    kindTouchedRef.current = true;
     setDialogKind(next);
     setAmount('');
     setError(null);
@@ -106,10 +113,10 @@ export function BalanceReplenishDialog({
     try {
       const latest =
         store.get(studentsAtom).find((s) => s.id === student.id) ?? student;
-      if (kind !== latest.balanceKind) {
+      if (kindTouchedRef.current && kind !== latest.balanceKind) {
         await persistBalanceKind(kind);
       }
-      await replenishBalance(student.id, add);
+      await replenishBalance(student.id, add, kind, receivedOn);
       onReplenished?.();
       onClose();
     } catch (e) {
@@ -155,10 +162,16 @@ export function BalanceReplenishDialog({
         </div>
 
         {kindDiffers ? (
-          <p className="replenish__hint">
+          <p className="replenish__hint replenish__hint--warn">
             Пополнение в {kind === 'lessons' ? 'уроках' : student.currency}. При сохранении
             переключим учёт с{' '}
             {student.balanceKind === 'lessons' ? 'уроков' : student.currency}.
+          </p>
+        ) : preferred !== student.balanceKind ? (
+          <p className="replenish__hint">
+            Учёт у ученика в {student.balanceKind === 'lessons' ? 'уроках' : student.currency}.
+            {preferred === 'lessons' ? ' Чтобы пополнить уроками' : ' Чтобы пополнить деньгами'}
+            , выберите «{preferred === 'lessons' ? 'Уроки' : 'Деньги'}».
           </p>
         ) : null}
 
@@ -207,6 +220,23 @@ export function BalanceReplenishDialog({
             ))}
           </div>
         ) : null}
+
+        <details className="replenish__received">
+          <summary className="replenish__received-summary">
+            Дата поступления:{' '}
+            <span className="tnum">{fmtDateKey(receivedOn, weekStartsOn)}</span>
+          </summary>
+          <label className="field replenish__received-field">
+            <span className="field__label">Когда поступили средства</span>
+            <input
+              className="field__control"
+              type="date"
+              value={receivedOn}
+              disabled={busy}
+              onChange={(e) => setReceivedOn(e.target.value)}
+            />
+          </label>
+        </details>
 
         {afterNet != null && !kindDiffers ? (
           <p className="replenish__preview">

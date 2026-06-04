@@ -47,6 +47,14 @@ export function fmtMoney(amount: number, currency: string): string {
   return currency === 'EUR' ? `${sym}${n}` : `${n}\u202F${sym}`;
 }
 
+export function fmtByn(amount: number): string {
+  const n = amount.toLocaleString('ru-RU', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${n}\u202FBr`;
+}
+
 export function fmtLessonWhen(iso: string, timezone: string): string {
   const d = new Date(iso);
   return new Intl.DateTimeFormat('ru-RU', {
