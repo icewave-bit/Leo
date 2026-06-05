@@ -1,7 +1,11 @@
 import 'express-session';
 
-declare module 'express-serve-static-core' {
-  interface Request {
-    tutorId?: string;
+declare global {
+  namespace Express {
+    interface Request {
+      tutorId?: string;
+    }
   }
 }
+
+export {};
