@@ -21,6 +21,11 @@ export async function createApp(): Promise<express.Express> {
 
   const app = express();
 
+  // Traefik terminates TLS and forwards HTTP; trust proxy so Secure session cookies are set.
+  if (config.COOKIE_SECURE) {
+    app.set('trust proxy', 1);
+  }
+
   app.use(
     cors({
       origin: config.CORS_ORIGIN,

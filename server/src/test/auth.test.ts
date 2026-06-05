@@ -1,7 +1,8 @@
-import { describe, it, beforeAll, afterAll, beforeEach, expect } from 'vitest';
+import { describe, it, beforeAll, afterAll, beforeEach, afterEach, expect } from 'vitest';
 import type { Express } from 'express';
 import request from 'supertest';
 import { createApp } from '../app.js';
+import { resetConfigCache } from '../config.js';
 import { setupTestDb, teardownTestDb } from './db.js';
 import { registerTutor } from './helpers.js';
 
@@ -17,8 +18,27 @@ describe('auth', () => {
     app = await createApp();
   });
 
+  afterEach(() => {
+    resetConfigCache();
+    process.env.COOKIE_SECURE = 'false';
+  });
+
   afterAll(async () => {
     await teardownTestDb();
+  });
+
+  it('register sets Secure cookie when COOKIE_SECURE and X-Forwarded-Proto is https', async () => {
+    resetConfigCache();
+    process.env.COOKIE_SECURE = 'true';
+    const secureApp = await createApp();
+    const email = `proxy-${crypto.randomUUID()}@test.com`;
+    const reg = await request(secureApp)
+      .post('/api/auth/register')
+      .set('X-Forwarded-Proto', 'https')
+      .send({ email, password: 'password123', name: 'Proxy Test' })
+      .expect(201);
+    expect(reg.headers['set-cookie']).toBeDefined();
+    expect(reg.headers['set-cookie']![0]).toMatch(/Secure/i);
   });
 
   it('register success + sets session', async () => {
