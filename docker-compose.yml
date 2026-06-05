@@ -5,34 +5,43 @@ services:
       POSTGRES_USER: tutor_monitor
       POSTGRES_PASSWORD: tutor_monitor
       POSTGRES_DB: tutor_monitor
-    ports:
-      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    networks:
+      - internal
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tutor_monitor -d tutor_monitor"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   server:
     build:
       context: ./server
       dockerfile: Dockerfile
-    ports:
-      - "3001:3001"
+    expose:
+      - "${API_PORT:-3001}"
     environment:
-      PORT: 3001
+      PORT: ${API_PORT:-3001}
       NODE_ENV: production
       DATABASE_URL: postgresql://tutor_monitor:tutor_monitor@postgres:5432/tutor_monitor
       SESSION_SECRET: change-me-to-a-long-random-string
-      COOKIE_SECURE: "false"
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:8080}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      CORS_ORIGIN: ${CORS_ORIGIN}
       NBRB_API_URL: https://api.nbrb.by
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - internal
+      - proxy
+    labels:
+      - traefik.enable=true
+      - "traefik.docker.network=${TRAEFIK_DOCKER_NETWORK:-proxy}"
+      - "traefik.http.routers.tutor-monitor-api.rule=Host(`${APP_HOST}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.tutor-monitor-api.entrypoints=web-secure"
     healthcheck:
       test:
         [
@@ -45,20 +54,34 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    restart: unless-stopped
 
   client:
     build:
       context: ./client
       dockerfile: Dockerfile
-    ports:
-      - "8080:80"
+    expose:
+      - "80"
     environment:
-      VITE_API_URL: ${VITE_API_URL:-http://127.0.0.1:3001}
+      VITE_API_URL: ${VITE_API_URL:-}
       SERVER_FALLBACK_PAGE: /public/index.html
       SERVER_ERROR_PAGE_404: /public/index.html
     depends_on:
       server:
         condition: service_healthy
+    networks:
+      - proxy
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.tutor-monitor-web.rule=Host(`${APP_HOST}`)"
+      - "traefik.http.routers.tutor-monitor-web.entrypoints=web-secure"
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+
+networks:
+  internal:
+  proxy:
+    external:
+      name: ${TRAEFIK_DOCKER_NETWORK:-proxy}
