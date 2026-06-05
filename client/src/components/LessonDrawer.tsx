@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAtomValue } from 'jotai';
 import { STATUS_LABELS } from '../constants/status';
 import { academicUnitsShort, lessonPrice } from '../utils/academicHour';
@@ -31,6 +31,7 @@ interface LessonDrawerProps {
   onClose: () => void;
   onStatus: (id: string, status: UiLessonStatus) => void;
   onPaid: (id: string, paid: boolean) => void;
+  onNotes: (id: string, notes: string | null) => void;
   onDelete: (id: string, opts?: { restoreBalance?: boolean }) => Promise<void>;
   onDeleteSeries?: (scheduleId: string, fromLessonId: string) => Promise<void>;
 }
@@ -40,14 +41,22 @@ export function LessonDrawer({
   onClose,
   onStatus,
   onPaid,
+  onNotes,
   onDelete,
   onDeleteSeries,
 }: LessonDrawerProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [notesDraft, setNotesDraft] = useState(lesson.notes ?? '');
   const [deleteScope, setDeleteScope] = useState<LessonDeleteScope>('lesson');
   const [restoreBalance, setRestoreBalance] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savingNotes, setSavingNotes] = useState(false);
+
+  useEffect(() => {
+    setNotesDraft(lesson.notes ?? '');
+  }, [lesson.id, lesson.notes]);
+
   const stu = useStudent(lesson.studentId);
   const tutor = useAtomValue(tutorAtom);
   const weekStart = useAtomValue(weekStartAtom);
@@ -84,6 +93,18 @@ export function LessonDrawer({
     setDeleteScope('lesson');
     setRestoreBalance(lesson.balanceCharged);
     setConfirmOpen(true);
+  };
+
+  const saveNotes = async () => {
+    const trimmed = notesDraft.trim() || null;
+    const current = lesson.notes?.trim() || null;
+    if (trimmed === current) return;
+    setSavingNotes(true);
+    try {
+      await onNotes(lesson.id, trimmed);
+    } finally {
+      setSavingNotes(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -247,9 +268,22 @@ export function LessonDrawer({
           <StudentBalance student={stu} />
         </div>
 
+        <label className="field">
+          <span className="field__label">Напоминание</span>
+          <textarea
+            className="field__control field__control--area"
+            value={notesDraft}
+            rows={3}
+            placeholder="Напомнить себе перед уроком…"
+            disabled={savingNotes}
+            onChange={(e) => setNotesDraft(e.target.value)}
+            onBlur={() => void saveNotes()}
+          />
+        </label>
+
         {stu.note ? (
           <div className="drawer__note">
-            <span className="drawer__k">Заметка</span>
+            <span className="drawer__k">Об ученике</span>
             <p>{stu.note}</p>
           </div>
         ) : null}

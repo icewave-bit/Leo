@@ -9,6 +9,7 @@ import {
   lessonCardClass,
   lessonCardVars,
   LessonMetaLine,
+  LessonNotesMark,
   LessonPayMark,
   TypeIcon,
 } from './LessonChrome';
@@ -93,6 +94,7 @@ export function FocusTimeline({
                   onClick={() => onSelect(l.id)}
                 >
                   <LessonPayMark lesson={l} />
+                  <LessonNotesMark notes={l.notes} />
                   <span className="avatar" style={{ background: `oklch(0.62 0.13 ${stu.hue})` }}>
                     {stu.initials}
                   </span>

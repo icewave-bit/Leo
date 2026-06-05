@@ -94,7 +94,8 @@ export function LoginPage() {
 
         <div className="login__content">
           <div className="login__pitch">
-            <h1>LeO помогает репетитору держать расписание, оплаты и баланс учеников под контролем</h1>
+            <h1 className="login__title login__title--desktop">LeO помогает репетитору держать расписание, оплаты и баланс учеников под контролем</h1>
+            <h1 className="login__title login__title--mobile">Расписание, оплаты и баланс учеников — в одном месте</h1>
             <p>Один рабочий экран для уроков, предоплат, долгов, заметок и дохода — без Excel и записных книжек.</p>
           </div>
 

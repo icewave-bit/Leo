@@ -239,13 +239,13 @@ export function AddLessonDrawer({
             ) : null}
 
             <label className="field">
-              <span className="field__label">Заметка (необязательно)</span>
+              <span className="field__label">Напоминание (необязательно)</span>
               <textarea
                 className="field__control field__control--area"
                 value={notes}
                 rows={3}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Тема урока, домашнее задание…"
+                placeholder="Напомнить себе перед уроком…"
               />
             </label>
 

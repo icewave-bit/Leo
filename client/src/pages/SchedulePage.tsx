@@ -167,7 +167,8 @@ export function SchedulePage() {
   const [draft, setDraft] = useAtom(lessonDraftAtom);
   const [prefillStudentId, setPrefillStudentId] = useState<string | undefined>();
   const setActiveDay = useSetAtom(activeDayAtom);
-  const { setStatus, setPaid, createLesson, deleteLesson, rescheduleLesson } = useLessonActions();
+  const { setStatus, setPaid, setNotes, createLesson, deleteLesson, rescheduleLesson } =
+    useLessonActions();
   const { createRecurringSchedule, deleteRecurringSchedule } = useRecurringScheduleActions();
   const store = useAppStore();
 
@@ -279,6 +280,7 @@ export function SchedulePage() {
           onClose={() => setSelectedId(null)}
           onStatus={setStatus}
           onPaid={setPaid}
+          onNotes={setNotes}
           onDelete={deleteLesson}
           onDeleteSeries={(scheduleId, fromLessonId) =>
             deleteRecurringSchedule(scheduleId, fromLessonId)

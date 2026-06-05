@@ -30,7 +30,9 @@ import {
   lessonCardClass,
   lessonCardVars,
   lessonEventLabel,
+  hasLessonNotes,
   lessonGridHint,
+  LessonNotesMark,
   LessonPayMark,
   TypeIcon,
 } from './LessonChrome';
@@ -62,19 +64,27 @@ function LessonEvent({
   return (
     <button
       type="button"
-      className={lessonCardClass(lesson, { tight, ghost }) + (colsClass ? ` ${colsClass}` : '')}
+      className={
+        lessonCardClass(lesson, { tight, ghost }) +
+        (hasLessonNotes(lesson.notes) ? ' ev--has-notes' : '') +
+        (colsClass ? ` ${colsClass}` : '')
+      }
       style={{
         top,
         height,
         ...lessonCardVars(student),
         ...weekGridLessonPositionStyle(layout),
       }}
-      title={`${student.name} · ${lessonEventLabel(lesson)}`}
+      title={
+        `${student.name} · ${lessonEventLabel(lesson)}` +
+        (hasLessonNotes(lesson.notes) ? ` · ${lesson.notes!.trim()}` : '')
+      }
       aria-label={`${student.name}, ${fmtTime(start)}, ${lessonEventLabel(lesson)}`}
       onPointerDown={onPointerDown}
       onClick={onClick}
     >
       <LessonPayMark lesson={lesson} />
+      <LessonNotesMark notes={lesson.notes} />
       <span className="ev__head">
         <span className="ev__name">{student.name}</span>
         {lesson.recurringScheduleId ? <RecurrenceIcon /> : null}

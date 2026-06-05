@@ -39,6 +39,16 @@ export function useLessonActions() {
     }
   };
 
+  const setNotes = async (id: string, notes: string | null) => {
+    patchLocal(id, { notes });
+    try {
+      const updated = await api.patchLesson(id, { notes });
+      patchLocal(id, { notes: updated.notes });
+    } catch {
+      await reload();
+    }
+  };
+
   const setPaid = async (id: string, paid: boolean) => {
     patchLocal(id, { paid });
     try {
@@ -133,5 +143,5 @@ export function useLessonActions() {
     return lesson.id;
   };
 
-  return { setStatus, setPaid, createLesson, deleteLesson, rescheduleLesson };
+  return { setStatus, setPaid, setNotes, createLesson, deleteLesson, rescheduleLesson };
 }

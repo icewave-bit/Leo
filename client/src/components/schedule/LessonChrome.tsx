@@ -2,6 +2,7 @@ import { PAY_LABELS, STATUS_LABELS } from '../../constants/status';
 import { lessonDebtClosed, lessonHasOpenDebt } from '../../utils/lessonPay';
 import { fmtTime } from '../../utils/format';
 import type { ViewLesson, ViewStudent } from '../../utils/schedule';
+import { NotesPaperIcon } from '../icons/NotesPaperIcon';
 
 export function lessonCardVars(student: ViewStudent): React.CSSProperties {
   return { '--ev-hue': String(student.hue) } as React.CSSProperties;
@@ -114,6 +115,21 @@ export function lessonEventLabel(
   if (lesson.status !== 'completed') return status;
   const pay = lessonDebtClosed(lesson) ? PAY_LABELS.paid.ru : PAY_LABELS.unpaid.ru;
   return `${status}, ${pay}`;
+}
+
+export function hasLessonNotes(notes: string | null | undefined): boolean {
+  return Boolean(notes?.trim());
+}
+
+/** Bottom-right badge — kept away from the top-right pay tick (ev__mark). */
+export function LessonNotesMark({ notes }: { notes: string | null | undefined }) {
+  if (!hasLessonNotes(notes)) return null;
+  const text = notes!.trim();
+  return (
+    <span className="ev__notes" aria-label="Есть напоминание" title={text}>
+      <NotesPaperIcon size={10} />
+    </span>
+  );
 }
 
 export function TypeIcon({ type }: { type: 'solo' | 'group' }) {
