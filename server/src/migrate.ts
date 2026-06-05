@@ -31,8 +31,23 @@ export async function runMigrations(connectionString: string): Promise<void> {
       .filter((f) => f.endsWith('.sql'))
       .sort();
 
+    if (files.length === 0) {
+      console.log('No migration files found');
+      return;
+    }
+
+    console.log(`Checking ${files.length} migration(s)...`);
+
+    let appliedCount = 0;
+    let skippedCount = 0;
+
     for (const file of files) {
-      if (appliedSet.has(file)) continue;
+      if (appliedSet.has(file)) {
+        console.log(`Skipped migration (already applied): ${file}`);
+        skippedCount++;
+        continue;
+      }
+
       const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
       await client.query('BEGIN');
       try {
@@ -40,10 +55,19 @@ export async function runMigrations(connectionString: string): Promise<void> {
         await client.query('INSERT INTO schema_migrations (filename) VALUES ($1)', [file]);
         await client.query('COMMIT');
         console.log(`Applied migration: ${file}`);
+        appliedCount++;
       } catch (err) {
         await client.query('ROLLBACK');
         throw err;
       }
+    }
+
+    if (appliedCount === 0) {
+      console.log(`Migrations complete: all ${skippedCount} migration(s) already applied`);
+    } else {
+      console.log(
+        `Migrations complete: ${appliedCount} applied, ${skippedCount} skipped`,
+      );
     }
   } finally {
     client.release();
