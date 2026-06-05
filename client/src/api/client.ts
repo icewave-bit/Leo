@@ -11,8 +11,15 @@ import type {
   Tutor,
   UpdateStudentBody,
 } from './types';
+import { getViteMergedEnv } from '../lib/runtimeEnv';
 
-const base = import.meta.env.VITE_API_URL ?? '';
+function apiBase(): string {
+  const s = getViteMergedEnv('VITE_API_URL');
+  if (s === '') return '';
+  return s.replace(/\/$/, '');
+}
+
+const base = apiBase();
 
 async function request<T>(
   path: string,

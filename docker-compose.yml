@@ -28,7 +28,7 @@ services:
       DATABASE_URL: postgresql://tutor_monitor:tutor_monitor@postgres:5432/tutor_monitor
       SESSION_SECRET: change-me-to-a-long-random-string
       COOKIE_SECURE: "false"
-      CORS_ORIGIN: http://127.0.0.1:5173
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:8080}
       NBRB_API_URL: https://api.nbrb.by
     depends_on:
       postgres:
@@ -45,6 +45,20 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://127.0.0.1:3001}
+      SERVER_FALLBACK_PAGE: /public/index.html
+      SERVER_ERROR_PAGE_404: /public/index.html
+    depends_on:
+      server:
+        condition: service_healthy
 
 volumes:
   postgres_data:

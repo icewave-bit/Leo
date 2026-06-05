@@ -8,3 +8,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+/** Runtime env из env-config.js (Docker: ghcr.io/pkarpovich/env-driven-static-server). */
+interface Window {
+  _env_?: Record<string, string>;
+}
