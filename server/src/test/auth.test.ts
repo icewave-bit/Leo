@@ -115,6 +115,20 @@ describe('auth', () => {
     expect(patched.body.tutor.defaultReplenishBalanceKind).toBe('lessons');
   });
 
+  it('patch me updates hiddenWeekdays', async () => {
+    const { agent } = await registerTutor(app);
+    const me = await agent.get('/api/auth/me').expect(200);
+    expect(me.body.tutor.hiddenWeekdays).toEqual([]);
+
+    const patched = await agent
+      .patch('/api/auth/me')
+      .send({ hiddenWeekdays: [5, 6] })
+      .expect(200);
+    expect(patched.body.tutor.hiddenWeekdays).toEqual([5, 6]);
+
+    await agent.patch('/api/auth/me').send({ hiddenWeekdays: [0, 1, 2, 3, 4, 5, 6] }).expect(400);
+  });
+
   it('patch me updates weekStartsOn', async () => {
     const { agent } = await registerTutor(app);
     const me = await agent.get('/api/auth/me').expect(200);

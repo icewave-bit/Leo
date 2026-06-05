@@ -1,7 +1,7 @@
 import { useAtom, useAtomValue } from 'jotai';
 import { tutorAtom } from '../../atoms/auth';
 import { activeDayAtom, lessonsAtom, weekStartAtom } from '../../atoms/schedule';
-import { weekDates, weekDayNames } from '../../utils/schedule';
+import { visibleGridDays, weekDates, weekDayNames } from '../../utils/schedule';
 import { useStudentMap } from '../../hooks/useStudentMap';
 import { academicUnitsShort } from '../../utils/academicHour';
 import {
@@ -30,6 +30,7 @@ export function FocusTimeline({
   const weekStartsOn = tutor?.weekStartsOn ?? 'monday';
   const { short: dayNames, full: daysFull } = weekDayNames(weekStartsOn);
   const dates = weekDates(weekStart, tz);
+  const visibleDays = visibleGridDays(weekStartsOn, tutor?.hiddenWeekdays ?? []);
 
   const dayLessons = lessons
     .filter((l) => l.day === activeDay)
@@ -37,17 +38,20 @@ export function FocusTimeline({
 
   return (
     <div className="ft">
-      <div className="ft__strip">
-        {dayNames.map((d, i) => {
+      <div
+        className="ft__strip"
+        style={{ '--ft-cols': visibleDays.length } as React.CSSProperties}
+      >
+        {visibleDays.map((i) => {
           const count = lessons.filter((l) => l.day === i).length;
           return (
             <button
-              key={d}
+              key={i}
               type="button"
               className={'ft__pill' + (i === activeDay ? ' is-active' : '')}
               onClick={() => setActiveDay(i)}
             >
-              <span className="ft__pill-dow">{d}</span>
+              <span className="ft__pill-dow">{dayNames[i]}</span>
               <span className="ft__pill-date">{dates[i]}</span>
               {count > 0 ? (
                 <span className="ft__pill-count">{count}</span>

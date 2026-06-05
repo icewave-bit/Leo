@@ -19,6 +19,8 @@ export interface Tutor {
   defaultReplenishBalanceKind: BalanceKind;
   taxRatePercent: number;
   taxDisplayCurrency: TaxDisplayCurrency;
+  /** Calendar weekdays to hide in schedule UI: Mon=0 … Sun=6. */
+  hiddenWeekdays: number[];
   createdAt: string;
 }
 

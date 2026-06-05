@@ -17,6 +17,8 @@ export interface Tutor {
   defaultReplenishBalanceKind: BalanceKind;
   taxRatePercent: number;
   taxDisplayCurrency: TaxDisplayCurrency;
+  /** Calendar weekdays hidden in schedule: Mon=0 … Sun=6. */
+  hiddenWeekdays: number[];
   createdAt: string;
 }
 
@@ -26,6 +28,7 @@ export type PatchTutorBody = {
   defaultReplenishBalanceKind?: BalanceKind;
   taxRatePercent?: number;
   taxDisplayCurrency?: TaxDisplayCurrency;
+  hiddenWeekdays?: number[];
 };
 
 export interface Student {

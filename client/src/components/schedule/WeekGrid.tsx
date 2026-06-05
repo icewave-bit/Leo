@@ -7,12 +7,16 @@ import { LessonBalanceConfirmOptions } from '../LessonBalanceConfirmOptions';
 import {
   WG_DAY_HOURS,
   WG_DEFAULT_VIEW_START,
+  WG_GUTTER,
+  WG_GUTTER_MOBILE,
   WG_HOUR_LABEL_INSET,
-  WG_PX_PER_HOUR,
+  WG_MOBILE_VISIBLE_HOURS,
 } from '../../constants/weekGrid';
 import { useWeekGridDrag } from '../../hooks/useWeekGridDrag';
+import { useWeekGridPxPerHour } from '../../hooks/useWeekGridPxPerHour';
 import { useStudentMap } from '../../hooks/useStudentMap';
 import {
+  visibleGridDays,
   weekDates,
   weekDayNames,
   todayDayIndex,
@@ -44,6 +48,7 @@ function LessonEvent({
   start,
   layout,
   ghost,
+  pxPerHour,
   onPointerDown,
   onClick,
 }: {
@@ -52,12 +57,13 @@ function LessonEvent({
   start: number;
   layout?: WeekGridLessonLayout;
   ghost?: boolean;
+  pxPerHour: number;
   onPointerDown?: (e: React.PointerEvent) => void;
   onClick?: () => void;
 }) {
-  const top = start * WG_PX_PER_HOUR;
-  const height = lesson.dur * WG_PX_PER_HOUR - 4;
-  const tight = height < 42;
+  const top = start * pxPerHour;
+  const height = lesson.dur * pxPerHour - 4;
+  const tight = height < pxPerHour * 0.72;
   const hint = lessonGridHint(lesson);
   const colsClass = weekGridLessonLayoutClass(layout);
 
@@ -100,10 +106,12 @@ function LessonEvent({
 }
 
 export function WeekGrid({
+  compact = false,
   onSelect,
   onSlotClick,
   onReschedule,
 }: {
+  compact?: boolean;
   onSelect: (id: string) => void;
   onSlotClick: (day: number, startHour: number) => void;
   onReschedule: (id: string, day: number, start: number) => Promise<void>;
@@ -119,6 +127,16 @@ export function WeekGrid({
   const { short: dayNames, full: dayNamesFull } = weekDayNames(weekStartsOn);
   const dates = weekDates(weekStart, tz);
   const todayIdx = todayDayIndex(weekStart, tz);
+  const hiddenWeekdays = tutor?.hiddenWeekdays ?? [];
+  const visibleDays = useMemo(
+    () => visibleGridDays(weekStartsOn, hiddenWeekdays),
+    [weekStartsOn, hiddenWeekdays],
+  );
+  const pxPerHour = useWeekGridPxPerHour(
+    scrollRef,
+    compact ? WG_MOBILE_VISIBLE_HOURS : null,
+  );
+  const gutter = compact ? WG_GUTTER_MOBILE : WG_GUTTER;
 
   const {
     active,
@@ -142,16 +160,19 @@ export function WeekGrid({
     studentName: (id) => studentMap.get(id)?.name,
     getStudent: (id) => studentMap.get(id),
     daysFull: dayNamesFull,
+    pxPerHour,
+    gutter,
+    visibleDays,
     onSelect,
     onReschedule,
   });
 
   const hours = Array.from({ length: WG_DAY_HOURS }, (_, h) => h);
-  const colH = WG_DAY_HOURS * WG_PX_PER_HOUR;
+  const colH = WG_DAY_HOURS * pxPerHour;
 
   const layoutByDay = useMemo(() => {
     const byDay = new Map<number, Map<string, WeekGridLessonLayout>>();
-    for (let di = 0; di < 7; di++) {
+    for (const di of visibleDays) {
       const dayLessons = lessons.filter((l) => l.day === di);
       const ghost =
         dragLesson && preview?.day === di
@@ -166,15 +187,18 @@ export function WeekGrid({
       byDay.set(di, layoutDayLessons(forLayout));
     }
     return byDay;
-  }, [lessons, dragLesson, preview]);
+  }, [lessons, dragLesson, preview, visibleDays]);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = WG_HOUR_LABEL_INSET + WG_DEFAULT_VIEW_START * WG_PX_PER_HOUR;
-  }, [weekStart]);
+    if (el) el.scrollTop = WG_HOUR_LABEL_INSET + WG_DEFAULT_VIEW_START * pxPerHour;
+  }, [weekStart, pxPerHour]);
 
   return (
-    <div className={'wg' + (active ? ' wg--dragging' : '')}>
+    <div
+      className={'wg' + (active ? ' wg--dragging' : '') + (compact ? ' wg--compact' : '')}
+      style={{ '--wg-cols': visibleDays.length } as React.CSSProperties}
+    >
       <ConfirmDialog
         open={pending != null}
         title="Перенести урок?"
@@ -201,10 +225,10 @@ export function WeekGrid({
 
       <div className="wg__head">
         <div className="wg__gutter" />
-        {dayNames.map((d, i) => (
-          <div key={d} className={'wg__day' + (i === todayIdx ? ' is-today' : '')}>
-            <span className="wg__dow">{d}</span>
-            <span className="wg__date">{dates[i]}</span>
+        {visibleDays.map((di) => (
+          <div key={di} className={'wg__day' + (di === todayIdx ? ' is-today' : '')}>
+            <span className="wg__dow">{dayNames[di]}</span>
+            <span className="wg__date">{dates[di]}</span>
           </div>
         ))}
       </div>
@@ -220,20 +244,20 @@ export function WeekGrid({
         >
           <div className="wg__gutter wg__gutter--rows">
             {hours.map((h) => (
-              <div key={h} className="wg__hour" style={{ height: WG_PX_PER_HOUR }}>
-                <span>{fmtTime(h)}</span>
+              <div key={h} className="wg__hour" style={{ height: pxPerHour }}>
+                <span>{compact ? String(h) : fmtTime(h)}</span>
               </div>
             ))}
           </div>
-          {dayNames.map((_, di) => (
+          {visibleDays.map((di) => (
             <div key={di} className={'wg__col' + (di === todayIdx ? ' is-today' : '')}>
               {hours.map((h) => (
                 <button
                   key={h}
                   type="button"
                   className="wg__slot"
-                  style={{ height: WG_PX_PER_HOUR }}
-                  aria-label={`Добавить урок ${fmtTime(h)}, ${dayNames[di]}`}
+                  style={{ height: pxPerHour }}
+                  aria-label={`Добавить урок ${fmtTime(h)}, ${dayNames[di]!}`}
                   onClick={() => !active && onSlotClick(di, h)}
                   tabIndex={active ? -1 : 0}
                 />
@@ -253,6 +277,7 @@ export function WeekGrid({
                       student={stu}
                       start={l.start}
                       layout={layout}
+                      pxPerHour={pxPerHour}
                       onPointerDown={(e) => onPointerDown(e, l)}
                       onClick={() => onLessonClick(l.id)}
                     />
@@ -272,6 +297,7 @@ export function WeekGrid({
                       student={stu}
                       start={preview.start}
                       layout={layout}
+                      pxPerHour={pxPerHour}
                       ghost
                     />
                   );

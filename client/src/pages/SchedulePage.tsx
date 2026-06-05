@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+import { useAtom, useAtomValue } from 'jotai';
 import { useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import { tutorAtom } from '../atoms/auth';
 import {
@@ -19,7 +19,13 @@ import { useLessonActions } from '../hooks/useLessonActions';
 import { useRecurringScheduleActions } from '../hooks/useRecurringScheduleActions';
 import { fmtWeekLabel } from '../utils/format';
 import { isLessonPast } from '../utils/lessonBalance';
-import { shiftWeek, todayDayIndex, weekRangeUtc, type ViewLesson } from '../utils/schedule';
+import {
+  clampGridDayToVisible,
+  shiftWeek,
+  todayDayIndex,
+  weekRangeUtc,
+  type ViewLesson,
+} from '../utils/schedule';
 import { loadSchedule } from '../state/loadSchedule';
 import { useAppStore } from '../hooks/useAppStore';
 
@@ -30,9 +36,9 @@ type ShellContext = {
 };
 
 const VARIANTS = [
-  { id: 'week' as const, label: 'Неделя' },
-  { id: 'timeline' as const, label: 'Таймлайн' },
-  { id: 'agenda' as const, label: 'Агенда' },
+  { id: 'week' as const, label: 'Неделя', mobileLabel: 'Неделя' },
+  { id: 'timeline' as const, label: 'Таймлайн', mobileLabel: 'Лента' },
+  { id: 'agenda' as const, label: 'Агенда', mobileLabel: 'Список' },
 ];
 
 function Topbar({
@@ -58,60 +64,102 @@ function Topbar({
   onToday: () => void;
   onAddLesson: () => void;
 }) {
+  const themeBtn = (
+    <button
+      type="button"
+      className="iconbtn iconbtn--round"
+      onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+      aria-label="Тема"
+    >
+      {theme === 'light' ? (
+        <svg viewBox="0 0 24 24" width="18" height="18">
+          <path d="M21 13a8 8 0 11-9.5-9 6.5 6.5 0 009.5 9z" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" width="18" height="18">
+          <circle cx="12" cy="12" r="4.5" />
+          <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M5 5l1.8 1.8M17.2 17.2L19 19M19 5l-1.8 1.8M6.8 17.2L5 19" />
+        </svg>
+      )}
+    </button>
+  );
+
+  const weekNav = (
+    <div className="weeknav">
+      <div className="weeknav__range">
+        <button type="button" className="iconbtn" aria-label="Назад" onClick={onPrevWeek}>
+          ‹
+        </button>
+        <span className="weeknav__label">{weekLabel}</span>
+        <button type="button" className="iconbtn" aria-label="Вперёд" onClick={onNextWeek}>
+          ›
+        </button>
+      </div>
+      <button type="button" className="btn btn--ghost btn--sm" onClick={onToday}>
+        Сегодня
+      </button>
+    </div>
+  );
+
+  const variantSeg = (
+    <div className="seg seg--variant">
+      {VARIANTS.map((v) => (
+        <button
+          key={v.id}
+          type="button"
+          className={'seg__btn' + (variant === v.id ? ' is-active' : '')}
+          onClick={() => setVariant(v.id)}
+        >
+          {mobile ? v.mobileLabel : v.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (mobile) {
+    return (
+      <header className="top top--schedule">
+        <div className="top__row top__row--toolbar">
+          <div className="weeknav weeknav--compact">
+            <button type="button" className="iconbtn iconbtn--dense" aria-label="Назад" onClick={onPrevWeek}>
+              ‹
+            </button>
+            <span className="weeknav__label">{weekLabel}</span>
+            <button type="button" className="iconbtn iconbtn--dense" aria-label="Вперёд" onClick={onNextWeek}>
+              ›
+            </button>
+          </div>
+          <div className="top__actions">
+            <button type="button" className="top__link" onClick={onToday}>
+              Сегодня
+            </button>
+            <button
+              type="button"
+              className="btn btn--primary btn--sm top__fab"
+              onClick={onAddLesson}
+              aria-label="Добавить урок"
+            >
+              +
+            </button>
+          </div>
+        </div>
+        {variantSeg}
+      </header>
+    );
+  }
+
   return (
     <header className="top">
       <div className="top__l">
         <h1 className="top__title">Расписание</h1>
-        {!mobile && (
-          <div className="weeknav">
-            <div className="weeknav__range">
-              <button type="button" className="iconbtn" aria-label="Назад" onClick={onPrevWeek}>
-                ‹
-              </button>
-              <span className="weeknav__label">{weekLabel}</span>
-              <button type="button" className="iconbtn" aria-label="Вперёд" onClick={onNextWeek}>
-                ›
-              </button>
-            </div>
-            <button type="button" className="btn btn--ghost btn--sm" onClick={onToday}>
-              Сегодня
-            </button>
-          </div>
-        )}
+        {weekNav}
       </div>
       <div className="top__r">
-        <div className="seg seg--variant">
-          {VARIANTS.map((v) => (
-            <button
-              key={v.id}
-              type="button"
-              className={'seg__btn' + (variant === v.id ? ' is-active' : '')}
-              onClick={() => setVariant(v.id)}
-            >
-              {v.label}
-            </button>
-          ))}
-        </div>
+        {variantSeg}
         <button type="button" className="btn btn--primary btn--sm" onClick={onAddLesson}>
           + Урок
         </button>
-        <button
-          type="button"
-          className="iconbtn iconbtn--round"
-          onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-          aria-label="Тема"
-        >
-          {theme === 'light' ? (
-            <svg viewBox="0 0 24 24" width="18" height="18">
-              <path d="M21 13a8 8 0 11-9.5-9 6.5 6.5 0 009.5 9z" />
-            </svg>
-          ) : (
-            <svg viewBox="0 0 24 24" width="18" height="18">
-              <circle cx="12" cy="12" r="4.5" />
-              <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M5 5l1.8 1.8M17.2 17.2L19 19M19 5l-1.8 1.8M6.8 17.2L5 19" />
-            </svg>
-          )}
-        </button>
+        {themeBtn}
       </div>
     </header>
   );
@@ -166,7 +214,7 @@ export function SchedulePage() {
   const [selectedId, setSelectedId] = useAtom(selectedLessonIdAtom);
   const [draft, setDraft] = useAtom(lessonDraftAtom);
   const [prefillStudentId, setPrefillStudentId] = useState<string | undefined>();
-  const setActiveDay = useSetAtom(activeDayAtom);
+  const [activeDay, setActiveDay] = useAtom(activeDayAtom);
   const { setStatus, setPaid, setNotes, createLesson, deleteLesson, rescheduleLesson } =
     useLessonActions();
   const { createRecurringSchedule, deleteRecurringSchedule } = useRecurringScheduleActions();
@@ -178,13 +226,26 @@ export function SchedulePage() {
   const effVariant = mobile && variant !== 'week' ? variant : variant;
 
   const weekStartsOn = tutor?.weekStartsOn ?? 'monday';
+  const hiddenWeekdays = tutor?.hiddenWeekdays ?? [];
+
+  useEffect(() => {
+    const today = todayDayIndex(weekStart, tz);
+    if (today != null) {
+      setActiveDay(clampGridDayToVisible(today, weekStartsOn, hiddenWeekdays));
+    }
+  }, [weekStart, tz, weekStartsOn, hiddenWeekdays, setActiveDay]);
+
+  useEffect(() => {
+    const clamped = clampGridDayToVisible(activeDay, weekStartsOn, hiddenWeekdays);
+    if (clamped !== activeDay) setActiveDay(clamped);
+  }, [activeDay, weekStartsOn, hiddenWeekdays, setActiveDay]);
 
   const reloadWeek = async (anchor: Date) => {
     const { weekStart } = weekRangeUtc(anchor, weekStartsOn);
     store.set(weekStartAtom, weekStart);
     await loadSchedule(store.get, store.set);
     const idx = todayDayIndex(weekStart, tz);
-    if (idx != null) setActiveDay(idx);
+    if (idx != null) setActiveDay(clampGridDayToVisible(idx, weekStartsOn, hiddenWeekdays));
   };
 
   const onPrevWeek = () => void reloadWeek(shiftWeek(weekStart, -1));
@@ -214,7 +275,10 @@ export function SchedulePage() {
 
   const openCreate = (day: number, start = 10) => {
     setSelectedId(null);
-    setDraft({ day, start });
+    setDraft({
+      day: clampGridDayToVisible(day, weekStartsOn, hiddenWeekdays),
+      start,
+    });
   };
 
   const onLessonCreated = async (input: Parameters<typeof createLesson>[0]): Promise<string> => {
@@ -250,6 +314,7 @@ export function SchedulePage() {
         <main className="board">
           {effVariant === 'week' && (
             <WeekGrid
+              compact={mobile}
               onSelect={setSelectedId}
               onSlotClick={openCreate}
               onReschedule={rescheduleLesson}

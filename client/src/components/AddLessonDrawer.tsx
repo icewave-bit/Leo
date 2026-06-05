@@ -5,7 +5,7 @@ import { tutorAtom } from '../atoms/auth';
 import { studentsAtom, weekStartAtom } from '../atoms/schedule';
 import { academicHourHint, durationMinFromUnits } from '../utils/academicHour';
 import { resolveRecurrenceStartDate } from '../utils/recurrence';
-import { weekDates, weekDayNames, type LessonDraft } from '../utils/schedule';
+import { visibleGridDays, weekDates, weekDayNames, type LessonDraft } from '../utils/schedule';
 import { fmtTime } from '../utils/format';
 import { AcademicUnitsSeg } from './AcademicUnitsSeg';
 import { RecurrenceFields } from './RecurrenceFields';
@@ -57,8 +57,12 @@ export function AddLessonDrawer({
   const weekStartsOn = tutor?.weekStartsOn ?? 'monday';
   const { full: daysFull, short: daysShort } = weekDayNames(weekStartsOn);
   const dates = weekDates(weekStart, tz);
+  const visibleDays = visibleGridDays(weekStartsOn, tutor?.hiddenWeekdays ?? []);
 
-  const [day, setDay] = useState(draft.day);
+  const [day, setDay] = useState(() => {
+    const visible = visibleGridDays(weekStartsOn, tutor?.hiddenWeekdays ?? []);
+    return visible.includes(draft.day) ? draft.day : (visible[0] ?? draft.day);
+  });
   const [time, setTime] = useState(hoursToTimeValue(draft.start));
   const [studentId, setStudentId] = useState(
     defaultStudentId && students.some((s) => s.id === defaultStudentId)
@@ -181,9 +185,9 @@ export function AddLessonDrawer({
                   value={day}
                   onChange={(e) => setDay(Number(e.target.value))}
                 >
-                  {daysFull.map((name, i) => (
-                    <option key={name} value={i}>
-                      {name}, {dates[i]}
+                  {visibleDays.map((i) => (
+                    <option key={i} value={i}>
+                      {daysFull[i]}, {dates[i]}
                     </option>
                   ))}
                 </select>

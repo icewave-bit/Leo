@@ -84,6 +84,49 @@ export function weekDayNames(weekStartsOn: WeekStartsOn): {
     : { short: DAYS_MON, full: DAYS_FULL_MON };
 }
 
+/** Mon=0 … Sun=6 — stable calendar labels for settings (independent of weekStartsOn). */
+export const CALENDAR_WEEKDAY_SHORT = DAYS_MON;
+export const CALENDAR_WEEKDAY_FULL = DAYS_FULL_MON;
+
+/** Grid column index → calendar weekday Mon=0 … Sun=6. */
+export function gridDayToCalendarDow(gridDay: number, weekStartsOn: WeekStartsOn): number {
+  return weekStartsOn === 'monday' ? gridDay : (gridDay + 6) % 7;
+}
+
+/** Calendar weekday → grid column index for the current weekStartsOn. */
+export function calendarDowToGridDay(calendarDow: number, weekStartsOn: WeekStartsOn): number {
+  return weekStartsOn === 'monday' ? calendarDow : (calendarDow + 1) % 7;
+}
+
+export function isGridDayHidden(
+  gridDay: number,
+  weekStartsOn: WeekStartsOn,
+  hiddenCalendarDays: readonly number[],
+): boolean {
+  return hiddenCalendarDays.includes(gridDayToCalendarDow(gridDay, weekStartsOn));
+}
+
+/** Visible grid column indices (0..6) for the week grid and schedule views. */
+export function visibleGridDays(
+  weekStartsOn: WeekStartsOn,
+  hiddenCalendarDays: readonly number[],
+): number[] {
+  const hidden = new Set(hiddenCalendarDays);
+  return [0, 1, 2, 3, 4, 5, 6].filter(
+    (gridDay) => !hidden.has(gridDayToCalendarDow(gridDay, weekStartsOn)),
+  );
+}
+
+export function clampGridDayToVisible(
+  gridDay: number,
+  weekStartsOn: WeekStartsOn,
+  hiddenCalendarDays: readonly number[],
+): number {
+  const visible = visibleGridDays(weekStartsOn, hiddenCalendarDays);
+  if (visible.length === 0) return gridDay;
+  return visible.includes(gridDay) ? gridDay : visible[0]!;
+}
+
 export function startOfWeekUTC(d: Date, weekStartsOn: WeekStartsOn): Date {
   const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const dow = x.getUTCDay();

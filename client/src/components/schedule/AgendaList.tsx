@@ -1,7 +1,7 @@
 import { useAtomValue } from 'jotai';
 import { tutorAtom } from '../../atoms/auth';
 import { lessonsAtom, weekStartAtom } from '../../atoms/schedule';
-import { weekDates, weekDayNames, todayDayIndex } from '../../utils/schedule';
+import { visibleGridDays, weekDates, weekDayNames, todayDayIndex } from '../../utils/schedule';
 import { useStudentMap } from '../../hooks/useStudentMap';
 import {
   fmtTime,
@@ -24,14 +24,15 @@ export function AgendaList({ onSelect }: { onSelect: (id: string) => void }) {
   const dates = weekDates(weekStart, tz);
   const todayIdx = todayDayIndex(weekStart, tz);
 
-  const byDay = Array.from({ length: 7 }, (_, i) =>
-    lessons.filter((l) => l.day === i).sort((a, b) => a.start - b.start),
-  );
+  const visibleDays = visibleGridDays(weekStartsOn, tutor?.hiddenWeekdays ?? []);
 
   return (
     <div className="ag">
-      {byDay.map((ls, di) =>
-        ls.length === 0 ? null : (
+      {visibleDays.map((di) => {
+        const ls = lessons
+          .filter((l) => l.day === di)
+          .sort((a, b) => a.start - b.start);
+        return ls.length === 0 ? null : (
           <section key={di} className="ag__group">
             <div className="ag__date">
               <span className={'ag__num' + (di === todayIdx ? ' is-today' : '')}>{dates[di]}</span>
@@ -75,8 +76,8 @@ export function AgendaList({ onSelect }: { onSelect: (id: string) => void }) {
               })}
             </div>
           </section>
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }

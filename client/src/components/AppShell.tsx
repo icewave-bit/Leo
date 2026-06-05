@@ -13,39 +13,45 @@ const NAV = [
     id: 'schedule',
     to: '/schedule',
     label: 'Расписание',
+    mobileLabel: 'Распис.',
     icon: 'M7 2v3M17 2v3M3 8h18M5 5h14a1 1 0 011 1v13a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1z',
   },
   {
     id: 'students',
     to: '/students',
     label: 'Студенты',
+    mobileLabel: 'Студенты',
     icon: 'M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5M16 13c2.2 0 4 1.6 4 4',
   },
   {
     id: 'payments',
     to: '/payments',
     label: 'Оплаты',
+    mobileLabel: 'Оплаты',
     icon: 'M3 7h18v10H3zM3 10h18M7 14h3',
   },
   {
     id: 'taxes',
     to: '/taxes',
     label: 'Налоги',
+    mobileLabel: 'Налоги',
     icon: 'M4 4h16v4H4zM4 10h10v10H4zM16 10h4v4h-4v6h-4',
   },
   {
     id: 'analytics',
     to: '/analytics',
     label: 'Аналитика',
+    mobileLabel: 'Аналит.',
     icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
   },
   {
     id: 'settings',
     to: '/settings',
     label: 'Настройки',
+    mobileLabel: 'Настр.',
     icon: 'M12 9a3 3 0 100 6 3 3 0 000-6zM4 12l-1.5-1 1.5-3 1.8.5M20 12l1.5-1-1.5-3-1.8.5M12 4V2M12 22v-2',
   },
-];
+] as const;
 
 function SidebarNav({ mobile }: { mobile: boolean }) {
   const tutor = useAtomValue(tutorAtom);
@@ -65,15 +71,16 @@ function SidebarNav({ mobile }: { mobile: boolean }) {
 
   if (mobile) {
     return (
-      <nav className="botnav">
+      <nav className="botnav" style={{ '--botnav-cols': NAV.length } as React.CSSProperties}>
         {NAV.map((n) => (
           <NavLink
             key={n.id}
             to={n.to}
             className={({ isActive }) => 'botnav__item' + (isActive ? ' is-active' : '')}
+            aria-label={n.label}
           >
             <Icon d={n.icon} />
-            <span>{n.label}</span>
+            <span>{n.mobileLabel}</span>
           </NavLink>
         ))}
       </nav>

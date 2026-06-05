@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import type { BalanceKind, TaxDisplayCurrency, WeekStartsOn } from '../api/types';
 import { api } from '../api/client';
 import { tutorAtom } from '../atoms/auth';
-import { weekStartAtom } from '../atoms/schedule';
+import { themeAtom, weekStartAtom } from '../atoms/schedule';
 import { useAppStore } from '../hooks/useAppStore';
 import { loadSchedule } from '../state/loadSchedule';
 import { weekRangeUtc } from '../utils/schedule';
@@ -13,11 +13,14 @@ import {
   SETTINGS_CARD_ICONS,
   SettingsCardHeader,
 } from '../components/settings/SettingsCardHeader';
+import { AppVersionFooter } from '../components/settings/AppVersionFooter';
+import { VisibleWeekdaysField } from '../components/settings/VisibleWeekdaysField';
 import { ACADEMIC_HOUR_PRESETS, academicHourHint } from '../utils/academicHour';
 import { TAX_DISPLAY_OPTIONS, TAX_RATE_PRESETS } from '../utils/taxSettings';
 
 export function SettingsPage() {
   const [tutor, setTutor] = useAtom(tutorAtom);
+  const [theme, setTheme] = useAtom(themeAtom);
   const [custom, setCustom] = useState(false);
   const [customMin, setCustomMin] = useState(String(tutor?.academicHourMin ?? 60));
   const [saving, setSaving] = useState(false);
@@ -102,6 +105,28 @@ export function SettingsPage() {
     await saveTaxSettings({ taxRatePercent });
   };
 
+  const saveHiddenWeekdays = async (hiddenWeekdays: number[]) => {
+    const current = tutor.hiddenWeekdays ?? [];
+    if (
+      hiddenWeekdays.length === current.length &&
+      hiddenWeekdays.every((d, i) => d === current[i])
+    ) {
+      return;
+    }
+    const previous = tutor.hiddenWeekdays ?? [];
+    setError(null);
+    setSaved(false);
+    setTutor({ ...tutor, hiddenWeekdays });
+    try {
+      const { tutor: updated } = await api.patchMe({ hiddenWeekdays });
+      setTutor(updated);
+      setSaved(true);
+    } catch (e) {
+      setTutor({ ...tutor, hiddenWeekdays: previous });
+      setError(e instanceof Error ? e.message : 'Не удалось сохранить');
+    }
+  };
+
   const saveWeekStartsOn = async (weekStartsOn: WeekStartsOn) => {
     if (weekStartsOn === tutor.weekStartsOn) return;
     setWeekSaving(true);
@@ -135,6 +160,27 @@ export function SettingsPage() {
         {saved ? <p className="settings-board__ok">Сохранено</p> : null}
 
         <div className="settings-grid">
+          <section className="settings-card">
+            <SettingsCardHeader icon={SETTINGS_CARD_ICONS.theme} title="Оформление" />
+            <p className="settings-card__desc">Светлая или тёмная тема интерфейса.</p>
+            <div className="seg settings-presets">
+              <button
+                type="button"
+                className={'seg__btn' + (theme === 'light' ? ' is-active' : '')}
+                onClick={() => setTheme('light')}
+              >
+                Светлая
+              </button>
+              <button
+                type="button"
+                className={'seg__btn' + (theme === 'dark' ? ' is-active' : '')}
+                onClick={() => setTheme('dark')}
+              >
+                Тёмная
+              </button>
+            </div>
+          </section>
+
           <section className="settings-card">
             <SettingsCardHeader icon={SETTINGS_CARD_ICONS.archive} title="Архив учеников" />
           <p className="settings-card__desc">
@@ -187,6 +233,19 @@ export function SettingsPage() {
               Воскресенье
             </button>
           </div>
+          </section>
+
+          <section className="settings-card">
+            <SettingsCardHeader icon={SETTINGS_CARD_ICONS.workdays} title="Дни в расписании" />
+            <p className="settings-card__desc">
+              Отключите выходные или другие нерабочие дни — они исчезнут из календаря. Уроки на скрытых
+              днях сохраняются; при необходимости снова включите день здесь.
+            </p>
+            <VisibleWeekdaysField
+              hiddenWeekdays={tutor.hiddenWeekdays ?? []}
+              disabled={weekSaving}
+              onChange={(hidden) => void saveHiddenWeekdays(hidden)}
+            />
           </section>
 
           <section className="settings-card">
@@ -368,6 +427,7 @@ export function SettingsPage() {
             <p className="settings-card__badge">Скоро</p>
           </section>
         </div>
+        <AppVersionFooter />
       </div>
     </div>
   );

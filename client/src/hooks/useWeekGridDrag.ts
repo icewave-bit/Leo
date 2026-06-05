@@ -4,6 +4,7 @@ import {
   WG_AUTOSCROLL_EDGE_PX,
   WG_AUTOSCROLL_MAX_SPEED,
   WG_DRAG_THRESHOLD_PX,
+  WG_GUTTER,
   WG_HOUR_LABEL_INSET,
   WG_PX_PER_HOUR,
 } from '../constants/weekGrid';
@@ -38,19 +39,23 @@ function pointerToSlot(
   clientX: number,
   clientY: number,
   durationHours: number,
+  pxPerHour: number,
+  gutter: number,
+  visibleDays: readonly number[],
 ): { day: number; start: number } {
   const bodyRect = bodyEl.getBoundingClientRect();
   const scrollRect = scrollEl.getBoundingClientRect();
-  const gutter = 56;
 
   const yInBody =
     scrollEl.scrollTop + (clientY - scrollRect.top) - WG_HOUR_LABEL_INSET;
-  const start = clampLessonStart(yInBody / WG_PX_PER_HOUR, durationHours);
+  const start = clampLessonStart(yInBody / pxPerHour, durationHours);
 
+  const colCount = Math.max(1, visibleDays.length);
   const gridWidth = bodyRect.width - gutter;
-  const colW = gridWidth / 7;
+  const colW = gridWidth / colCount;
   const xInGrid = clientX - bodyRect.left - gutter;
-  const day = Math.max(0, Math.min(6, Math.floor(xInGrid / colW)));
+  const colIndex = Math.max(0, Math.min(colCount - 1, Math.floor(xInGrid / colW)));
+  const day = visibleDays[colIndex] ?? visibleDays[0] ?? 0;
 
   return { day, start };
 }
@@ -88,9 +93,23 @@ export function useWeekGridDrag(opts: {
   ) => Promise<void>;
   getStudent: (id: string) => ViewStudent | undefined;
   daysFull: readonly string[];
+  pxPerHour?: number;
+  gutter?: number;
+  visibleDays?: readonly number[];
 }) {
-  const { scrollRef, bodyRef, dates, studentName, onSelect, onReschedule, getStudent, daysFull } =
-    opts;
+  const {
+    scrollRef,
+    bodyRef,
+    dates,
+    studentName,
+    onSelect,
+    onReschedule,
+    getStudent,
+    daysFull,
+    pxPerHour = WG_PX_PER_HOUR,
+    gutter = WG_GUTTER,
+    visibleDays = [0, 1, 2, 3, 4, 5, 6],
+  } = opts;
 
   const sessionRef = useRef<DragSession | null>(null);
   const lastClientYRef = useRef(0);
@@ -169,6 +188,9 @@ export function useWeekGridDrag(opts: {
         e.clientX,
         e.clientY,
         session.lesson.dur,
+        pxPerHour,
+        gutter,
+        visibleDays,
       );
       setPreview(slot);
     };
@@ -187,6 +209,9 @@ export function useWeekGridDrag(opts: {
           e.clientX,
           e.clientY,
           session.lesson.dur,
+          pxPerHour,
+          gutter,
+          visibleDays,
         );
         suppressClickRef.current = true;
         if (!sameLessonSlot(session.origin, slot)) {
@@ -221,7 +246,7 @@ export function useWeekGridDrag(opts: {
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [bodyRef, endDrag, onSelect, scrollRef, studentName]);
+  }, [bodyRef, endDrag, gutter, onSelect, pxPerHour, scrollRef, studentName, visibleDays]);
 
   const onLessonClick = useCallback(
     (id: string) => {

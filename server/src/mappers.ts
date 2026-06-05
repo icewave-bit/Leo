@@ -23,6 +23,7 @@ interface TutorRow {
   default_replenish_balance_kind: BalanceKind;
   tax_rate_percent: string;
   tax_display_currency: TaxDisplayCurrency;
+  hidden_weekdays: number[];
   created_at: Date;
 }
 
@@ -102,6 +103,7 @@ export function toTutor(row: TutorRow): Tutor {
     defaultReplenishBalanceKind: row.default_replenish_balance_kind,
     taxRatePercent: Number(row.tax_rate_percent),
     taxDisplayCurrency: row.tax_display_currency,
+    hiddenWeekdays: row.hidden_weekdays ?? [],
     createdAt: toIsoUtc(row.created_at),
   };
 }
