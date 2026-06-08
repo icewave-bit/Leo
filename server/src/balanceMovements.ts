@@ -76,10 +76,7 @@ export async function recordStudentBalancePatch(
   const debtDelta = debtAfter - debtBefore;
   if (Math.abs(prepaidDelta) < 1e-9 && Math.abs(debtDelta) < 1e-9) return;
 
-  const kind: BalanceMovementKind =
-    opts?.prepaidTopUp || (prepaidDelta > 0 && debtDelta <= 0)
-      ? 'replenish'
-      : 'manual';
+  const kind: BalanceMovementKind = opts?.prepaidTopUp ? 'replenish' : 'manual';
 
   await recordBalanceMovement(client, {
     studentId,

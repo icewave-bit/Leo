@@ -195,4 +195,36 @@ describe('taxes', () => {
     expect(list.body[0].amount).toBe(120);
     expect(list.body[0].amountByn).toBe(390);
   });
+
+  it('excludes manual balance corrections (prepaid + debt patch)', async () => {
+    const { agent } = await registerTutor(app);
+
+    const studentRes = await agent
+      .post('/api/students')
+      .send({
+        name: 'Initial Balance',
+        hue: 215,
+        balanceKind: 'money',
+        currency: 'EUR',
+        prepaid: 0,
+        debt: 0,
+        rate: 50,
+        isGroup: false,
+        members: [],
+      })
+      .expect(201);
+    const studentId = studentRes.body.id as string;
+
+    await agent
+      .patch(`/api/students/${studentId}`)
+      .send({ balanceKind: 'money', prepaid: 100, debt: 0 })
+      .expect(200);
+
+    const month = `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, '0')}`;
+    const list = await agent
+      .get(`/api/taxes?month=${month}&studentId=${studentId}`)
+      .expect(200);
+
+    expect(list.body.length).toBe(0);
+  });
 });

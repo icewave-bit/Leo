@@ -120,4 +120,40 @@ describe('balance movements', () => {
       .expect(200);
     expect(byStudent.body.some((m: { kind: string }) => m.kind === 'replenish')).toBe(true);
   });
+
+  it('records manual kind for balance correction with prepaid and debt', async () => {
+    const { agent } = await registerTutor(app);
+
+    const studentRes = await agent
+      .post('/api/students')
+      .send({
+        name: 'Manual Correct',
+        hue: 220,
+        balanceKind: 'money',
+        currency: 'EUR',
+        prepaid: 0,
+        debt: 0,
+        rate: 50,
+        isGroup: false,
+        members: [],
+      })
+      .expect(201);
+    const studentId = studentRes.body.id as string;
+
+    await agent
+      .patch(`/api/students/${studentId}`)
+      .send({ balanceKind: 'money', prepaid: 80, debt: 0 })
+      .expect(200);
+
+    const from = new Date(0).toISOString();
+    const to = new Date(Date.now() + 86_400_000).toISOString();
+    const list = await agent
+      .get(
+        `/api/balance-movements?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&studentId=${studentId}`,
+      )
+      .expect(200);
+
+    expect(list.body).toHaveLength(1);
+    expect(list.body[0].kind).toBe('manual');
+  });
 });
