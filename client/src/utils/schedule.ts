@@ -46,6 +46,8 @@ export interface ViewStudent {
   prepaid: number;
   debt: number;
   excludeFromTaxes: boolean;
+  billingStudentId: string | null;
+  openLessonDebt: number;
   archivedAt?: string | null;
 }
 
@@ -332,6 +334,8 @@ export function studentToView(s: Student): ViewStudent {
     prepaid: s.prepaid,
     debt: s.debt,
     excludeFromTaxes: s.excludeFromTaxes,
+    billingStudentId: s.billingStudentId,
+    openLessonDebt: s.openLessonDebt,
     archivedAt: s.archivedAt,
   };
 }

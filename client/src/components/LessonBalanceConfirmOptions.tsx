@@ -1,11 +1,12 @@
 import type { BalanceKind } from '../api/types';
 import type { AcademicUnits } from '../api/types';
-import { formatChargeSummary } from '../utils/lessonBalance';
+import { formatWalletChargeSummary } from '../utils/lessonBalance';
 
 export interface LessonBalanceConfirmOptionsProps {
-  balanceKind: BalanceKind;
+  walletBalanceKind: BalanceKind;
+  walletRate: number | null;
+  lessonRate: number | null;
   academicUnits: AcademicUnits;
-  rate: number | null;
   currency: string;
   balanceCharged: boolean;
   restoreBalance: boolean;
@@ -13,15 +14,22 @@ export interface LessonBalanceConfirmOptionsProps {
 }
 
 export function LessonBalanceConfirmOptions({
-  balanceKind,
+  walletBalanceKind,
+  walletRate,
+  lessonRate,
   academicUnits,
-  rate,
   currency,
   balanceCharged,
   restoreBalance,
   onRestoreBalanceChange,
 }: LessonBalanceConfirmOptionsProps) {
-  const chargeLabel = formatChargeSummary(balanceKind, academicUnits, rate, currency);
+  const chargeLabel = formatWalletChargeSummary(
+    walletBalanceKind,
+    walletRate,
+    lessonRate,
+    academicUnits,
+    currency,
+  );
 
   return (
     <div className="confirm__balance">

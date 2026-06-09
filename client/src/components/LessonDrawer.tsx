@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAtomValue } from 'jotai';
 import { STATUS_LABELS } from '../constants/status';
 import { academicUnitsShort, lessonPrice } from '../utils/academicHour';
-import { fmtMoney, fmtTime } from '../utils/format';
+import { fmtBalanceAmount, fmtMoney, fmtTime } from '../utils/format';
 import { isLessonPast } from '../utils/lessonBalance';
 import {
   completedPayHint,
@@ -12,9 +13,11 @@ import {
 } from '../utils/lessonPay';
 import { weekDates, weekDayNames } from '../utils/schedule';
 import { recurringSchedulesAtom } from '../atoms/schedule';
+import { studentsAtom } from '../atoms/schedule';
 import { tutorAtom } from '../atoms/auth';
 import { weekStartAtom } from '../atoms/schedule';
 import { useStudent } from '../hooks/useStudentMap';
+import { findBillingPayer, isBillingDependent } from '../utils/billingStudent';
 import type { ViewLesson, UiLessonStatus } from '../utils/schedule';
 import { ConfirmDialog } from './ConfirmDialog';
 import { LessonBalanceConfirmOptions } from './LessonBalanceConfirmOptions';
@@ -24,6 +27,7 @@ import {
 } from './LessonDeleteScopeOptions';
 import { RecurrenceIcon } from './RecurrenceFields';
 import { StudentBalance } from './StudentBalance';
+import { BillingPayerLink } from './students/BillingPayerLink';
 import { TypeIcon } from './schedule/LessonChrome';
 
 interface LessonDrawerProps {
@@ -45,6 +49,7 @@ export function LessonDrawer({
   onDelete,
   onDeleteSeries,
 }: LessonDrawerProps) {
+  const navigate = useNavigate();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [notesDraft, setNotesDraft] = useState(lesson.notes ?? '');
   const [deleteScope, setDeleteScope] = useState<LessonDeleteScope>('lesson');
@@ -58,6 +63,7 @@ export function LessonDrawer({
   }, [lesson.id, lesson.notes]);
 
   const stu = useStudent(lesson.studentId);
+  const students = useAtomValue(studentsAtom);
   const tutor = useAtomValue(tutorAtom);
   const weekStart = useAtomValue(weekStartAtom);
   const recurringSchedules = useAtomValue(recurringSchedulesAtom);
@@ -66,6 +72,9 @@ export function LessonDrawer({
   const { full: daysFull } = weekDayNames(tutor?.weekStartsOn ?? 'monday');
 
   if (!stu) return null;
+
+  const billingDependent = isBillingDependent(stu);
+  const balanceStudent = findBillingPayer(students, stu) ?? stu;
 
   const price =
     stu.group || stu.rate == null ? null : lessonPrice(stu.rate, lesson.academicUnits);
@@ -82,8 +91,8 @@ export function LessonDrawer({
   const pastByTime = isLessonPast(lesson.startUtc, lesson.durationMin);
   const showBalanceOnDelete = pastByTime;
   const payDisabled = lessonPayToggleDisabled(lesson.status);
-  const payPreview = plannedPayPreview(stu, lesson.academicUnits);
-  const payLabel = payToggleLabel(lesson, stu);
+  const payPreview = plannedPayPreview(stu, lesson.academicUnits, balanceStudent);
+  const payLabel = payToggleLabel(lesson, stu, balanceStudent);
   const payToggleOn = lesson.status === 'planned' ? (payPreview?.paid ?? false) : lesson.paid;
 
   const isRecurring = Boolean(lesson.recurringScheduleId && onDeleteSeries);
@@ -151,10 +160,11 @@ export function LessonDrawer({
         ) : null}
         {!deleteSeries && showBalanceOnDelete ? (
           <LessonBalanceConfirmOptions
-            balanceKind={stu.balanceKind}
+            walletBalanceKind={balanceStudent.balanceKind}
+            walletRate={balanceStudent.rate}
+            lessonRate={stu.rate}
             academicUnits={lesson.academicUnits}
-            rate={stu.rate}
-            currency={stu.currency}
+            currency={balanceStudent.currency}
             balanceCharged={lesson.balanceCharged}
             restoreBalance={restoreBalance}
             onRestoreBalanceChange={setRestoreBalance}
@@ -264,8 +274,30 @@ export function LessonDrawer({
         </div>
 
         <div className="drawer__balance">
-          <span className="drawer__k">Баланс ученика</span>
-          <StudentBalance student={stu} />
+          {billingDependent ? (
+            <>
+              <span className="drawer__k">Долг за уроки</span>
+              <p className="drawer__balance-dependent tnum">
+                {stu.openLessonDebt > 0
+                  ? fmtBalanceAmount(
+                      stu.openLessonDebt,
+                      balanceStudent.balanceKind,
+                      balanceStudent.currency,
+                    )
+                  : 'Нет неоплаченных уроков'}
+              </p>
+              <BillingPayerLink
+                payerId={balanceStudent.id}
+                payerName={balanceStudent.name}
+                onOpen={(id) => navigate(`/students/${id}`)}
+              />
+            </>
+          ) : (
+            <>
+              <span className="drawer__k">Баланс ученика</span>
+              <StudentBalance student={balanceStudent} />
+            </>
+          )}
         </div>
 
         <label className="field">

@@ -7,10 +7,12 @@ import { useStudentActions } from '../../hooks/useStudentActions';
 import { useAppStore } from '../../hooks/useAppStore';
 import { fmtBalanceAmount, fmtBalanceNet, fmtMoney, lessonCountLabel } from '../../utils/format';
 import { fmtDateKey, todayDateKey } from '../../utils/dateKey';
+import { findBillingPayer, isBillingDependent } from '../../utils/billingStudent';
 import { patchForBalanceKind } from '../../utils/studentBalanceKind';
 import type { ViewStudent } from '../../utils/schedule';
 import { BalanceKindSeg } from '../BalanceKindSeg';
 import { StudentBalance } from '../StudentBalance';
+import { BillingPayerLink } from './BillingPayerLink';
 
 const LESSON_PRESETS = [1, 4, 8, 12] as const;
 
@@ -19,6 +21,7 @@ export interface BalanceReplenishDialogProps {
   open: boolean;
   onClose: () => void;
   onReplenished?: () => void;
+  onOpenStudent?: (studentId: string) => void;
 }
 
 function parseAmount(raw: string, balanceKind: ViewStudent['balanceKind']): number | null {
@@ -32,8 +35,10 @@ export function BalanceReplenishDialog({
   open,
   onClose,
   onReplenished,
+  onOpenStudent,
 }: BalanceReplenishDialogProps) {
   const tutor = useAtomValue(tutorAtom);
+  const students = useAtomValue(studentsAtom);
   const preferred = tutor?.defaultReplenishBalanceKind ?? 'money';
   const weekStartsOn = tutor?.weekStartsOn ?? 'monday';
   const store = useAppStore();
@@ -48,6 +53,12 @@ export function BalanceReplenishDialog({
   const [error, setError] = useState<string | null>(null);
   const busy = saving;
 
+  const billingDependent = isBillingDependent(student);
+  const billingPayer = billingDependent ? findBillingPayer(students, student) : undefined;
+  const readonly = billingDependent;
+  const displayCurrency = billingPayer?.currency ?? student.currency;
+  const displayBalanceKind = billingPayer?.balanceKind ?? student.balanceKind;
+
   const persistBalanceKind = useCallback(
     async (next: BalanceKind) => {
       const current =
@@ -60,6 +71,7 @@ export function BalanceReplenishDialog({
   );
 
   const focusInput = () => {
+    if (readonly) return;
     window.setTimeout(() => inputRef.current?.focus(), 0);
   };
 
@@ -70,9 +82,9 @@ export function BalanceReplenishDialog({
     setReceivedOn(todayDateKey());
     setError(null);
     setSaving(false);
-    setDialogKind(student.balanceKind);
+    setDialogKind(billingPayer?.balanceKind ?? student.balanceKind);
     focusInput();
-  }, [open, student.id, student.balanceKind]);
+  }, [open, student.id, billingPayer?.balanceKind, student.balanceKind, readonly]);
 
   useEffect(() => {
     if (!open) return;
@@ -87,12 +99,11 @@ export function BalanceReplenishDialog({
   const add = parseAmount(amount, kind);
   const net = student.prepaid - student.debt;
   const afterNet = add != null ? net + add : null;
-  const unitLabel = kind === 'lessons' ? 'уроков' : student.currency;
-  const hasDebt = student.debt > 0;
-  const kindDiffers = kind !== student.balanceKind;
+  const hasDebt = readonly ? student.openLessonDebt > 0 : student.debt > 0;
+  const kindDiffers = !readonly && kind !== student.balanceKind;
 
   const onBalanceKindChange = (next: BalanceKind) => {
-    if (next === kind || saving) return;
+    if (readonly || next === kind || saving) return;
     kindTouchedRef.current = true;
     setDialogKind(next);
     setAmount('');
@@ -100,6 +111,7 @@ export function BalanceReplenishDialog({
   };
 
   const submit = async () => {
+    if (readonly) return;
     if (add == null) {
       setError(
         kind === 'lessons'
@@ -125,6 +137,11 @@ export function BalanceReplenishDialog({
     }
   };
 
+  const openPayer = (payerId: string) => {
+    onClose();
+    onOpenStudent?.(payerId);
+  };
+
   if (!open) return null;
 
   return (
@@ -137,7 +154,7 @@ export function BalanceReplenishDialog({
         onClick={onClose}
       />
       <div
-        className="confirm replenish"
+        className={'confirm replenish' + (readonly ? ' replenish--readonly' : '')}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -149,25 +166,46 @@ export function BalanceReplenishDialog({
           <p className="replenish__student">{student.name}</p>
         </header>
 
-        <div className="replenish__balance">
-          <StudentBalance student={student} compact />
-        </div>
+        {readonly ? (
+          <div className="replenish__balance">
+            <p className="replenish__dependent-debt tnum">
+              Долг за уроки:{' '}
+              <strong>
+                {student.openLessonDebt > 0
+                  ? fmtBalanceAmount(
+                      student.openLessonDebt,
+                      displayBalanceKind,
+                      displayCurrency,
+                    )
+                  : 'нет'}
+              </strong>
+            </p>
+            <p className="replenish__hint">
+              Личный баланс не ведётся — уроки списываются с общего счёта.
+            </p>
+          </div>
+        ) : (
+          <div className="replenish__balance">
+            <StudentBalance student={student} compact />
+          </div>
+        )}
 
-        <div className="replenish__kind">
-          <BalanceKindSeg
-            value={kind}
-            disabled={busy}
-            onChange={onBalanceKindChange}
-          />
-        </div>
+        <div className={'balance-actions--readonly' + (readonly ? ' is-readonly' : '')}>
+          <div className="replenish__kind">
+            <BalanceKindSeg
+              value={kind}
+              disabled={busy || readonly}
+              onChange={onBalanceKindChange}
+            />
+          </div>
 
-        {kindDiffers ? (
+        {!readonly && kindDiffers ? (
           <p className="replenish__hint replenish__hint--warn">
             Пополнение в {kind === 'lessons' ? 'уроках' : student.currency}. При сохранении
             переключим учёт с{' '}
             {student.balanceKind === 'lessons' ? 'уроков' : student.currency}.
           </p>
-        ) : preferred !== student.balanceKind ? (
+        ) : !readonly && preferred !== student.balanceKind ? (
           <p className="replenish__hint">
             Учёт у ученика в {student.balanceKind === 'lessons' ? 'уроках' : student.currency}.
             {preferred === 'lessons' ? ' Чтобы пополнить уроками' : ' Чтобы пополнить деньгами'}
@@ -177,7 +215,7 @@ export function BalanceReplenishDialog({
 
         <label className="field replenish__field">
           <span className="field__label">
-            {kind === 'lessons' ? 'Добавить уроков' : `Сумма, ${student.currency}`}
+            {kind === 'lessons' ? 'Добавить уроков' : `Сумма, ${displayCurrency}`}
           </span>
           <input
             ref={inputRef}
@@ -198,11 +236,13 @@ export function BalanceReplenishDialog({
                 void submit();
               }
             }}
-            disabled={busy}
+            disabled={busy || readonly}
+            readOnly={readonly}
+            tabIndex={readonly ? -1 : undefined}
           />
         </label>
 
-        {kind === 'lessons' ? (
+        {!readonly && kind === 'lessons' ? (
           <div className="replenish__presets" role="group" aria-label="Быстрый выбор">
             {LESSON_PRESETS.map((n) => (
               <button
@@ -222,7 +262,7 @@ export function BalanceReplenishDialog({
         ) : null}
 
         <details className="replenish__received">
-          <summary className="replenish__received-summary">
+          <summary className="replenish__received-summary" tabIndex={readonly ? -1 : undefined}>
             Дата поступления:{' '}
             <span className="tnum">{fmtDateKey(receivedOn, weekStartsOn)}</span>
           </summary>
@@ -232,13 +272,15 @@ export function BalanceReplenishDialog({
               className="field__control"
               type="date"
               value={receivedOn}
-              disabled={busy}
+              disabled={busy || readonly}
+              readOnly={readonly}
+              tabIndex={readonly ? -1 : undefined}
               onChange={(e) => setReceivedOn(e.target.value)}
             />
           </label>
         </details>
 
-        {afterNet != null && !kindDiffers ? (
+        {!readonly && afterNet != null && !kindDiffers ? (
           <p className="replenish__preview">
             Баланс: {fmtBalanceNet(student.prepaid, student.debt, kind, student.currency)}
             {' → '}
@@ -260,24 +302,35 @@ export function BalanceReplenishDialog({
           </p>
         ) : null}
 
-        {hasDebt ? (
+        {!readonly && hasDebt ? (
           <p className="replenish__hint">
-            При пополнении неоплаченные проведённые уроки закроются автоматически, если хватит{' '}
-            {unitLabel}.
+            При пополнении сначала закрываются неоплаченные уроки семьи, затем долг на счёте;
+            остаток остаётся на балансе.
           </p>
+        ) : null}
+        </div>
+
+        {readonly && billingPayer && onOpenStudent ? (
+          <BillingPayerLink
+            payerId={billingPayer.id}
+            payerName={billingPayer.name}
+            onOpen={openPayer}
+            className="replenish__payer-link"
+          />
         ) : null}
 
         {error ? <p className="replenish__error">{error}</p> : null}
 
         <div className="confirm__actions replenish__actions">
           <button type="button" className="btn btn--ghost" onClick={onClose} disabled={busy}>
-            Отмена
+            {readonly ? 'Закрыть' : 'Отмена'}
           </button>
           <button
             type="button"
             className="btn btn--primary"
             onClick={() => void submit()}
-            disabled={busy || add == null}
+            disabled={busy || readonly || add == null}
+            tabIndex={readonly ? -1 : undefined}
           >
             {busy ? 'Сохранение…' : `Пополнить${add != null ? ` +${fmtBalanceAmount(add, kind, student.currency)}` : ''}`}
           </button>

@@ -7,6 +7,13 @@ import { STATUS_LABELS } from '../../constants/status';
 import { useStudentActions } from '../../hooks/useStudentActions';
 import { useStudent } from '../../hooks/useStudentMap';
 import {
+  billingDependents,
+  billingLinkError,
+  billingPayerOptions,
+  findBillingPayer,
+  isBillingDependent,
+} from '../../utils/billingStudent';
+import {
   convertBalanceNet,
   formatBalanceNetInput,
   parseBalanceNetInput,
@@ -14,6 +21,7 @@ import {
 } from '../../utils/balanceConvert';
 import {
   archivedStudentHistoryRange,
+  fmtBalanceAmount,
   fmtLessonWhen,
   studentLessonRange,
 } from '../../utils/format';
@@ -24,14 +32,16 @@ import {
 import { studentToView, toUiStatus, type ViewStudent } from '../../utils/schedule';
 import { useAppStore } from '../../hooks/useAppStore';
 import { loadSchedule } from '../../state/loadSchedule';
-import type { BalanceMovement } from '../../api/types';
+import type { BalanceMovement, BillingDebtBreakdown } from '../../api/types';
 import { JournalEntryCard } from '../payments/JournalEntryCard';
-import { balanceReplenishStudentIdAtom, studentLessonsBumpAtom } from '../../atoms/schedule';
+import { balanceReplenishStudentIdAtom, studentLessonsBumpAtom, studentsAtom } from '../../atoms/schedule';
 import { BalanceKindSeg } from '../BalanceKindSeg';
+import { BillingFamilyDebt } from './BillingFamilyDebt';
+import { BillingPayerLink } from './BillingPayerLink';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { StudentBalance } from '../StudentBalance';
 
-const CURRENCIES = ['EUR', 'RUB', 'USD'] as const;
+const CURRENCIES = ['EUR', 'RUB', 'USD', 'BYN'] as const;
 
 const LESSON_STATUS_TONE: Record<string, 'credit' | 'debt' | 'neutral'> = {
   planned: 'neutral',
@@ -54,6 +64,7 @@ export interface StudentFormValues {
   balanceKind: BalanceKind;
   balanceNet: string;
   excludeFromTaxes: boolean;
+  billingStudentId: string | null;
 }
 
 function emptyForm(tz: string): StudentFormValues {
@@ -71,6 +82,7 @@ function emptyForm(tz: string): StudentFormValues {
     balanceKind: 'money',
     balanceNet: '0',
     excludeFromTaxes: false,
+    billingStudentId: null,
   };
 }
 
@@ -89,6 +101,7 @@ function fromStudent(s: ViewStudent): StudentFormValues {
     balanceKind: s.balanceKind,
     balanceNet: formatBalanceNetInput(s.prepaid, s.debt, s.balanceKind),
     excludeFromTaxes: s.excludeFromTaxes,
+    billingStudentId: s.billingStudentId,
   };
 }
 
@@ -97,35 +110,70 @@ function balancePartsFromForm(form: StudentFormValues) {
   return partsFromBalanceNet(net, form.balanceKind);
 }
 
-function toPayload(form: StudentFormValues, opts?: { includeBalance?: boolean }): UpdateStudentBody {
+function toPayload(
+  form: StudentFormValues,
+  opts?: { includeBalance?: boolean; billingDependent?: boolean },
+): UpdateStudentBody {
   const members = form.membersText
     .split('\n')
     .map((m) => m.trim())
     .filter(Boolean);
   const rate = form.rate.trim() ? Number(form.rate) : null;
   const meetUrl = form.meetUrl.trim() || null;
-  const base = {
+  const base: UpdateStudentBody = {
     name: form.name.trim(),
     initials: form.initials.trim() || undefined,
     hue: form.hue,
     tz: form.tz.trim(),
     meetUrl,
     rate: rate != null && !Number.isNaN(rate) ? rate : null,
-    currency: form.currency,
     note: form.note.trim() || null,
     isGroup: form.isGroup,
     members: form.isGroup ? members : [],
+  };
+
+  if (opts?.billingDependent) {
+    if (!form.isGroup && form.billingStudentId === null) {
+      return { ...base, billingStudentId: null };
+    }
+    return base;
+  }
+
+  const withBilling: UpdateStudentBody = {
+    ...base,
+    currency: form.currency,
     balanceKind: form.balanceKind,
     excludeFromTaxes: form.excludeFromTaxes,
+    billingStudentId: form.isGroup ? null : form.billingStudentId,
   };
+
   if (opts?.includeBalance) {
-    return { ...base, ...balancePartsFromForm(form) };
+    return { ...withBilling, ...balancePartsFromForm(form) };
   }
-  return base;
+  return withBilling;
 }
 
 function payloadEquals(a: UpdateStudentBody, b: UpdateStudentBody): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function revertBillingForm(form: StudentFormValues, server: ViewStudent): StudentFormValues {
+  return {
+    ...form,
+    billingStudentId: server.billingStudentId,
+    excludeFromTaxes: server.excludeFromTaxes,
+    currency: server.currency,
+    balanceKind: server.balanceKind,
+    balanceNet: formatBalanceNetInput(server.prepaid, server.debt, server.balanceKind),
+  };
+}
+
+function clearBillingForm(form: StudentFormValues): StudentFormValues {
+  return {
+    ...form,
+    billingStudentId: null,
+    excludeFromTaxes: false,
+  };
 }
 
 const AUTOSAVE_MS = 500;
@@ -136,6 +184,7 @@ interface StudentDrawerProps {
   studentId?: string;
   onClose: () => void;
   onCreated?: (id: string) => void;
+  onOpenStudent?: (studentId: string) => void;
   onRestored?: () => void;
   onDeleted?: () => void;
 }
@@ -185,6 +234,7 @@ export function StudentDrawer({
   studentId,
   onClose,
   onCreated,
+  onOpenStudent,
   onRestored,
   onDeleted,
 }: StudentDrawerProps) {
@@ -193,6 +243,7 @@ export function StudentDrawer({
   const readOnly = isArchive;
 
   const tutor = useAtomValue(tutorAtom);
+  const allStudents = useAtomValue(studentsAtom);
   const activeStudent = useStudent(isArchive ? undefined : studentId);
   const [archivedStudent, setArchivedStudent] = useState<ViewStudent | null>(null);
   const existing = isArchive ? archivedStudent : activeStudent;
@@ -207,6 +258,8 @@ export function StudentDrawer({
   );
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [movements, setMovements] = useState<BalanceMovement[]>([]);
+  const [billingDebt, setBillingDebt] = useState<BillingDebtBreakdown | null>(null);
+  const [billingDebtLoading, setBillingDebtLoading] = useState(false);
   const [lessonsLoading, setLessonsLoading] = useState(false);
   const [movementsLoading, setMovementsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -262,6 +315,7 @@ export function StudentDrawer({
 
   useEffect(() => {
     if (mode !== 'edit' || !existing || balanceManualTouchedRef.current) return;
+    if (isBillingDependent(existing)) return;
     const balanceNet = formatBalanceNetInput(
       existing.prepaid,
       existing.debt,
@@ -338,6 +392,9 @@ export function StudentDrawer({
       group: form.isGroup,
       members: [],
       balanceKind: form.balanceKind,
+      excludeFromTaxes: form.excludeFromTaxes,
+      billingStudentId: null,
+      openLessonDebt: 0,
       ...balancePartsFromForm(form),
     };
     const rateRaw = form.rate.trim() ? Number(form.rate) : null;
@@ -364,18 +421,96 @@ export function StudentDrawer({
       currency: form.currency,
       group: form.isGroup,
       excludeFromTaxes: form.excludeFromTaxes,
+      billingStudentId: form.isGroup ? null : form.billingStudentId,
+      openLessonDebt: existing?.openLessonDebt ?? 0,
     };
   }, [existing, form]);
 
+  /** Balance display uses saved rate until rate is persisted — avoids flicker while editing. */
+  const balanceDisplayStudent = useMemo(() => {
+    if (!previewStudent) return undefined;
+    if (mode === 'edit' && existing) {
+      return { ...previewStudent, rate: existing.rate };
+    }
+    return previewStudent;
+  }, [previewStudent, existing, mode]);
+
+  const billingDependent = isBillingDependent({ billingStudentId: form.billingStudentId });
+  const billingPayer = billingDependent
+    ? findBillingPayer(allStudents, { id: studentId ?? '', billingStudentId: form.billingStudentId })
+    : previewStudent;
+  const linkedDependents =
+    mode === 'edit' && studentId ? billingDependents(allStudents, studentId) : [];
+  const billingProfile = { currency: form.currency };
+  const allPayerCandidates = billingPayerOptions(allStudents, studentId);
+  const payerOptions = billingPayerOptions(allStudents, studentId, billingProfile);
+  const hiddenPayerCount = allPayerCandidates.length - payerOptions.length;
+
+  const showFamilyDebt =
+    mode === 'edit' &&
+    Boolean(studentId) &&
+    !billingDependent &&
+    linkedDependents.length > 0;
+
+  useEffect(() => {
+    if (!showFamilyDebt || !studentId) {
+      setBillingDebt(null);
+      return;
+    }
+    let cancelled = false;
+    setBillingDebtLoading(true);
+    api
+      .studentBillingDebt(studentId)
+      .then((data) => {
+        if (!cancelled) setBillingDebt(data);
+      })
+      .catch(() => {
+        if (!cancelled) setBillingDebt(null);
+      })
+      .finally(() => {
+        if (!cancelled) setBillingDebtLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showFamilyDebt, studentId, lessonsBump, existing?.prepaid, existing?.debt]);
+
+  const handleBillingPayerChange = (nextId: string | null) => {
+    setError(null);
+    if (!nextId) {
+      setForm((f) => ({
+        ...f,
+        billingStudentId: null,
+        excludeFromTaxes: existing?.excludeFromTaxes ?? false,
+      }));
+      return;
+    }
+    const payer = allStudents.find((s) => s.id === nextId);
+    if (!payer) return;
+    const linkError = billingLinkError(billingProfile, payer);
+    if (linkError) {
+      setError(linkError);
+      return;
+    }
+    setForm((f) => ({
+      ...f,
+      billingStudentId: nextId,
+      balanceKind: payer.balanceKind,
+      balanceNet: '0',
+      excludeFromTaxes: true,
+    }));
+  };
+
   const paymentRows = useMemo(() => {
     if (!previewStudent) return [];
-    const map = new Map([[previewStudent.id, previewStudent]]);
+    const map = new Map(allStudents.map((s) => [s.id, s]));
+    map.set(previewStudent.id, previewStudent);
     const rows = enrichMovements(movements, map, tutor?.timezone ?? 'UTC');
     return attachRunningBalance(rows);
-  }, [movements, previewStudent, tutor?.timezone]);
+  }, [allStudents, movements, previewStudent, tutor?.timezone]);
 
   const onBalanceKindChange = (next: BalanceKind) => {
-    if (readOnly) return;
+    if (readOnly || billingDependent) return;
     if (next === form.balanceKind) return;
     const rateRaw = form.rate.trim() ? Number(form.rate) : null;
     const rate = rateRaw != null && !Number.isNaN(rateRaw) && rateRaw > 0 ? rateRaw : null;
@@ -399,7 +534,7 @@ export function StudentDrawer({
   };
 
   const flushBalanceCorrection = useCallback(async () => {
-    if (readOnly || mode !== 'edit' || !studentId) return;
+    if (readOnly || mode !== 'edit' || !studentId || billingDependent) return;
     const current = formRef.current;
     const server = existingRef.current;
     if (!server || !balanceManualTouchedRef.current) return;
@@ -442,7 +577,9 @@ export function StudentDrawer({
           })
           .catch((e) => {
             createLockRef.current = false;
-            setError(e instanceof Error ? e.message : 'Не удалось создать');
+            const msg = e instanceof Error ? e.message : 'Не удалось создать';
+            setError(msg);
+            setForm((f) => clearBillingForm(f));
           })
           .finally(() => setSaving(false));
       }, AUTOSAVE_MS);
@@ -450,20 +587,31 @@ export function StudentDrawer({
     }
 
     if (mode !== 'edit' || !studentId || !existing) return;
-    const payload = toPayload(form, { includeBalance: false });
+    const dependent = isBillingDependent(existing);
+    const payload = toPayload(form, { includeBalance: false, billingDependent: dependent });
     if (!payload.name) return;
-    if (payloadEquals(payload, toPayload(fromStudent(existing), { includeBalance: false }))) {
+    const baseline = toPayload(fromStudent(existing), {
+      includeBalance: false,
+      billingDependent: dependent,
+    });
+    if (payloadEquals(payload, baseline)) {
       return;
     }
 
     const timer = window.setTimeout(() => {
-      setSaving(true);
       setError(null);
       void updateStudent(studentId, payload)
         .catch((e) => {
-          setError(e instanceof Error ? e.message : 'Не удалось сохранить');
-        })
-        .finally(() => setSaving(false));
+          const msg = e instanceof Error ? e.message : 'Не удалось сохранить';
+          setError(msg);
+          const server = existingRef.current;
+          const current = formRef.current;
+          if ((current.billingStudentId ?? null) !== (server?.billingStudentId ?? null)) {
+            setForm(
+              server ? revertBillingForm(current, server) : clearBillingForm(current),
+            );
+          }
+        });
     }, AUTOSAVE_MS);
 
     return () => window.clearTimeout(timer);
@@ -539,54 +687,125 @@ export function StudentDrawer({
           <button
             type="button"
             className="btn btn--primary btn--sm"
-            onClick={() => setReplenishId(studentId)}
+            disabled={billingDependent}
+            onClick={() => {
+              if (!billingDependent) setReplenishId(studentId);
+            }}
           >
             Пополнить
           </button>
         ) : undefined
       }
     >
-      {previewStudent ? <StudentBalance student={previewStudent} /> : null}
-      {readOnly ? null : <BalanceKindSeg value={form.balanceKind} onChange={onBalanceKindChange} />}
-      {readOnly ? null : (
-      <details
-        className="balance-manual balance-manual--panel"
-        open={manualBalanceOpen}
-        onToggle={(e) => setManualBalanceOpen(e.currentTarget.open)}
-      >
-        <summary className="balance-manual__summary">
-          {mode === 'create' ? 'Стартовый баланс' : 'Корректировка'}
-        </summary>
-        <div className="balance-manual__body">
-          {mode === 'create' ? (
-            <p className="drawer-panel__hint">Отрицательное значение — долг.</p>
+      {billingDependent && billingPayer ? (
+        <>
+          <p className="billing-dependent-panel__debt tnum">
+            Долг за уроки:{' '}
+            <strong>
+              {existing && existing.openLessonDebt > 0
+                ? fmtBalanceAmount(
+                    existing.openLessonDebt,
+                    billingPayer.balanceKind,
+                    billingPayer.currency,
+                  )
+                : 'нет'}
+            </strong>
+          </p>
+          <p className="drawer-panel__hint">
+            Личный баланс не ведётся — уроки списываются с общего счёта.
+          </p>
+        </>
+      ) : (
+        <>
+          {balanceDisplayStudent ? <StudentBalance student={balanceDisplayStudent} /> : null}
+          {!billingDependent && linkedDependents.length > 0 ? (
+            <p className="drawer-panel__hint">
+              Общий счёт также для:{' '}
+              {linkedDependents.map((d) => d.name).join(', ')}
+            </p>
           ) : null}
-          <label className="field">
-            <span className="field__label">
-              {form.balanceKind === 'lessons' ? 'Баланс, уроков' : `Баланс, ${form.currency}`}
-            </span>
-            <input
-              className="field__control tnum"
-              type="number"
-              step={form.balanceKind === 'lessons' ? 1 : 0.01}
-              inputMode={form.balanceKind === 'lessons' ? 'numeric' : 'decimal'}
-              value={form.balanceNet}
-              onChange={(e) => {
-                balanceManualTouchedRef.current = true;
-                set('balanceNet', e.target.value);
-              }}
-              onBlur={() => void flushBalanceCorrection()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  (e.target as HTMLInputElement).blur();
-                }
-              }}
-            />
-          </label>
-        </div>
-      </details>
+          {showFamilyDebt ? (
+            billingDebtLoading ? (
+              <p className="drawer-panel__hint">Загрузка долга…</p>
+            ) : billingDebt ? (
+              <BillingFamilyDebt
+                breakdown={billingDebt}
+                highlightStudentId={studentId}
+              />
+            ) : null
+          ) : null}
+        </>
       )}
+
+      {(!readOnly || billingDependent) ? (
+        <div className={'balance-actions--readonly' + (billingDependent ? ' is-readonly' : '')}>
+          <BalanceKindSeg
+            value={billingPayer?.balanceKind ?? form.balanceKind}
+            disabled={readOnly || billingDependent}
+            onChange={onBalanceKindChange}
+          />
+          <details
+            className="balance-manual balance-manual--panel"
+            open={manualBalanceOpen}
+            onToggle={(e) => {
+              if (!billingDependent) setManualBalanceOpen(e.currentTarget.open);
+            }}
+          >
+            <summary
+              className="balance-manual__summary"
+              tabIndex={billingDependent ? -1 : undefined}
+            >
+              {mode === 'create' ? 'Стартовый баланс' : 'Корректировка'}
+            </summary>
+            <div className="balance-manual__body">
+              {mode === 'create' ? (
+                <p className="drawer-panel__hint">Отрицательное значение — долг.</p>
+              ) : null}
+              <label className="field">
+                <span className="field__label">
+                  {(billingPayer?.balanceKind ?? form.balanceKind) === 'lessons'
+                    ? 'Баланс, уроков'
+                    : `Баланс, ${billingPayer?.currency ?? form.currency}`}
+                </span>
+                <input
+                  className="field__control tnum"
+                  type="number"
+                  step={(billingPayer?.balanceKind ?? form.balanceKind) === 'lessons' ? 1 : 0.01}
+                  inputMode={
+                    (billingPayer?.balanceKind ?? form.balanceKind) === 'lessons'
+                      ? 'numeric'
+                      : 'decimal'
+                  }
+                  value={form.balanceNet}
+                  disabled={readOnly || billingDependent}
+                  readOnly={billingDependent}
+                  tabIndex={billingDependent ? -1 : undefined}
+                  onChange={(e) => {
+                    balanceManualTouchedRef.current = true;
+                    set('balanceNet', e.target.value);
+                  }}
+                  onBlur={() => void flushBalanceCorrection()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
+                />
+              </label>
+            </div>
+          </details>
+        </div>
+      ) : null}
+
+      {billingDependent && billingPayer && onOpenStudent ? (
+        <BillingPayerLink
+          payerId={billingPayer.id}
+          payerName={billingPayer.name}
+          onOpen={onOpenStudent}
+          className="drawer-panel__payer-link"
+        />
+      ) : null}
     </DrawerPanel>
   );
 
@@ -662,7 +881,9 @@ export function StudentDrawer({
                 <button
                   type="button"
                   className={'seg__btn' + (form.isGroup ? ' is-active' : '')}
-                  onClick={() => set('isGroup', true)}
+                  onClick={() =>
+                    setForm((f) => ({ ...f, isGroup: true, billingStudentId: null }))
+                  }
                 >
                   Группа
                 </button>
@@ -677,6 +898,57 @@ export function StudentDrawer({
         <div className="student-drawer__form">
           <fieldset className="student-drawer__scroll" disabled={readOnly}>
             {mode === 'edit' ? balancePanel : null}
+
+            {!readOnly && !form.isGroup ? (
+              <DrawerSpoiler title="Оплата">
+                {linkedDependents.length > 0 ? (
+                  <p className="drawer-panel__hint">
+                    Нельзя привязать к чужому счёту, пока через ваш счёт платят:{' '}
+                    {linkedDependents.map((d) => d.name).join(', ')}. Сначала отвяжите их.
+                  </p>
+                ) : null}
+                <label className="field">
+                  <span className="field__label">Лицевой счёт</span>
+                  <select
+                    className="field__control"
+                    value={form.billingStudentId ?? ''}
+                    disabled={linkedDependents.length > 0}
+                    onChange={(e) => handleBillingPayerChange(e.target.value || null)}
+                  >
+                    <option value="">Свой счёт</option>
+                    {payerOptions.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {error ? (
+                  <p className="drawer__error student-drawer__error" role="alert">
+                    {error}
+                  </p>
+                ) : null}
+                {billingDependent ? (
+                  <p className="drawer-panel__hint">
+                    Чтобы сменить плательщика, сначала выберите «Свой счёт». Пополнение — только в
+                    профиле плательщика.
+                  </p>
+                ) : (
+                  <p className="drawer-panel__hint">
+                    Ученики с чужим счётом не пополняют баланс сами — списания идут с
+                    выбранного плательщика.
+                  </p>
+                )}
+                {hiddenPayerCount > 0 ? (
+                  <p className="drawer-panel__hint">
+                    {hiddenPayerCount === 1
+                      ? '1 плательщик скрыт'
+                      : `${hiddenPayerCount} плательщиков скрыто`}
+                    : другая валюта.
+                  </p>
+                ) : null}
+              </DrawerSpoiler>
+            ) : null}
 
             <DrawerSpoiler title="Контакты и ставка">
               <label className="field">
@@ -715,6 +987,7 @@ export function StudentDrawer({
                   <select
                     className="field__control"
                     value={form.currency}
+                    disabled={billingDependent}
                     onChange={(e) => set('currency', e.target.value)}
                   >
                     {CURRENCIES.map((c) => (
@@ -785,8 +1058,8 @@ export function StudentDrawer({
               <label className="student-drawer-tax-opt">
                 <input
                   type="checkbox"
-                  checked={form.excludeFromTaxes}
-                  disabled={readOnly}
+                  checked={form.excludeFromTaxes || billingDependent}
+                  disabled={readOnly || billingDependent}
                   onChange={(e) => set('excludeFromTaxes', e.target.checked)}
                 />
                 <span>Не показывать во вкладке «Налоги»</span>

@@ -1,6 +1,6 @@
 /**
  * Модель оплаты:
- * - Уроки на балансе = уже получены деньги репетитору (предоплата).
+ * - Деньги на балансе = уже получены репетитором (предоплата).
  * - Проведение с предоплаты → paid=true, без долга по уроку.
  * - Проведение при 0 → долг, paid=false; оплата вручную или при пополнении баланса.
  */
@@ -10,6 +10,8 @@ import request from 'supertest';
 import { createApp } from '../app.js';
 import { setupTestDb, teardownTestDb } from './db.js';
 import { registerTutor } from './helpers.js';
+
+const RATE = 20;
 
 type LessonRow = {
   status: string;
@@ -50,11 +52,11 @@ describe('lesson paid semantics', () => {
     };
   }
 
-  it('prepaid on balance: after conduct 5→4, paid true, no lesson debt', async () => {
+  it('prepaid on balance: after conduct balance decreases, paid true, no lesson debt', async () => {
     const { agent } = await registerTutor(app);
     await agent
       .post('/api/students')
-      .send({ name: 'Advance', balanceKind: 'lessons', prepaid: 5, debt: 0 })
+      .send({ name: 'Advance', prepaid: 5 * RATE, debt: 0, rate: RATE, currency: 'EUR' })
       .expect(201);
 
     const startUtc = new Date(Date.now() + 3_600_000).toISOString();
@@ -74,16 +76,16 @@ describe('lesson paid semantics', () => {
 
     expect(row.chargeDebtDelta).toBe(0);
     expect(row.paid).toBe(true);
-    expect(stu.prepaid).toBe(4);
+    expect(stu.prepaid).toBe(4 * RATE);
     expect(stu.debt).toBe(0);
     expect(lessonDebtClosedUi(row)).toBe(true);
   });
 
-  it('zero balance: after conduct debt +1, paid false until tutor marks paid', async () => {
+  it('zero balance: after conduct debt increases, paid false until tutor marks paid', async () => {
     const { agent } = await registerTutor(app);
     const student = await agent
       .post('/api/students')
-      .send({ name: 'Zero', balanceKind: 'lessons', prepaid: 0, debt: 0 })
+      .send({ name: 'Zero', prepaid: 0, debt: 0, rate: RATE, currency: 'EUR' })
       .expect(201);
 
     const startUtc = new Date(Date.now() - 2 * 3_600_000).toISOString();
@@ -96,7 +98,7 @@ describe('lesson paid semantics', () => {
 
     let row = (await agent.get('/api/lessons').query(weekQuery())).body[0] as LessonRow;
     expect(row.paid).toBe(false);
-    expect(row.chargeDebtDelta).toBe(1);
+    expect(row.chargeDebtDelta).toBe(RATE);
     expect(lessonDebtClosedUi(row)).toBe(false);
 
     await agent.patch(`/api/lessons/${lesson.body.id}`).send({ paid: true }).expect(200);
@@ -112,7 +114,7 @@ describe('lesson paid semantics', () => {
     const { agent } = await registerTutor(app);
     const student = await agent
       .post('/api/students')
-      .send({ name: 'Debtor', balanceKind: 'lessons', prepaid: 0, debt: 0 })
+      .send({ name: 'Debtor', prepaid: 0, debt: 0, rate: RATE, currency: 'EUR' })
       .expect(201);
 
     for (let i = 0; i < 2; i++) {
@@ -127,7 +129,7 @@ describe('lesson paid semantics', () => {
 
     await agent
       .patch(`/api/students/${student.body.id}`)
-      .send({ prepaid: 2, debt: 0 })
+      .send({ prepaid: 2 * RATE, debt: 0 })
       .expect(200);
 
     const lessons = (await agent.get('/api/lessons').query(weekQuery())).body as LessonRow[];

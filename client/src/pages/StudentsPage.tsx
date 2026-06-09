@@ -6,9 +6,11 @@ import {
   selectedStudentIdAtom,
   studentDrawerModeAtom,
   studentsAtom,
+  studentsBalanceDisplayAtom,
 } from '../atoms/schedule';
 import { BalanceReplenishDialog } from '../components/students/BalanceReplenishDialog';
 import { StudentCard } from '../components/students/StudentCard';
+import { BalanceKindSeg } from '../components/BalanceKindSeg';
 import { OrnamentalDivider } from '../components/OrnamentalDivider';
 import { StudentDrawer } from '../components/students/StudentDrawer';
 import { studentCountLabel } from '../utils/format';
@@ -18,6 +20,7 @@ export function StudentsPage() {
   const [drawerMode, setDrawerMode] = useAtom(studentDrawerModeAtom);
   const [selectedId, setSelectedId] = useAtom(selectedStudentIdAtom);
   const [replenishId, setReplenishId] = useAtom(balanceReplenishStudentIdAtom);
+  const [balanceDisplay, setBalanceDisplay] = useAtom(studentsBalanceDisplayAtom);
   const [query, setQuery] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
   const { studentId: routeId } = useParams();
@@ -107,6 +110,12 @@ export function StudentsPage() {
                 onChange={(e) => setQuery(e.target.value)}
                 aria-label="Поиск"
               />
+              <div className="students-toolbar__balance-display">
+                <BalanceKindSeg
+                  value={balanceDisplay}
+                  onChange={setBalanceDisplay}
+                />
+              </div>
               <button
                 type="button"
                 className="btn btn--primary btn--sm students-toolbar__add"
@@ -134,6 +143,8 @@ export function StudentsPage() {
                   <li key={s.id}>
                     <StudentCard
                       student={s}
+                      students={students}
+                      balanceDisplay={balanceDisplay}
                       onReplenish={() => openReplenish(s.id)}
                       onOpenProfile={(e) => {
                         e.stopPropagation();
@@ -161,6 +172,7 @@ export function StudentsPage() {
           studentId={drawerMode === 'edit' ? openId ?? undefined : undefined}
           onClose={closeDrawer}
           onCreated={(id) => openEdit(id)}
+          onOpenStudent={openEdit}
         />
       ) : null}
 
@@ -169,6 +181,7 @@ export function StudentsPage() {
           student={replenishStudent}
           open={Boolean(replenishId)}
           onClose={() => setReplenishId(null)}
+          onOpenStudent={openEdit}
         />
       ) : null}
     </div>

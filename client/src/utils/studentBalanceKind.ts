@@ -1,10 +1,7 @@
 import type { BalanceKind, UpdateStudentBody } from '../api/types';
 import type { ViewStudent } from './schedule';
-import {
-  balanceNetFromParts,
-  convertBalanceNet,
-  partsFromBalanceNet,
-} from './balanceConvert';
+import { partsFromBalanceNet } from './balanceConvert';
+import { walletMoneyNet } from './walletCanonical';
 
 export function patchForBalanceKind(
   student: ViewStudent,
@@ -12,11 +9,15 @@ export function patchForBalanceKind(
 ): UpdateStudentBody | null {
   if (next === student.balanceKind) return null;
   const rate = student.rate;
-  if (rate != null && rate > 0) {
-    const netBal = balanceNetFromParts(student.prepaid, student.debt, student.balanceKind);
-    const newNet = convertBalanceNet(netBal, student.balanceKind, next, rate);
-    const { prepaid, debt } = partsFromBalanceNet(newNet, next);
-    return { balanceKind: next, prepaid, debt };
-  }
-  return { balanceKind: next };
+  if (rate == null || rate <= 0) return { balanceKind: next };
+
+  const moneyNet = walletMoneyNet(
+    student.prepaid,
+    student.debt,
+    student.balanceKind,
+    rate,
+  );
+  const newNet = next === 'lessons' ? moneyNet / rate : moneyNet;
+  const { prepaid, debt } = partsFromBalanceNet(newNet, next);
+  return { balanceKind: next, prepaid, debt };
 }

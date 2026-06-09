@@ -156,4 +156,50 @@ describe('balance movements', () => {
     expect(list.body).toHaveLength(1);
     expect(list.body[0].kind).toBe('manual');
   });
+
+  it('lists family lesson charges for payer and dependent filters', async () => {
+    const { agent } = await registerTutor(app);
+    const payer = await agent
+      .post('/api/students')
+      .send({ name: 'Payer', balanceKind: 'lessons', prepaid: 5, debt: 0, rate: 20, currency: 'EUR' })
+      .expect(201);
+    const child = await agent
+      .post('/api/students')
+      .send({ name: 'Child', rate: 20, currency: 'EUR', billingStudentId: payer.body.id })
+      .expect(201);
+
+    const startUtc = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    await agent
+      .post('/api/lessons')
+      .send({ studentId: child.body.id, startUtc, durationMin: 60 })
+      .expect(201);
+    await agent.get('/api/lessons').query({
+      from: new Date(Date.now() - 7 * 86_400_000).toISOString(),
+      to: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+    });
+
+    const from = new Date(0).toISOString();
+    const to = new Date(Date.now() + 86_400_000).toISOString();
+    const q = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+
+    const byPayer = await agent
+      .get(`/api/balance-movements?${q}&studentId=${payer.body.id}`)
+      .expect(200);
+    expect(
+      byPayer.body.some(
+        (m: { kind: string; chargedForStudentId: string | null }) =>
+          m.kind === 'lesson_charge' && m.chargedForStudentId === child.body.id,
+      ),
+    ).toBe(true);
+
+    const byChild = await agent
+      .get(`/api/balance-movements?${q}&studentId=${child.body.id}`)
+      .expect(200);
+    expect(
+      byChild.body.some(
+        (m: { kind: string; chargedForStudentId: string | null }) =>
+          m.kind === 'lesson_charge' && m.chargedForStudentId === child.body.id,
+      ),
+    ).toBe(true);
+  });
 });

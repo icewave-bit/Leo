@@ -76,6 +76,59 @@ describe('students', () => {
     });
   });
 
+  it('does not rewrite lessons balance when only rate changes', async () => {
+    const { agent } = await registerTutor(app);
+    const created = await agent
+      .post('/api/students')
+      .send({
+        name: 'Nastya',
+        balanceKind: 'lessons',
+        prepaid: 44.3,
+        debt: 0,
+        rate: 20,
+        currency: 'USD',
+      })
+      .expect(201);
+
+    const updated = await agent
+      .patch(`/api/students/${created.body.id}`)
+      .send({ rate: 5 })
+      .expect(200);
+
+    expect(updated.body).toMatchObject({
+      rate: 5,
+      prepaid: 44.3,
+      debt: 0,
+      balanceKind: 'lessons',
+    });
+  });
+
+  it('does not change stored money when only rate changes', async () => {
+    const { agent } = await registerTutor(app);
+    const created = await agent
+      .post('/api/students')
+      .send({
+        name: 'Cash',
+        balanceKind: 'money',
+        prepaid: 886,
+        debt: 0,
+        rate: 20,
+        currency: 'USD',
+      })
+      .expect(201);
+
+    const updated = await agent
+      .patch(`/api/students/${created.body.id}`)
+      .send({ rate: 5 })
+      .expect(200);
+
+    expect(updated.body).toMatchObject({
+      prepaid: 886,
+      debt: 0,
+      rate: 5,
+    });
+  });
+
   it('patch updates fields including balance', async () => {
     const { agent } = await registerTutor(app);
     const created = await agent.post('/api/students').send({ name: 'Alex' }).expect(201);

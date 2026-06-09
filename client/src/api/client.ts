@@ -1,6 +1,7 @@
 import type {
   ApiError,
   BalanceMovement,
+  BillingDebtBreakdown,
   CreateStudentBody,
   TaxReplenishment,
   Lesson,
@@ -85,6 +86,8 @@ export const api = {
   students: () => request<Student[]>('/api/students'),
   archivedStudents: () => request<Student[]>('/api/students/archived/list'),
   getStudent: (id: string) => request<Student>(`/api/students/${id}`),
+  studentBillingDebt: (id: string) =>
+    request<BillingDebtBreakdown>(`/api/students/${id}/billing-debt`),
   createStudent: (body: CreateStudentBody) =>
     request<Student>('/api/students', { method: 'POST', json: body }),
   updateStudent: (id: string, body: UpdateStudentBody) =>

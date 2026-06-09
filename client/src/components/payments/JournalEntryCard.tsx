@@ -21,6 +21,7 @@ export function JournalEntryCard({
       {showStudent ? (
         <JournalStudentChip
           studentId={row.studentId}
+          chargedForStudentId={row.chargedForStudentId}
           name={row.studentName}
           students={students}
         />

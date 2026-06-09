@@ -14,6 +14,7 @@ const listQuerySchema = z.object({
 export interface BalanceMovementRow {
   id: string;
   student_id: string;
+  charged_for_student_id: string | null;
   lesson_id: string | null;
   occurred_at: string;
   kind: BalanceMovementKind;
@@ -27,6 +28,7 @@ export interface BalanceMovementRow {
 export interface BalanceMovementDto {
   id: string;
   studentId: string;
+  chargedForStudentId: string | null;
   lessonId: string | null;
   occurredAt: string;
   kind: BalanceMovementKind;
@@ -41,6 +43,7 @@ function toMovement(row: BalanceMovementRow): BalanceMovementDto {
   return {
     id: row.id,
     studentId: row.student_id,
+    chargedForStudentId: row.charged_for_student_id,
     lessonId: row.lesson_id,
     occurredAt: row.occurred_at,
     kind: row.kind,
@@ -62,7 +65,25 @@ balanceMovementsRouter.get('/', async (req, res, next) => {
     const params: unknown[] = [req.tutorId, q.from, q.to];
     let studentFilter = '';
     if (q.studentId) {
-      studentFilter = ' AND m.student_id = $4';
+      const student = await query<{ billing_student_id: string | null }>(
+        `SELECT billing_student_id FROM students WHERE id = $1 AND tutor_id = $2`,
+        [q.studentId, req.tutorId],
+      );
+      const row = student.rows[0];
+      if (!row) {
+        res.json([]);
+        return;
+      }
+      if (row.billing_student_id) {
+        // Dependent: wallet is on payer; include family charges + legacy own-wallet rows.
+        studentFilter = ` AND (
+          m.charged_for_student_id = $4
+          OR (m.student_id = $4 AND m.charged_for_student_id IS NULL)
+        )`;
+      } else {
+        // Payer / independent: all movements on this wallet (incl. charges for dependents).
+        studentFilter = ' AND m.student_id = $4';
+      }
       params.push(q.studentId);
     } else {
       studentFilter = ` AND EXISTS (
@@ -72,7 +93,7 @@ balanceMovementsRouter.get('/', async (req, res, next) => {
     }
 
     const result = await query<BalanceMovementRow>(
-      `SELECT m.id, m.student_id, m.lesson_id, m.occurred_at, m.kind,
+      `SELECT m.id, m.student_id, m.charged_for_student_id, m.lesson_id, m.occurred_at, m.kind,
               m.prepaid_delta, m.debt_delta, m.prepaid_after, m.debt_after,
               m.balance_kind
        FROM balance_movements m

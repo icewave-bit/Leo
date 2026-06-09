@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { tutorAtom } from '../../atoms/auth';
 import {
@@ -11,6 +12,8 @@ import {
   paymentsStudentIdAtom,
 } from '../../atoms/payments';
 import { studentsAtom, balanceReplenishStudentIdAtom } from '../../atoms/schedule';
+import { findBillingPayer, isBillingDependent } from '../../utils/billingStudent';
+import { fmtBalanceAmount } from '../../utils/format';
 import {
   attachRunningBalance,
   enrichMovements,
@@ -19,12 +22,14 @@ import {
   periodRange,
 } from '../../utils/paymentJournal';
 import { StudentBalance } from '../StudentBalance';
+import { BillingPayerLink } from '../students/BillingPayerLink';
 import { JournalEntryCard } from './JournalEntryCard';
 import { JournalStudentChip } from './JournalStudentChip';
 import { PeriodPicker } from './PeriodPicker';
 import { StudentPicker } from './StudentPicker';
 
 export function PaymentsJournal() {
+  const navigate = useNavigate();
   const tutor = useAtomValue(tutorAtom);
   const students = useAtomValue(studentsAtom);
   const movements = useAtomValue(balanceMovementsAtom);
@@ -46,6 +51,10 @@ export function PaymentsJournal() {
   );
 
   const selectedStudent = studentId ? studentMap.get(studentId) : undefined;
+  const balanceStudent = selectedStudent
+    ? findBillingPayer(students, selectedStudent) ?? selectedStudent
+    : undefined;
+  const selectedDependent = selectedStudent ? isBillingDependent(selectedStudent) : false;
 
   const rows = useMemo(() => {
     const enriched = enrichMovements(movements, studentMap, tz);
@@ -92,35 +101,63 @@ export function PaymentsJournal() {
         </div>
       </section>
 
-      {selectedStudent ? (
+      {selectedStudent && balanceStudent ? (
         <section className="pay-summary">
-          <StudentBalance student={selectedStudent} compact />
-          <div className="pay-summary__stats">
-            {summary ? (
-              <>
-                <div className="pay-summary__stat">
-                  <span className="pay-summary__stat-lbl">Предоплата</span>
-                  <span className="pay-summary__stat-val tnum pay-summary__stat-val--muted">
-                    {summary.prepaid}
-                  </span>
-                </div>
-                <div className="pay-summary__stat">
-                  <span className="pay-summary__stat-lbl">Долг</span>
-                  <span className="pay-summary__stat-val tnum pay-summary__stat-val--muted">
-                    {summary.debt}
-                  </span>
-                </div>
-                <div className="pay-summary__stat">
-                  <span className="pay-summary__stat-lbl">За период</span>
-                  <span className="pay-summary__stat-val tnum">{summary.net}</span>
-                </div>
-              </>
-            ) : summaryMixedUnits ? (
-              <p className="pay-summary__mixed-hint">
-                За период есть операции в рублях и в уроках — итог по строкам смотрите в списке.
+          {selectedDependent ? (
+            <div className="pay-summary__dependent">
+              <p className="drawer-panel__hint">
+                Личный баланс не ведётся — операции с кошельком только у плательщика.
               </p>
-            ) : null}
-          </div>
+              <p className="pay-summary__dependent-debt tnum">
+                Долг за уроки:{' '}
+                <strong>
+                  {selectedStudent.openLessonDebt > 0
+                    ? fmtBalanceAmount(
+                        selectedStudent.openLessonDebt,
+                        balanceStudent.balanceKind,
+                        balanceStudent.currency,
+                      )
+                    : 'нет'}
+                </strong>
+              </p>
+              <BillingPayerLink
+                payerId={balanceStudent.id}
+                payerName={balanceStudent.name}
+                onOpen={(id) => navigate(`/students/${id}`)}
+              />
+            </div>
+          ) : (
+            <>
+              <StudentBalance student={balanceStudent} compact />
+              <div className="pay-summary__stats">
+                {summary ? (
+                  <>
+                    <div className="pay-summary__stat">
+                      <span className="pay-summary__stat-lbl">Предоплата</span>
+                      <span className="pay-summary__stat-val tnum pay-summary__stat-val--muted">
+                        {summary.prepaid}
+                      </span>
+                    </div>
+                    <div className="pay-summary__stat">
+                      <span className="pay-summary__stat-lbl">Долг</span>
+                      <span className="pay-summary__stat-val tnum pay-summary__stat-val--muted">
+                        {summary.debt}
+                      </span>
+                    </div>
+                    <div className="pay-summary__stat">
+                      <span className="pay-summary__stat-lbl">За период</span>
+                      <span className="pay-summary__stat-val tnum">{summary.net}</span>
+                    </div>
+                  </>
+                ) : summaryMixedUnits ? (
+                  <p className="pay-summary__mixed-hint">
+                    За период есть операции в рублях и в уроках — итог по строкам смотрите в
+                    списке.
+                  </p>
+                ) : null}
+              </div>
+            </>
+          )}
         </section>
       ) : null}
 
@@ -173,6 +210,7 @@ export function PaymentsJournal() {
                         <td>
                           <JournalStudentChip
                             studentId={r.studentId}
+                            chargedForStudentId={r.chargedForStudentId}
                             name={r.studentName}
                             students={studentMap}
                           />

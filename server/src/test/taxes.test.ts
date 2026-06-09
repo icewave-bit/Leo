@@ -163,15 +163,15 @@ describe('taxes', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('lists lesson replenishments as money equivalent', async () => {
+  it('lists money replenishments for taxes', async () => {
     const { agent } = await registerTutor(app);
 
     const studentRes = await agent
       .post('/api/students')
       .send({
-        name: 'Lessons Top',
+        name: 'Money Top',
         hue: 210,
-        balanceKind: 'lessons',
+        balanceKind: 'money',
         prepaid: 0,
         debt: 0,
         rate: 40,
@@ -182,7 +182,7 @@ describe('taxes', () => {
       .expect(201);
     const studentId = studentRes.body.id as string;
 
-    await agent.patch(`/api/students/${studentId}`).send({ prepaid: 3 }).expect(200);
+    await agent.patch(`/api/students/${studentId}`).send({ prepaid: 120 }).expect(200);
 
     const month = `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, '0')}`;
     const list = await agent
@@ -190,8 +190,8 @@ describe('taxes', () => {
       .expect(200);
 
     expect(list.body.length).toBe(1);
-    expect(list.body[0].balanceKind).toBe('lessons');
-    expect(list.body[0].sourceAmount).toBe(3);
+    expect(list.body[0].balanceKind).toBe('money');
+    expect(list.body[0].sourceAmount).toBe(120);
     expect(list.body[0].amount).toBe(120);
     expect(list.body[0].amountByn).toBe(390);
   });

@@ -1,9 +1,10 @@
-import {
-  balanceNetAsLessons,
-  balanceNetAsMoney,
-} from '../utils/balanceConvert';
-import { fmtBalanceNet, fmtMoney, lessonCountLabel } from '../utils/format';
+import { fmtMoney, lessonCountLabel } from '../utils/format';
 import type { ViewStudent } from '../utils/schedule';
+import {
+  storedWalletNet,
+  walletLessonsNet,
+  walletMoneyNet,
+} from '../utils/walletCanonical';
 
 function signedNetLabel(net: number, formatAbs: (n: number) => string): string {
   if (net === 0) return formatAbs(0);
@@ -19,17 +20,21 @@ export interface StudentBalanceProps {
 
 export function StudentBalance({ student, compact, className }: StudentBalanceProps) {
   const { prepaid, debt, currency, balanceKind, rate } = student;
-  const net = prepaid - debt;
-  const netLabel = fmtBalanceNet(prepaid, debt, balanceKind, currency);
-  const tone = net > 0 ? 'credit' : net < 0 ? 'debt' : 'even';
+  const storedNet = storedWalletNet(prepaid, debt, balanceKind);
+  const tone = storedNet > 0 ? 'credit' : storedNet < 0 ? 'debt' : 'even';
 
-  const lessonsNet = balanceNetAsLessons(prepaid, debt, balanceKind, rate);
-  const moneyNet = balanceNetAsMoney(prepaid, debt, balanceKind, rate);
+  const netLabel =
+    balanceKind === 'lessons'
+      ? signedNetLabel(storedNet, lessonCountLabel)
+      : signedNetLabel(storedNet, (n) => fmtMoney(n, currency));
+
+  const moneyAtRate = walletMoneyNet(prepaid, debt, balanceKind, rate);
+  const lessonsAtRate = walletLessonsNet(prepaid, debt, balanceKind, rate);
   const secondary =
-    balanceKind === 'lessons' && moneyNet != null
-      ? signedNetLabel(moneyNet, (n) => fmtMoney(n, currency))
-      : balanceKind === 'money' && lessonsNet != null
-        ? signedNetLabel(lessonsNet, lessonCountLabel)
+    balanceKind === 'lessons' && rate != null && rate > 0
+      ? signedNetLabel(moneyAtRate, (n) => fmtMoney(n, currency))
+      : balanceKind === 'money' && lessonsAtRate != null
+        ? signedNetLabel(lessonsAtRate, lessonCountLabel)
         : null;
 
   const rootClass =

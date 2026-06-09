@@ -26,7 +26,7 @@ describe('seed', () => {
   });
 
   it('runs and produces demo tutor with students and lessons', () => {
-    execSync('pnpm seed', {
+    execSync('npm run seed', {
       cwd: serverRoot,
       env: { ...process.env, DATABASE_URL: url },
       stdio: 'pipe',

@@ -41,6 +41,9 @@ export interface Student {
   prepaid: number;
   debt: number;
   excludeFromTaxes: boolean;
+  /** When set, balance operations use this student's account. */
+  billingStudentId: string | null;
+  openLessonDebt: number;
   archivedAt: string | null;
   createdAt: string;
 }

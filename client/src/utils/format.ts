@@ -42,7 +42,8 @@ export function fmtBalanceNet(
 }
 
 export function fmtMoney(amount: number, currency: string): string {
-  const sym = currency === 'EUR' ? '€' : currency === 'RUB' ? '₽' : currency;
+  const sym =
+    currency === 'EUR' ? '€' : currency === 'RUB' ? '₽' : currency === 'BYN' ? 'Br' : currency;
   const n = amount.toLocaleString('ru-RU');
   return currency === 'EUR' ? `${sym}${n}` : `${n}\u202F${sym}`;
 }

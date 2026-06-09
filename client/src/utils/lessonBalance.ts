@@ -14,23 +14,36 @@ export function isLessonPast(
   return now.getTime() >= lessonEndUtcIso(startUtc, durationMin).getTime();
 }
 
-export function chargeAmount(
-  balanceKind: BalanceKind,
+/** Charge in the wallet holder’s units (payer for family billing). */
+export function walletChargeAmount(
+  walletBalanceKind: BalanceKind,
+  walletRate: number | null,
+  lessonRate: number | null,
   academicUnits: AcademicUnits,
-  rate: number | null,
 ): number | null {
-  if (balanceKind === 'lessons') return academicUnits;
-  if (rate == null) return null;
-  return lessonPrice(rate, academicUnits);
+  if (walletBalanceKind === 'lessons') {
+    if (walletRate != null && walletRate > 0 && lessonRate != null) {
+      return (lessonRate * academicUnits) / walletRate;
+    }
+    return academicUnits;
+  }
+  if (lessonRate == null) return null;
+  return lessonPrice(lessonRate, academicUnits);
 }
 
-export function formatChargeSummary(
-  balanceKind: BalanceKind,
+export function formatWalletChargeSummary(
+  walletBalanceKind: BalanceKind,
+  walletRate: number | null,
+  lessonRate: number | null,
   academicUnits: AcademicUnits,
-  rate: number | null,
   currency: string,
 ): string | null {
-  const amount = chargeAmount(balanceKind, academicUnits, rate);
+  const amount = walletChargeAmount(
+    walletBalanceKind,
+    walletRate,
+    lessonRate,
+    academicUnits,
+  );
   if (amount == null) return null;
-  return fmtBalanceAmount(amount, balanceKind, currency);
+  return fmtBalanceAmount(amount, walletBalanceKind, currency);
 }

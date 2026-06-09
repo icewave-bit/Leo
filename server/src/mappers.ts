@@ -44,6 +44,7 @@ interface StudentRow {
   prepaid: string;
   debt: string;
   exclude_from_taxes: boolean;
+  billing_student_id: string | null;
   archived_at: Date | null;
   created_at: Date;
 }
@@ -108,7 +109,7 @@ export function toTutor(row: TutorRow): Tutor {
   };
 }
 
-export function toStudent(row: StudentRow): Student {
+export function toStudent(row: StudentRow, openLessonDebt = 0): Student {
   return {
     id: row.id,
     tutorId: row.tutor_id,
@@ -126,6 +127,8 @@ export function toStudent(row: StudentRow): Student {
     prepaid: Number(row.prepaid),
     debt: Number(row.debt),
     excludeFromTaxes: row.exclude_from_taxes,
+    billingStudentId: row.billing_student_id,
+    openLessonDebt,
     archivedAt: row.archived_at ? toIsoUtc(row.archived_at) : null,
     createdAt: toIsoUtc(row.created_at),
   };

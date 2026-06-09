@@ -6,6 +6,7 @@ import {
   recurringSchedulesAtom,
   scheduleLoadErrorAtom,
   scheduleLoadingAtom,
+  studentLessonsBumpAtom,
   studentsAtom,
   weekStartAtom,
 } from '../atoms/schedule';
@@ -38,6 +39,7 @@ export async function loadSchedule(get: Getter, set: Setter): Promise<void> {
       lessonsAtom,
       lessons.map((l) => lessonToView(l, weekStart, tutor.timezone)),
     );
+    set(studentLessonsBumpAtom, (n) => n + 1);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Не удалось загрузить расписание';
     set(scheduleLoadErrorAtom, message);

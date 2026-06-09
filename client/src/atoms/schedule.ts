@@ -1,4 +1,5 @@
 import { atom } from 'jotai';
+import type { BalanceKind } from '../api/types';
 import type { RecurringSchedule } from '../api/types';
 import type { LessonDraft, ViewLesson, ViewStudent } from '../utils/schedule';
 
@@ -20,3 +21,5 @@ export const studentDrawerModeAtom = atom<'create' | 'edit' | null>(null);
 export const balanceReplenishStudentIdAtom = atom<string | null>(null);
 /** Increment to refetch lesson lists after balance top-up. */
 export const studentLessonsBumpAtom = atom(0);
+/** Как показывать баланс в списке: деньги (основа) или уроки (из денег). */
+export const studentsBalanceDisplayAtom = atom<BalanceKind>('money');

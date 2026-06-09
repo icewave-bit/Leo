@@ -191,6 +191,7 @@ export function movementDeltaAsMoney(
 
 export interface JournalRow extends BalanceMovement {
   studentName: string;
+  chargedForName: string | null;
   balanceKind: ViewStudent['balanceKind'];
   currency: string;
   title: string;
@@ -214,14 +215,21 @@ export function enrichMovements(
 ): JournalRow[] {
   return movements.map((m) => {
     const st = students.get(m.studentId);
+    const chargedFor = m.chargedForStudentId
+      ? students.get(m.chargedForStudentId)
+      : undefined;
     const unitKind = movementUnitKind(m, st);
     const currency = st?.currency ?? 'EUR';
+    const baseTitle = MOVEMENT_LABELS[m.kind];
+    const title =
+      chargedFor != null ? `${baseTitle} · ${chargedFor.name}` : baseTitle;
     return {
       ...m,
       studentName: st?.name ?? 'Ученик',
+      chargedForName: chargedFor?.name ?? null,
       balanceKind: unitKind,
       currency,
-      title: MOVEMENT_LABELS[m.kind],
+      title,
       prepaidLabel: fmtDelta(m.prepaidDelta, unitKind, currency),
       debtLabel: fmtDelta(m.debtDelta, unitKind, currency),
       netLabel: fmtBalanceNet(m.prepaidAfter, m.debtAfter, unitKind, currency),

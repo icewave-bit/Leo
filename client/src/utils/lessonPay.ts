@@ -1,5 +1,5 @@
 import type { AcademicUnits } from '../api/types';
-import { chargeAmount } from './lessonBalance';
+import { walletChargeAmount } from './lessonBalance';
 import type { ViewLesson, ViewStudent } from './schedule';
 
 export function studentNetBalance(student: ViewStudent): number {
@@ -7,21 +7,30 @@ export function studentNetBalance(student: ViewStudent): number {
 }
 
 export function lessonChargeUnits(
-  student: ViewStudent,
+  attendee: ViewStudent,
   academicUnits: AcademicUnits,
+  walletHolder?: ViewStudent,
 ): number | null {
-  if (student.group) return null;
-  return chargeAmount(student.balanceKind, academicUnits, student.rate);
+  if (attendee.group) return null;
+  const wallet = walletHolder ?? attendee;
+  return walletChargeAmount(
+    wallet.balanceKind,
+    wallet.rate,
+    attendee.rate,
+    academicUnits,
+  );
 }
 
 /** На балансе хватит уроков — после проведения спишется с предоплаты (деньги уже были). */
 export function wouldCoverFromPrepaid(
-  student: ViewStudent,
+  attendee: ViewStudent,
   academicUnits: AcademicUnits,
+  walletHolder?: ViewStudent,
 ): boolean | null {
-  const charge = lessonChargeUnits(student, academicUnits);
+  const wallet = walletHolder ?? attendee;
+  const charge = lessonChargeUnits(attendee, academicUnits, wallet);
   if (charge == null) return null;
-  return studentNetBalance(student) >= charge;
+  return studentNetBalance(wallet) >= charge;
 }
 
 export function lessonHasOpenDebt(
@@ -51,10 +60,11 @@ export function lessonPayToggleDisabled(status: ViewLesson['status']): boolean {
 }
 
 export function plannedPayPreview(
-  student: ViewStudent,
+  attendee: ViewStudent,
   academicUnits: AcademicUnits,
+  walletHolder?: ViewStudent,
 ): { paid: boolean; label: string } | null {
-  const cover = wouldCoverFromPrepaid(student, academicUnits);
+  const cover = wouldCoverFromPrepaid(attendee, academicUnits, walletHolder);
   if (cover == null) return null;
   if (cover) {
     return {
@@ -68,9 +78,13 @@ export function plannedPayPreview(
   };
 }
 
-export function payToggleLabel(lesson: ViewLesson, student: ViewStudent): string {
+export function payToggleLabel(
+  lesson: ViewLesson,
+  student: ViewStudent,
+  walletHolder?: ViewStudent,
+): string {
   if (lesson.status === 'planned') {
-    return plannedPayPreview(student, lesson.academicUnits)?.label ?? '—';
+    return plannedPayPreview(student, lesson.academicUnits, walletHolder)?.label ?? '—';
   }
   if (lesson.status === 'cancelled' || lesson.status === 'no-show') {
     return lesson.paid ? 'Списано с баланса' : 'Не списано';

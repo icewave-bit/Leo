@@ -48,8 +48,26 @@ export interface Student {
   prepaid: number;
   debt: number;
   excludeFromTaxes: boolean;
+  billingStudentId: string | null;
+  openLessonDebt: number;
   archivedAt: string | null;
   createdAt: string;
+}
+
+export interface BillingDebtEntry {
+  studentId: string;
+  studentName: string;
+  openDebt: number;
+}
+
+export interface BillingDebtBreakdown {
+  payerId: string;
+  payerName: string;
+  balanceKind: BalanceKind;
+  currency: string;
+  walletPrepaid: number;
+  walletDebt: number;
+  entries: BillingDebtEntry[];
 }
 
 export type CreateStudentBody = {
@@ -66,6 +84,8 @@ export type CreateStudentBody = {
   balanceKind?: BalanceKind;
   prepaid?: number;
   debt?: number;
+  excludeFromTaxes?: boolean;
+  billingStudentId?: string | null;
 };
 
 export type UpdateStudentBody = Partial<CreateStudentBody> & {
@@ -83,6 +103,7 @@ export type BalanceMovementKind =
 export interface BalanceMovement {
   id: string;
   studentId: string;
+  chargedForStudentId: string | null;
   lessonId: string | null;
   occurredAt: string;
   kind: BalanceMovementKind;

@@ -26,6 +26,14 @@ export function useStudentActions() {
 
   const updateStudent = async (id: string, body: UpdateStudentBody): Promise<void> => {
     const student = await api.updateStudent(id, body);
+    const affectsFamilyBalance =
+      body.prepaid !== undefined ||
+      body.debt !== undefined ||
+      body.billingStudentId !== undefined;
+    if (affectsFamilyBalance) {
+      await reloadStudents(store.get, store.set);
+      return;
+    }
     const view = studentToView(student);
     setStudents((prev) => prev.map((s) => (s.id === id ? view : s)));
   };

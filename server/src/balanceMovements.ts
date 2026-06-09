@@ -12,6 +12,8 @@ export async function recordBalanceMovement(
   client: PoolClient,
   input: {
     studentId: string;
+    /** Lesson attendee when balance is charged via a shared payer account. */
+    chargedForStudentId?: string | null;
     lessonId?: string | null;
     occurredAt?: Date;
     /** YYYY-MM-DD — фактическая дата поступления средств */
@@ -37,12 +39,13 @@ export async function recordBalanceMovement(
 
   await client.query(
     `INSERT INTO balance_movements (
-       tutor_id, student_id, lesson_id, occurred_at, received_on, kind,
+       tutor_id, student_id, charged_for_student_id, lesson_id, occurred_at, received_on, kind,
        prepaid_delta, debt_delta, prepaid_after, debt_after, balance_kind
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
     [
       row.tutor_id,
       input.studentId,
+      input.chargedForStudentId ?? null,
       input.lessonId ?? null,
       (input.occurredAt ?? new Date()).toISOString(),
       input.receivedOn ?? null,

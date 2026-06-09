@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
+import { useNavigate } from 'react-router-dom';
 import {
   balanceReplenishStudentIdAtom,
+  studentLessonsBumpAtom,
   studentsAtom,
 } from '../atoms/schedule';
 import {
@@ -17,12 +19,14 @@ import { reloadStudents } from '../state/reloadStudents';
 import { useAppStore } from '../hooks/useAppStore';
 
 export function PaymentsPage() {
+  const navigate = useNavigate();
   const students = useAtomValue(studentsAtom);
   const [replenishId, setReplenishId] = useAtom(balanceReplenishStudentIdAtom);
   const period = useAtomValue(paymentsPeriodAtom);
   const studentId = useAtomValue(paymentsStudentIdAtom);
   const customFrom = useAtomValue(paymentsCustomFromAtom);
   const customTo = useAtomValue(paymentsCustomToAtom);
+  const lessonsBump = useAtomValue(studentLessonsBumpAtom);
   const store = useAppStore();
 
   const replenishStudent = replenishId
@@ -31,7 +35,7 @@ export function PaymentsPage() {
 
   useEffect(() => {
     void loadBalanceMovements(store.get, store.set);
-  }, [store, period, studentId, customFrom, customTo]);
+  }, [store, period, studentId, customFrom, customTo, lessonsBump]);
 
   const onReplenished = () => {
     void reloadStudents(store.get, store.set);
@@ -56,6 +60,7 @@ export function PaymentsPage() {
           open={Boolean(replenishId)}
           onClose={() => setReplenishId(null)}
           onReplenished={onReplenished}
+          onOpenStudent={(id) => navigate(`/students/${id}`)}
         />
       ) : null}
     </div>

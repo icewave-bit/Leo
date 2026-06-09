@@ -1,9 +1,10 @@
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import { useAtomValue } from 'jotai';
 import { tutorAtom } from '../../atoms/auth';
-import { lessonsAtom, weekStartAtom } from '../../atoms/schedule';
+import { lessonsAtom, studentsAtom, weekStartAtom } from '../../atoms/schedule';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { LessonBalanceConfirmOptions } from '../LessonBalanceConfirmOptions';
+import { findBillingPayer } from '../../utils/billingStudent';
 import {
   WG_DAY_HOURS,
   WG_DEFAULT_VIEW_START,
@@ -119,6 +120,7 @@ export function WeekGrid({
   const scrollRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const lessons = useAtomValue(lessonsAtom);
+  const students = useAtomValue(studentsAtom);
   const weekStart = useAtomValue(weekStartAtom);
   const tutor = useAtomValue(tutorAtom);
   const studentMap = useStudentMap();
@@ -194,6 +196,10 @@ export function WeekGrid({
     if (el) el.scrollTop = WG_HOUR_LABEL_INSET + WG_DEFAULT_VIEW_START * pxPerHour;
   }, [weekStart, pxPerHour]);
 
+  const pendingWallet = pendingStudent
+    ? findBillingPayer(students, pendingStudent) ?? pendingStudent
+    : null;
+
   return (
     <div
       className={'wg' + (active ? ' wg--dragging' : '') + (compact ? ' wg--compact' : '')}
@@ -210,12 +216,13 @@ export function WeekGrid({
         onConfirm={() => void confirmReschedule()}
         onCancel={cancelReschedule}
       >
-        {needsBalanceConfirm && pending && pendingStudent ? (
+        {needsBalanceConfirm && pending && pendingStudent && pendingWallet ? (
           <LessonBalanceConfirmOptions
-            balanceKind={pendingStudent.balanceKind}
+            walletBalanceKind={pendingWallet.balanceKind}
+            walletRate={pendingWallet.rate}
+            lessonRate={pendingStudent.rate}
             academicUnits={pending.lesson.academicUnits}
-            rate={pendingStudent.rate}
-            currency={pendingStudent.currency}
+            currency={pendingWallet.currency}
             balanceCharged={pending.lesson.balanceCharged}
             restoreBalance={restoreBalance}
             onRestoreBalanceChange={setRestoreBalance}

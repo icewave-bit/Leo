@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg';
+import { countBillingDependents } from './billingStudent.js';
 import { getPool } from './db.js';
 import { AppError } from './errors.js';
 
@@ -19,6 +20,15 @@ export async function archiveStudent(
     }
     if (row.rows[0]!.archived_at) {
       throw new AppError('CONFLICT', 409, 'Student is already archived');
+    }
+
+    const dependents = await countBillingDependents(client, studentId);
+    if (dependents > 0) {
+      throw new AppError(
+        'CONFLICT',
+        409,
+        'Cannot archive a billing payer while other students bill through this account',
+      );
     }
 
     await client.query(

@@ -86,6 +86,12 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .btn--block { width: 100%; padding: 12px; }
 .btn--primary { background: var(--c-primary); color: #fff; box-shadow: var(--sh-sm); }
 .btn--primary:hover { background: var(--c-primary-ink); }
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
 .btn--ghost { background: transparent; border-color: var(--border); }
 .btn--soft { background: var(--c-primary-weak); color: var(--c-primary-ink); }
 .btn--google { width: 100%; background: var(--surf); border-color: var(--border-strong); padding: 12px; }
@@ -1343,6 +1349,29 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .replenish__error { margin: 10px 0 0; font-size: 13px; color: var(--c-debt); font-weight: 600; }
 .replenish__actions { margin-top: 18px; justify-content: flex-end; }
 .replenish-layer { z-index: 60; }
+.replenish--readonly .balance-actions--readonly.is-readonly,
+.balance-actions--readonly.is-readonly {
+  opacity: 0.55;
+  pointer-events: none;
+  user-select: none;
+}
+.drawer-panel__payer-link,
+.replenish__payer-link {
+  pointer-events: auto;
+  opacity: 1;
+}
+.replenish__dependent-debt {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.replenish__dependent-debt strong {
+  color: var(--c-debt);
+}
+.replenish__payer-link,
+.drawer-panel__payer-link {
+  margin-top: 12px;
+}
 .replenish__received {
   margin-top: 12px;
   border: 1px solid var(--border);
@@ -1431,6 +1460,15 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   display: flex;
   align-items: stretch;
   gap: 8px;
+  flex-wrap: wrap;
+}
+.students-toolbar__balance-display {
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+}
+.students-toolbar__balance-display .seg--balance-kind {
+  min-width: 148px;
 }
 .students-toolbar__search {
   flex: 1;
@@ -1607,6 +1645,92 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 }
 .student-card__balance--credit { color: var(--c-credit); }
 .student-card__balance--debt { color: var(--c-debt); }
+
+.billing-payer-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.billing-payer-link:hover {
+  color: var(--accent-strong, var(--accent));
+}
+
+.billing-dependent-panel__debt {
+  margin: 0;
+  font-size: 15px;
+}
+.billing-dependent-panel__debt strong {
+  color: var(--c-debt);
+}
+
+.drawer__balance-dependent {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pay-summary__dependent {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pay-summary__dependent-debt {
+  margin: 0;
+  font-size: 15px;
+}
+
+.billing-family-debt--readonly .billing-family-debt__note {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+.billing-family-debt--readonly .billing-family-debt__row {
+  cursor: default;
+  pointer-events: none;
+}
+
+.billing-family-debt {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.billing-family-debt__title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.billing-family-debt__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.billing-family-debt__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+.billing-family-debt__row--self .billing-family-debt__name {
+  font-weight: 600;
+}
+.billing-family-debt__amount {
+  color: var(--c-debt);
+  font-weight: 600;
+}
 
 .seg--academic-units,
 .seg--balance-kind { width: 100%; }
@@ -2132,15 +2256,29 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 }
 .pay-entry__student {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   margin-bottom: 12px;
   min-width: 0;
   max-width: 100%;
 }
+.pay-entry__student-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
 .pay-entry__student-name {
   font-size: 14px;
   font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pay-entry__student-wallet {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
