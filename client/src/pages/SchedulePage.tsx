@@ -52,6 +52,7 @@ function Topbar({
   onNextWeek,
   onToday,
   onAddLesson,
+  weekNavBusy,
 }: {
   variant: 'week' | 'timeline' | 'agenda';
   setVariant: (v: 'week' | 'timeline' | 'agenda') => void;
@@ -63,6 +64,7 @@ function Topbar({
   onNextWeek: () => void;
   onToday: () => void;
   onAddLesson: () => void;
+  weekNavBusy?: boolean;
 }) {
   const themeBtn = (
     <button
@@ -87,15 +89,32 @@ function Topbar({
   const weekNav = (
     <div className="weeknav">
       <div className="weeknav__range">
-        <button type="button" className="iconbtn" aria-label="Назад" onClick={onPrevWeek}>
+        <button
+          type="button"
+          className="iconbtn"
+          aria-label="Назад"
+          disabled={weekNavBusy}
+          onClick={onPrevWeek}
+        >
           ‹
         </button>
         <span className="weeknav__label">{weekLabel}</span>
-        <button type="button" className="iconbtn" aria-label="Вперёд" onClick={onNextWeek}>
+        <button
+          type="button"
+          className="iconbtn"
+          aria-label="Вперёд"
+          disabled={weekNavBusy}
+          onClick={onNextWeek}
+        >
           ›
         </button>
       </div>
-      <button type="button" className="btn btn--ghost btn--sm" onClick={onToday}>
+      <button
+        type="button"
+        className="btn btn--ghost btn--sm"
+        disabled={weekNavBusy}
+        onClick={onToday}
+      >
         Сегодня
       </button>
     </div>
@@ -121,16 +140,28 @@ function Topbar({
       <header className="top top--schedule">
         <div className="top__row top__row--toolbar">
           <div className="weeknav weeknav--compact">
-            <button type="button" className="iconbtn iconbtn--dense" aria-label="Назад" onClick={onPrevWeek}>
+            <button
+              type="button"
+              className="iconbtn iconbtn--dense"
+              aria-label="Назад"
+              disabled={weekNavBusy}
+              onClick={onPrevWeek}
+            >
               ‹
             </button>
             <span className="weeknav__label">{weekLabel}</span>
-            <button type="button" className="iconbtn iconbtn--dense" aria-label="Вперёд" onClick={onNextWeek}>
+            <button
+              type="button"
+              className="iconbtn iconbtn--dense"
+              aria-label="Вперёд"
+              disabled={weekNavBusy}
+              onClick={onNextWeek}
+            >
               ›
             </button>
           </div>
           <div className="top__actions">
-            <button type="button" className="top__link" onClick={onToday}>
+            <button type="button" className="top__link" disabled={weekNavBusy} onClick={onToday}>
               Сегодня
             </button>
             <button
@@ -215,6 +246,7 @@ export function SchedulePage() {
   const [draft, setDraft] = useAtom(lessonDraftAtom);
   const [prefillStudentId, setPrefillStudentId] = useState<string | undefined>();
   const [activeDay, setActiveDay] = useAtom(activeDayAtom);
+  const [weekNavBusy, setWeekNavBusy] = useState(false);
   const { setStatus, setPaid, setNotes, createLesson, deleteLesson, rescheduleLesson } =
     useLessonActions();
   const { createRecurringSchedule, deleteRecurringSchedule } = useRecurringScheduleActions();
@@ -242,10 +274,14 @@ export function SchedulePage() {
 
   const reloadWeek = async (anchor: Date) => {
     const { weekStart } = weekRangeUtc(anchor, weekStartsOn);
-    store.set(weekStartAtom, weekStart);
-    await loadSchedule(store.get, store.set);
-    const idx = todayDayIndex(weekStart, tz);
-    if (idx != null) setActiveDay(clampGridDayToVisible(idx, weekStartsOn, hiddenWeekdays));
+    setWeekNavBusy(true);
+    try {
+      await loadSchedule(store.get, store.set, { anchor: weekStart, lessonsOnly: true });
+      const idx = todayDayIndex(weekStart, tz);
+      if (idx != null) setActiveDay(clampGridDayToVisible(idx, weekStartsOn, hiddenWeekdays));
+    } finally {
+      setWeekNavBusy(false);
+    }
   };
 
   const onPrevWeek = () => void reloadWeek(shiftWeek(weekStart, -1));
@@ -309,6 +345,7 @@ export function SchedulePage() {
         onNextWeek={onNextWeek}
         onToday={onToday}
         onAddLesson={() => openCreate(todayDayIndex(weekStart, tz) ?? 0, 10)}
+        weekNavBusy={weekNavBusy}
       />
       <div className="app__content">
         <main className="board">

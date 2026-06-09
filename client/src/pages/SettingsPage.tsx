@@ -137,8 +137,7 @@ export function SettingsPage() {
       setTutor(updated);
       const anchor = store.get(weekStartAtom);
       const { weekStart } = weekRangeUtc(anchor, weekStartsOn);
-      store.set(weekStartAtom, weekStart);
-      await loadSchedule(store.get, store.set);
+      await loadSchedule(store.get, store.set, { anchor: weekStart, lessonsOnly: true });
       setSaved(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось сохранить');

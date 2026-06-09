@@ -1,7 +1,8 @@
 import { PAY_LABELS, STATUS_LABELS } from '../../constants/status';
-import { lessonDebtClosed, lessonHasOpenDebt } from '../../utils/lessonPay';
+import { lessonDebtClosed } from '../../utils/lessonPay';
 import { fmtTime } from '../../utils/format';
 import type { ViewLesson, ViewStudent } from '../../utils/schedule';
+import { RecurrenceIcon } from '../RecurrenceFields';
 import { NotesPaperIcon } from '../icons/NotesPaperIcon';
 
 export function lessonCardVars(student: ViewStudent): React.CSSProperties {
@@ -92,17 +93,10 @@ export function LessonMetaLine({
 }
 
 export function lessonGridHint(
-  lesson: Pick<
-    ViewLesson,
-    'status' | 'paid' | 'balanceCharged' | 'chargeDebtDelta' | 'balancePaidApplied'
-  >,
+  lesson: Pick<ViewLesson, 'status'>,
 ): string | null {
-  if (lesson.status === 'planned') return null;
-  const label = STATUS_LABELS[lesson.status].short;
-  if (lesson.status === 'completed' && lessonHasOpenDebt(lesson)) {
-    return `${label} · долг`;
-  }
-  return label;
+  if (lesson.status === 'planned' || lesson.status === 'completed') return null;
+  return STATUS_LABELS[lesson.status].short;
 }
 
 export function lessonEventLabel(
@@ -119,6 +113,16 @@ export function lessonEventLabel(
 
 export function hasLessonNotes(notes: string | null | undefined): boolean {
   return Boolean(notes?.trim());
+}
+
+/** Bottom-right — recurrence takes the corner; notes shift left when both are present. */
+export function LessonRecurrenceMark({ recurring }: { recurring: boolean }) {
+  if (!recurring) return null;
+  return (
+    <span className="ev__recur" aria-label="Повторяющийся урок" title="Повторяющийся урок">
+      <RecurrenceIcon />
+    </span>
+  );
 }
 
 /** Bottom-right badge — kept away from the top-right pay tick (ev__mark). */

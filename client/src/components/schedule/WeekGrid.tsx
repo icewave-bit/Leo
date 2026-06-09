@@ -39,9 +39,9 @@ import {
   lessonGridHint,
   LessonNotesMark,
   LessonPayMark,
+  LessonRecurrenceMark,
   TypeIcon,
 } from './LessonChrome';
-import { RecurrenceIcon } from '../RecurrenceFields';
 
 function LessonEvent({
   lesson,
@@ -74,6 +74,7 @@ function LessonEvent({
       className={
         lessonCardClass(lesson, { tight, ghost }) +
         (hasLessonNotes(lesson.notes) ? ' ev--has-notes' : '') +
+        (lesson.recurringScheduleId ? ' ev--has-recur' : '') +
         (colsClass ? ` ${colsClass}` : '')
       }
       style={{
@@ -91,10 +92,10 @@ function LessonEvent({
       onClick={onClick}
     >
       <LessonPayMark lesson={lesson} />
+      <LessonRecurrenceMark recurring={Boolean(lesson.recurringScheduleId)} />
       <LessonNotesMark notes={lesson.notes} />
       <span className="ev__head">
         <span className="ev__name">{student.name}</span>
-        {lesson.recurringScheduleId ? <RecurrenceIcon /> : null}
         {lesson.type === 'group' ? <TypeIcon type="group" /> : null}
       </span>
       <span className="ev__time">
@@ -191,10 +192,27 @@ export function WeekGrid({
     return byDay;
   }, [lessons, dragLesson, preview, visibleDays]);
 
+  const weekMs = weekStart.getTime();
+  const scrollWeekRef = useRef(weekMs);
+  const scrollPxRef = useRef(pxPerHour);
+
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = WG_HOUR_LABEL_INSET + WG_DEFAULT_VIEW_START * pxPerHour;
-  }, [weekStart, pxPerHour]);
+    if (!el) return;
+
+    if (scrollWeekRef.current !== weekMs) {
+      scrollWeekRef.current = weekMs;
+      el.scrollTop = WG_HOUR_LABEL_INSET + WG_DEFAULT_VIEW_START * pxPerHour;
+      scrollPxRef.current = pxPerHour;
+      return;
+    }
+
+    if (scrollPxRef.current !== pxPerHour && scrollPxRef.current > 0) {
+      const hourAtTop = (el.scrollTop - WG_HOUR_LABEL_INSET) / scrollPxRef.current;
+      el.scrollTop = WG_HOUR_LABEL_INSET + hourAtTop * pxPerHour;
+      scrollPxRef.current = pxPerHour;
+    }
+  }, [weekMs, pxPerHour]);
 
   const pendingWallet = pendingStudent
     ? findBillingPayer(students, pendingStudent) ?? pendingStudent

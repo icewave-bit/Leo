@@ -497,6 +497,18 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 }
 .ev__mark--ok { color: var(--c-credit); }
 .ev__mark--debt { color: var(--c-debt); }
+.ev__recur {
+  position: absolute;
+  bottom: 4px;
+  right: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  pointer-events: none;
+  z-index: 2;
+  color: var(--muted);
+}
 .ev__notes {
   position: absolute;
   bottom: 4px;
@@ -520,7 +532,10 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   color: oklch(0.86 0.1 78);
   border-color: oklch(0.5 0.09 70);
 }
+.ev--has-recur .ev__notes { right: 20px; }
+.ev--has-recur .ev__time { padding-right: 14px; }
 .ev--has-notes .ev__hint { padding-right: 20px; }
+.ev--has-recur.ev--has-notes .ev__hint { padding-right: 36px; }
 .ev--completed .ev__head,
 .ev--completed .ft__card-head,
 .ev--completed .ag__head { padding-right: 14px; }
@@ -2991,6 +3006,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .app--mobile .wg .ev--tight .ev__time { display: block; }
 .app--mobile .wg .ev .ev__mark { top: 3px; right: 3px; }
 .app--mobile .wg .ev .ev__mark svg { width: 9px; height: 9px; }
+.app--mobile .wg .ev .ev__recur { bottom: 3px; right: 3px; }
+.app--mobile .wg .ev .ev__recur svg { width: 10px; height: 10px; }
+.app--mobile .wg .ev--has-recur .ev__notes { right: 17px; }
 .app--mobile .wg .ev .ev__notes {
   bottom: 3px;
   right: 3px;
@@ -2999,6 +3017,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   border-radius: 4px;
 }
 .app--mobile .wg .ev .ev__notes svg { width: 8px; height: 8px; }
+.app--mobile .wg .ev--has-recur .ev__time { padding-right: 12px; }
 .app--mobile .wg .ev--completed .ev__head { padding-right: 12px; }
 .app--mobile .wg .ev--has-notes .ev__time { padding-right: 16px; }
 
