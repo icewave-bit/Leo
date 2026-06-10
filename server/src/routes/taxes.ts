@@ -7,7 +7,6 @@ import { getNbrbApiBase } from '../config.js';
 import { convertToByn, fetchNbrbRate } from '../nbrb.js';
 import {
   isTaxableIncomeMovement,
-  isTaxableReplenish,
   lessonPaidDeltaAsMoney,
   monthBoundsDates,
   movementReceivedDate,
