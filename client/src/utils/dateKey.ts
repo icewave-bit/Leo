@@ -31,3 +31,41 @@ export function fmtDateParts(
     weekStartsOn,
   );
 }
+
+function isValidDateParts(y: number, m: number, d: number): boolean {
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return false;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+}
+
+/** Parse display or ISO date to YYYY-MM-DD (order follows week start: EU vs US). */
+export function parseDateKey(
+  input: string,
+  weekStartsOn: WeekStartsOn = 'monday',
+): string | null {
+  const trimmed = input.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const [y, m, d] = trimmed.split('-').map(Number);
+    return isValidDateParts(y!, m!, d!) ? trimmed : null;
+  }
+
+  const parts = trimmed.split(/[./-]/).map((p) => p.trim());
+  if (parts.length !== 3) return null;
+
+  let day: number;
+  let month: number;
+  let year = Number(parts[2]);
+  if (year < 100) year += 2000;
+
+  if (weekStartsOn === 'sunday') {
+    month = Number(parts[0]);
+    day = Number(parts[1]);
+  } else {
+    day = Number(parts[0]);
+    month = Number(parts[1]);
+  }
+
+  if (!isValidDateParts(year, month, day)) return null;
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}

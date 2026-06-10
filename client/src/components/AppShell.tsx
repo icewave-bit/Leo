@@ -7,6 +7,7 @@ import { useAppStore } from '../hooks/useAppStore';
 import { useMobile } from '../hooks/useMobile';
 import { loadSchedule } from '../state/loadSchedule';
 import { Icon } from './Icon';
+import { LogoBrand } from './LogoBrand';
 
 const NAV = [
   {
@@ -90,13 +91,7 @@ function SidebarNav({ mobile }: { mobile: boolean }) {
   return (
     <aside className="side">
       <div className="side__brand">
-        <span className="logo">
-          <span className="logo__mark" />
-        </span>
-        <span className="logo__copy">
-          <span className="logo__word">LeO</span>
-          <span className="logo__tagline">Сделано репетитором для репетиторов</span>
-        </span>
+        <LogoBrand variant="app" />
       </div>
       <nav className="side__nav">
         {NAV.map((n) => (

@@ -282,6 +282,102 @@ describe('taxes', () => {
     expect(list.body[0].amount).toBe(RATE);
   });
 
+  it('creates manual tax entry without changing balance or payments journal', async () => {
+    const { agent } = await registerTutor(app);
+
+    const studentRes = await agent
+      .post('/api/students')
+      .send({
+        name: 'Manual Tax',
+        hue: 208,
+        balanceKind: 'money',
+        currency: 'EUR',
+        prepaid: 40,
+        debt: 0,
+        rate: 50,
+        isGroup: false,
+        members: [],
+      })
+      .expect(201);
+    const studentId = studentRes.body.id as string;
+
+    const created = await agent
+      .post('/api/taxes')
+      .send({
+        studentId,
+        receivedOn: '2026-03-05',
+        currency: 'EUR',
+        amount: 75,
+      })
+      .expect(201);
+
+    expect(created.body.amount).toBe(75);
+    expect(created.body.currency).toBe('EUR');
+    expect(created.body.replenishmentDate).toBe('2026-03-05');
+    expect(created.body.amountByn).toBe(75 * 3.25);
+
+    const studentAfter = await agent.get(`/api/students/${studentId}`).expect(200);
+    expect(studentAfter.body.prepaid).toBe(40);
+
+    const list = await agent
+      .get(`/api/taxes?month=2026-03&studentId=${studentId}`)
+      .expect(200);
+    expect(list.body.length).toBe(1);
+    expect(list.body[0].movementId).toBe(created.body.movementId);
+
+    const from = '2026-03-01T00:00:00.000Z';
+    const to = '2026-04-01T00:00:00.000Z';
+    const movements = await agent
+      .get(`/api/balance-movements?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&studentId=${studentId}`)
+      .expect(200);
+    expect(movements.body.some((m: { id: string }) => m.id === created.body.movementId)).toBe(
+      false,
+    );
+  });
+
+  it('excludes deleted replenishment from tax list permanently', async () => {
+    const { agent } = await registerTutor(app);
+
+    const studentRes = await agent
+      .post('/api/students')
+      .send({
+        name: 'Deleted Tax Row',
+        hue: 212,
+        balanceKind: 'money',
+        currency: 'EUR',
+        prepaid: 0,
+        debt: 0,
+        rate: 50,
+        isGroup: false,
+        members: [],
+      })
+      .expect(201);
+    const studentId = studentRes.body.id as string;
+
+    await agent
+      .patch(`/api/students/${studentId}`)
+      .send({ prepaid: 80, receivedOn: '2026-02-10' })
+      .expect(200);
+
+    const list = await agent
+      .get(`/api/taxes?month=2026-02&studentId=${studentId}`)
+      .expect(200);
+    expect(list.body.length).toBe(1);
+    const movementId = list.body[0].movementId as string;
+
+    await agent.delete(`/api/taxes/${movementId}`).expect(204);
+
+    const afterDelete = await agent
+      .get(`/api/taxes?month=2026-02&studentId=${studentId}`)
+      .expect(200);
+    expect(afterDelete.body.length).toBe(0);
+
+    const afterReload = await agent
+      .get(`/api/taxes?month=2026-02&studentId=${studentId}`)
+      .expect(200);
+    expect(afterReload.body.length).toBe(0);
+  });
+
   it('excludes manual balance corrections (prepaid + debt patch)', async () => {
     const { agent } = await registerTutor(app);
 

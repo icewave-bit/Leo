@@ -138,12 +138,38 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- logo ---------- */
-.logo { display: inline-flex; }
-.logo__mark { width: 28px; height: 28px; border-radius: 9px; background: var(--c-primary); position: relative; display: inline-block; }
-.logo__mark::before { content: ""; position: absolute; inset: 8px 8px auto 8px; height: 3px; border-radius: 2px; background: #fff; box-shadow: 0 5px 0 #fff9, 0 10px 0 #fff6; }
-.logo__copy { display: flex; flex-direction: column; gap: 1px; line-height: 1.08; min-width: 0; }
+.logo__img {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  display: block;
+  flex: none;
+  object-fit: cover;
+}
+.logo-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  line-height: 1.08;
+}
+.logo-brand__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .logo__word { font-weight: 700; letter-spacing: -0.02em; font-size: 16px; }
-.logo__tagline { color: var(--muted); font-size: 10.5px; font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; }
+.logo-brand--lg .logo__img { width: 56px; height: 56px; border-radius: 14px; }
+.logo-brand--lg .logo__word { font-size: 32px; letter-spacing: -0.03em; }
+.logo-brand--lg .logo-brand__row { gap: 14px; }
+.logo__tagline {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+  text-wrap: balance;
+}
 
 /* ========== LOGIN ========== */
 .login {
@@ -178,9 +204,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .login__content,
 .login__decor { position: relative; z-index: 1; }
 .login__brand,
-.login__mobile-brand { display: flex; align-items: center; gap: 10px; }
-.login__aside .logo__mark { background: #fff; }
-.login__aside .logo__mark::before { background: var(--c-primary); box-shadow: 0 5px 0 color-mix(in oklch, var(--c-primary), white 0%), 0 10px 0 color-mix(in oklch, var(--c-primary), transparent 35%); }
+.login__mobile-brand { display: block; }
 .login__aside .logo__tagline,
 .login__mobile-brand .logo__tagline { color: oklch(0.94 0.006 80 / 0.72); }
 .login__content { margin: auto 0; display: flex; flex-direction: column; gap: 26px; max-width: 900px; }
@@ -358,9 +382,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 
 /* sidebar */
 .side { display: flex; flex-direction: column; gap: 8px; padding: 20px 14px; border-right: 1px solid var(--border); background: var(--surf); }
-.side__brand { display: flex; align-items: flex-start; gap: 10px; padding: 6px 8px 18px; }
-.side__brand .logo { padding-top: 1px; }
-.side__brand .logo__tagline { max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+.side__brand { padding: 4px 4px 16px; }
 .side__nav { display: flex; flex-direction: column; gap: 3px; }
 .side__item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: none; background: none; border-radius: var(--r-sm); color: var(--muted); font: inherit; font-weight: 550; font-size: 14.5px; text-align: left; transition: .14s; }
 .side__item:hover { background: var(--surf-2); color: var(--text); }
@@ -2420,25 +2442,85 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   flex: 1;
   min-width: 0;
 }
-.month-picker__input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  width: 100%;
-  height: 100%;
-  cursor: pointer;
-}
 .month-picker__label {
   display: block;
+  width: 100%;
   padding: 8px 14px;
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--surf);
+  font: inherit;
   font-size: 14px;
   font-weight: 600;
   text-align: center;
   white-space: nowrap;
-  pointer-events: none;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s, background .12s;
+}
+.month-picker__label:hover {
+  border-color: color-mix(in oklch, var(--c-primary), var(--border) 70%);
+}
+.month-picker--open .month-picker__label {
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 3px var(--c-primary-weak);
+}
+.month-picker__panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max(100%, 272px);
+  padding: 10px;
+  background: var(--surf);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: var(--sh);
+}
+.month-picker__year {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.month-picker__year-label {
+  font-size: 15px;
+  font-weight: 700;
+}
+.month-picker__year-nav {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surf);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.month-picker__year-nav:hover { background: var(--surf-2); }
+.month-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.month-picker__month {
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  padding: 9px 4px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: background .12s;
+}
+.month-picker__month:hover { background: var(--surf-2); }
+.month-picker__month.is-active {
+  background: var(--c-primary-weak);
+  color: var(--c-primary);
 }
 .month-picker__sr {
   position: absolute;
@@ -2514,6 +2596,52 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .tax-date-btn:hover:not(:disabled) { text-decoration-color: var(--c-primary); color: var(--c-primary); }
 .tax-date-btn:disabled { opacity: 0.6; cursor: wait; }
 .tax-date-input { font-size: 13px; max-width: 148px; }
+.tax-journal-table__actions { width: 40px; text-align: center; padding-left: 4px; padding-right: 8px; }
+.tax-row-delete {
+  border: none;
+  background: none;
+  padding: 2px 6px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 6px;
+}
+.tax-row-delete:hover:not(:disabled) { color: var(--c-debt); background: color-mix(in oklch, var(--c-debt), transparent 88%); }
+.tax-row-delete:disabled { opacity: 0.5; cursor: wait; }
+.tax-journal-table__row--pending-delete td {
+  padding: 10px 14px;
+  background: color-mix(in oklch, var(--c-debt), transparent 92%);
+  border-bottom: 1px solid color-mix(in oklch, var(--c-debt), transparent 80%);
+}
+.tax-row-undo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
+  font-size: 13px;
+}
+.tax-row-undo__msg { color: var(--text); }
+.tax-row-undo__btn {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-primary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tax-row-undo__btn:hover { color: var(--c-primary); opacity: 0.85; }
+.tax-row-undo__timer { color: var(--muted); font-size: 12px; min-width: 2.5ch; }
+.tax-entry__fields { display: flex; flex-direction: column; gap: 14px; }
+.tax-entry__row { display: grid; grid-template-columns: 120px 1fr; gap: 12px; }
+.tax-entry__currency select { width: 100%; }
+.tax-entry__amount { min-width: 0; }
 
 /* ---------- analytics ---------- */
 .analytics-board {
@@ -3214,8 +3342,6 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   }
   .login__glow--a { width: 170px; height: 170px; top: 4%; right: -48px; filter: blur(30px); }
   .login__glow--b { width: 210px; height: 210px; left: -104px; bottom: 18%; filter: blur(36px); }
-  .login__brand { align-items: flex-start; }
-  .login__brand .logo { padding-top: 1px; }
   .login__content { margin: 0; gap: 18px; max-width: none; }
   .login__pitch { max-width: none; }
   .login__title--desktop { display: none; }
@@ -3256,8 +3382,6 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
     margin: 0 auto; min-height: auto; padding: 10px 20px 28px; overflow: visible;
   }
   .login__mobile-brand { display: none; }
-  .login__mobile-brand .logo__mark { background: #fff; }
-  .login__mobile-brand .logo__mark::before { background: var(--c-primary); box-shadow: 0 5px 0 color-mix(in oklch, var(--c-primary), white 0%), 0 10px 0 color-mix(in oklch, var(--c-primary), transparent 35%); }
   .login__card {
     max-width: none; padding: 24px; transform: none;
     box-shadow:

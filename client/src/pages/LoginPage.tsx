@@ -4,6 +4,7 @@ import { useSetAtom } from 'jotai';
 import { api } from '../api/client';
 import { tutorAtom } from '../atoms/auth';
 import { Icon } from '../components/Icon';
+import { LogoBrand } from '../components/LogoBrand';
 import { useAppStore } from '../hooks/useAppStore';
 import { loadSchedule } from '../state/loadSchedule';
 
@@ -83,13 +84,7 @@ export function LoginPage() {
         <div className="login__glow login__glow--a" aria-hidden="true" />
         <div className="login__glow login__glow--b" aria-hidden="true" />
         <div className="login__brand">
-          <span className="logo" aria-hidden="true">
-            <span className="logo__mark" />
-          </span>
-          <span className="logo__copy">
-            <span className="logo__word">LeO</span>
-            <span className="logo__tagline">Сделано репетитором для репетиторов</span>
-          </span>
+          <LogoBrand />
         </div>
 
         <div className="login__content">
@@ -151,13 +146,7 @@ export function LoginPage() {
 
       <main className="login__main">
         <div className="login__mobile-brand">
-          <span className="logo" aria-hidden="true">
-            <span className="logo__mark" />
-          </span>
-          <span className="logo__copy">
-            <span className="logo__word">LeO</span>
-            <span className="logo__tagline">Сделано репетитором для репетиторов</span>
-          </span>
+          <LogoBrand />
         </div>
 
         <div className="login__card">

@@ -100,6 +100,10 @@ balanceMovementsRouter.get('/', async (req, res, next) => {
        WHERE m.tutor_id = $1
          AND m.occurred_at >= $2
          AND m.occurred_at < $3
+         AND NOT EXISTS (
+           SELECT 1 FROM tax_replenishment_meta t
+           WHERE t.balance_movement_id = m.id AND t.manual_amount IS NOT NULL
+         )
          ${studentFilter}
        ORDER BY m.occurred_at DESC, m.created_at DESC`,
       params,

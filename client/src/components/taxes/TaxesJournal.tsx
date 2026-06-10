@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
 import { api } from '../../api/client';
 import type { TaxDisplayCurrency, TaxReplenishment, WeekStartsOn } from '../../api/types';
@@ -13,7 +13,8 @@ import {
 import { studentsAtom } from '../../atoms/schedule';
 import { useAppStore } from '../../hooks/useAppStore';
 import { loadTaxes } from '../../state/loadTaxes';
-import { fmtDateKey } from '../../utils/dateKey';
+import { ConfirmDialog } from '../ConfirmDialog';
+import { fmtDateKey, parseDateKey } from '../../utils/dateKey';
 import { fmtByn } from '../../utils/format';
 import { fmtTaxAmount, fmtTaxDue } from '../../utils/taxDisplay';
 import { taxFromBase, taxRowBase } from '../../utils/taxAmount';
@@ -21,6 +22,9 @@ import { monthLabel } from '../../utils/taxMonth';
 import { JournalStudentChip } from '../payments/JournalStudentChip';
 import { StudentPicker } from '../payments/StudentPicker';
 import { MonthPicker } from './MonthPicker';
+import { TaxEntryDialog } from './TaxEntryDialog';
+
+const DELETE_UNDO_MS = 10_000;
 
 function patchRow(
   rows: TaxReplenishment[],
@@ -42,6 +46,10 @@ export function TaxesJournal() {
   const month = useAtomValue(taxesMonthAtom);
   const [, setRows] = useAtom(taxReplenishmentsAtom);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TaxReplenishment | null>(null);
+  const [pendingDeletes, setPendingDeletes] = useState<Record<string, number>>({});
+  const [addOpen, setAddOpen] = useState(false);
+  const deleteTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const store = useAppStore();
 
   const monthTitle = month ? monthLabel(month) : '';
@@ -68,13 +76,79 @@ export function TaxesJournal() {
 
   const showStudentColumn = !studentId;
 
+  const visibleRows = useMemo(
+    () => rows.filter((r) => pendingDeletes[r.movementId] == null),
+    [rows, pendingDeletes],
+  );
+
+  const tableColSpan =
+    6 + (showStudentColumn ? 1 : 0) + (showByn ? 1 : 0);
+
+  useEffect(() => {
+    const timers = deleteTimersRef.current;
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+    };
+  }, []);
+
+  const commitDelete = useCallback(
+    async (movementId: string) => {
+      const timer = deleteTimersRef.current.get(movementId);
+      if (timer) clearTimeout(timer);
+      deleteTimersRef.current.delete(movementId);
+      setPendingDeletes((prev) => {
+        const next = { ...prev };
+        delete next[movementId];
+        return next;
+      });
+
+      setRows((prev) => prev.filter((r) => r.movementId !== movementId));
+      try {
+        await api.deleteTaxReplenishment(movementId);
+      } catch {
+        await loadTaxes(store.get, store.set);
+      }
+    },
+    [setRows, store],
+  );
+
+  const startPendingDelete = useCallback(
+    (row: TaxReplenishment) => {
+      const { movementId } = row;
+      const expiresAt = Date.now() + DELETE_UNDO_MS;
+      setPendingDeletes((prev) => ({ ...prev, [movementId]: expiresAt }));
+      setDeleteTarget(null);
+
+      const existing = deleteTimersRef.current.get(movementId);
+      if (existing) clearTimeout(existing);
+
+      const timer = setTimeout(() => {
+        void commitDelete(movementId);
+      }, DELETE_UNDO_MS);
+      deleteTimersRef.current.set(movementId, timer);
+    },
+    [commitDelete],
+  );
+
+  const undoDelete = useCallback((movementId: string) => {
+    const timer = deleteTimersRef.current.get(movementId);
+    if (timer) clearTimeout(timer);
+    deleteTimersRef.current.delete(movementId);
+    setPendingDeletes((prev) => {
+      const next = { ...prev };
+      delete next[movementId];
+      return next;
+    });
+  }, []);
+
   const summary = useMemo(() => {
     let totalByn = 0;
     let bynCount = 0;
     let totalTax = 0;
     let taxCount = 0;
     let taxPaidCount = 0;
-    for (const r of rows) {
+    for (const r of visibleRows) {
       if (r.taxPaid) taxPaidCount += 1;
       if (showByn && r.amountByn != null) {
         totalByn += r.amountByn;
@@ -86,8 +160,8 @@ export function TaxesJournal() {
         taxCount += 1;
       }
     }
-    return { totalByn, bynCount, totalTax, taxCount, taxPaidCount, count: rows.length };
-  }, [rows, showByn, displayCurrency, taxRatePercent]);
+    return { totalByn, bynCount, totalTax, taxCount, taxPaidCount, count: visibleRows.length };
+  }, [visibleRows, showByn, displayCurrency, taxRatePercent]);
 
   const saveMeta = useCallback(
     async (movementId: string, patch: { taxPaid?: boolean; comment?: string }) => {
@@ -108,15 +182,30 @@ export function TaxesJournal() {
 
   const saveReceivedOn = useCallback(
     async (movementId: string, receivedOn: string) => {
+      const prev = rows.find((r) => r.movementId === movementId);
+      if (!prev) return;
+      setRows(
+        rows.map((r) =>
+          r.movementId === movementId ? { ...r, replenishmentDate: receivedOn } : r,
+        ),
+      );
       setSavingId(movementId);
       try {
         await api.patchTaxReplenishment(movementId, { receivedOn });
         await loadTaxes(store.get, store.set);
+      } catch {
+        setRows(
+          rows.map((r) =>
+            r.movementId === movementId
+              ? { ...r, replenishmentDate: prev.replenishmentDate }
+              : r,
+          ),
+        );
       } finally {
         setSavingId(null);
       }
     },
-    [store],
+    [rows, setRows, store],
   );
 
   const taxColLabel =
@@ -138,6 +227,13 @@ export function TaxesJournal() {
 
         <div className="pay-toolbar__bar">
           <p className="pay-toolbar__range">{monthTitle}</p>
+          <button
+            type="button"
+            className="btn btn--primary btn--sm pay-toolbar__replenish"
+            onClick={() => setAddOpen(true)}
+          >
+            + Запись
+          </button>
           {summary.count > 0 ? (
             <p className="tax-summary-inline tnum">
               {showByn && summary.bynCount > 0 ? (
@@ -193,35 +289,107 @@ export function TaxesJournal() {
                   <th className="tax-journal-table__num">{taxColLabel}</th>
                   <th className="tax-journal-table__tax">Уплачен</th>
                   <th>Комментарий</th>
+                  <th className="tax-journal-table__actions" aria-label="Действия" />
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
-                  <TaxRow
-                    key={r.movementId}
-                    row={r}
-                    showStudent={showStudentColumn}
-                    showByn={showByn}
-                    taxRatePercent={taxRatePercent}
-                    displayCurrency={displayCurrency}
-                    students={studentMap}
-                    saving={savingId === r.movementId}
-                    onTaxPaidChange={(taxPaid) => saveMeta(r.movementId, { taxPaid })}
-                    onCommentBlur={(comment) => {
-                      if (comment !== r.comment) saveMeta(r.movementId, { comment });
-                    }}
-                    weekStartsOn={weekStartsOn}
-                    onReceivedOnSave={(receivedOn) =>
-                      saveReceivedOn(r.movementId, receivedOn)
-                    }
-                  />
-                ))}
+                {rows.map((r) => {
+                  const expiresAt = pendingDeletes[r.movementId];
+                  if (expiresAt != null) {
+                    return (
+                      <TaxRowUndo
+                        key={r.movementId}
+                        expiresAt={expiresAt}
+                        colSpan={tableColSpan}
+                        onUndo={() => undoDelete(r.movementId)}
+                      />
+                    );
+                  }
+                  return (
+                    <TaxRow
+                      key={r.movementId}
+                      row={r}
+                      showStudent={showStudentColumn}
+                      showByn={showByn}
+                      taxRatePercent={taxRatePercent}
+                      displayCurrency={displayCurrency}
+                      students={studentMap}
+                      saving={savingId === r.movementId}
+                      onTaxPaidChange={(taxPaid) => saveMeta(r.movementId, { taxPaid })}
+                      onCommentBlur={(comment) => {
+                        if (comment !== r.comment) saveMeta(r.movementId, { comment });
+                      }}
+                      weekStartsOn={weekStartsOn}
+                      onReceivedOnSave={(receivedOn) =>
+                        saveReceivedOn(r.movementId, receivedOn)
+                      }
+                      onDelete={() => setDeleteTarget(r)}
+                    />
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </section>
+
+      <TaxEntryDialog
+        open={addOpen}
+        students={taxStudents}
+        defaultStudentId={studentId}
+        onClose={() => setAddOpen(false)}
+        onCreated={() => void loadTaxes(store.get, store.set)}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget != null}
+        title="Удалить из налогов?"
+        description="Строка исчезнет из налогового журнала через 10 секунд. Баланс ученика и журнал оплат не изменятся."
+        confirmLabel="Удалить"
+        variant="danger"
+        onConfirm={() => {
+          if (deleteTarget) startPendingDelete(deleteTarget);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
+  );
+}
+
+function TaxRowUndo({
+  expiresAt,
+  colSpan,
+  onUndo,
+}: {
+  expiresAt: number;
+  colSpan: number;
+  onUndo: () => void;
+}) {
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)),
+  );
+
+  useEffect(() => {
+    const tick = () => {
+      setSecondsLeft(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
+    };
+    tick();
+    const id = window.setInterval(tick, 250);
+    return () => window.clearInterval(id);
+  }, [expiresAt]);
+
+  return (
+    <tr className="tax-journal-table__row--pending-delete">
+      <td colSpan={colSpan}>
+        <div className="tax-row-undo" role="status">
+          <span className="tax-row-undo__msg">Запись удалена из налогов</span>
+          <button type="button" className="tax-row-undo__btn" onClick={onUndo}>
+            Восстановить
+          </button>
+          <span className="tax-row-undo__timer tnum">{secondsLeft} с</span>
+        </div>
+      </td>
+    </tr>
   );
 }
 
@@ -237,6 +405,7 @@ function TaxRow({
   onTaxPaidChange,
   onCommentBlur,
   onReceivedOnSave,
+  onDelete,
 }: {
   row: TaxReplenishment;
   showStudent: boolean;
@@ -249,10 +418,23 @@ function TaxRow({
   onTaxPaidChange: (taxPaid: boolean) => void;
   onCommentBlur: (comment: string) => void;
   onReceivedOnSave: (receivedOn: string) => void;
+  onDelete: () => void;
 }) {
   const [commentDraft, setCommentDraft] = useState(row.comment);
   const [editingDate, setEditingDate] = useState(false);
-  const [dateDraft, setDateDraft] = useState(row.replenishmentDate);
+  const [dateDraft, setDateDraft] = useState(() =>
+    fmtDateKey(row.replenishmentDate, weekStartsOn),
+  );
+
+  useEffect(() => {
+    setCommentDraft(row.comment);
+  }, [row.comment]);
+
+  useEffect(() => {
+    if (!editingDate) {
+      setDateDraft(fmtDateKey(row.replenishmentDate, weekStartsOn));
+    }
+  }, [row.replenishmentDate, weekStartsOn, editingDate]);
 
   const amountLabel = fmtTaxAmount(row);
   const bynLabel =
@@ -267,22 +449,26 @@ function TaxRow({
       <td className="tax-journal-table__when">
         {editingDate ? (
           <input
-            className="field__control tax-date-input"
-            type="date"
+            className="field__control tax-date-input tnum"
+            type="text"
+            inputMode="numeric"
             value={dateDraft}
             disabled={saving}
             autoFocus
             onChange={(e) => setDateDraft(e.target.value)}
             onBlur={() => {
               setEditingDate(false);
-              if (dateDraft && dateDraft !== row.replenishmentDate) {
-                void onReceivedOnSave(dateDraft);
+              const parsed = parseDateKey(dateDraft, weekStartsOn);
+              if (parsed && parsed !== row.replenishmentDate) {
+                void onReceivedOnSave(parsed);
+              } else {
+                setDateDraft(fmtDateKey(row.replenishmentDate, weekStartsOn));
               }
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
               if (e.key === 'Escape') {
-                setDateDraft(row.replenishmentDate);
+                setDateDraft(fmtDateKey(row.replenishmentDate, weekStartsOn));
                 setEditingDate(false);
               }
             }}
@@ -290,11 +476,11 @@ function TaxRow({
         ) : (
           <button
             type="button"
-            className="tax-date-btn"
+            className="tax-date-btn tnum"
             title="Изменить дату поступления"
             disabled={saving}
             onClick={() => {
-              setDateDraft(row.replenishmentDate);
+              setDateDraft(fmtDateKey(row.replenishmentDate, weekStartsOn));
               setEditingDate(true);
             }}
           >
@@ -345,6 +531,18 @@ function TaxRow({
           onChange={(e) => setCommentDraft(e.target.value)}
           onBlur={() => onCommentBlur(commentDraft)}
         />
+      </td>
+      <td className="tax-journal-table__actions">
+        <button
+          type="button"
+          className="tax-row-delete"
+          title="Удалить из налогов"
+          aria-label="Удалить из налогов"
+          disabled={saving}
+          onClick={onDelete}
+        >
+          ×
+        </button>
       </td>
     </tr>
   );

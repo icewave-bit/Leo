@@ -82,6 +82,18 @@ export const api = {
     body: { taxPaid?: boolean; comment?: string; receivedOn?: string },
   ) =>
     request<void>(`/api/taxes/${movementId}`, { method: 'PATCH', json: body }),
+  deleteTaxReplenishment: (movementId: string) =>
+    request<void>(`/api/taxes/${movementId}`, { method: 'DELETE' }),
+  createTaxReplenishment: (body: {
+    studentId: string;
+    receivedOn: string;
+    currency: string;
+    amount: number;
+  }) =>
+    request<import('./types').TaxReplenishment>('/api/taxes', {
+      method: 'POST',
+      json: body,
+    }),
 
   students: () => request<Student[]>('/api/students'),
   archivedStudents: () => request<Student[]>('/api/students/archived/list'),

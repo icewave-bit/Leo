@@ -3,6 +3,20 @@ const MONTHS_LONG_RU = [
   'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
 ];
 
+export const MONTHS_SHORT_RU = [
+  'Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн',
+  'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек',
+];
+
+export function parseMonthKey(monthKey: string): { year: number; month: number } {
+  const [y, m] = monthKey.split('-').map(Number);
+  return { year: y ?? 1970, month: m ?? 1 };
+}
+
+export function toMonthKey(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
 export function currentMonthKey(timezone: string, now: Date = new Date()): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
