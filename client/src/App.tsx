@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
-import { useAtomValue } from 'jotai';
+import { useAtomValue, useSetAtom } from 'jotai';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthBootstrap } from './components/AuthBootstrap';
 import { AuthGate } from './components/AuthGate';
 import { AppShell } from './components/AppShell';
-import { themeAtom } from './atoms/schedule';
+import { resolvedThemeAtom, systemDarkAtom } from './atoms/theme';
 import { authLoadingAtom, tutorAtom } from './atoms/auth';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
@@ -24,11 +24,28 @@ function GuestOnly({ children }: { children: React.ReactNode }) {
   return children;
 }
 
+const THEME_COLORS: Record<'light' | 'dark', string> = {
+  light: '#f5f4f2',
+  dark: '#2e2e32',
+};
+
 function ThemeSync() {
-  const theme = useAtomValue(themeAtom);
+  const resolved = useAtomValue(resolvedThemeAtom);
+  const setSystemDark = useSetAtom(systemDarkAtom);
+
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const sync = () => setSystemDark(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, [setSystemDark]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = resolved;
+    document.documentElement.style.colorScheme = resolved;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLORS[resolved]);
+  }, [resolved]);
   return null;
 }
 

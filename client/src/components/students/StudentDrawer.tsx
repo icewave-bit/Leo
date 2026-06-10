@@ -29,6 +29,7 @@ import {
   attachRunningBalance,
   enrichMovements,
 } from '../../utils/paymentJournal';
+import { avatarHueStyle } from '../../utils/avatarStyle';
 import { studentToView, toUiStatus, type ViewStudent } from '../../utils/schedule';
 import { useAppStore } from '../../hooks/useAppStore';
 import { loadSchedule } from '../../state/loadSchedule';
@@ -882,7 +883,7 @@ export function StudentDrawer({
         >
           <span
             className="avatar avatar--lg student-drawer__avatar"
-            style={{ background: `oklch(0.62 0.13 ${form.hue})` }}
+            style={avatarHueStyle(form.hue)}
           >
             {avatarInitials}
           </span>
@@ -1034,7 +1035,7 @@ export function StudentDrawer({
                 <div className="student-drawer__hue-row">
                   <span
                     className="avatar student-drawer__avatar-edit"
-                    style={{ backgroundColor: `oklch(0.62 0.13 ${form.hue})` }}
+                    style={avatarHueStyle(form.hue)}
                   >
                     {readOnly ? (
                       avatarInitials

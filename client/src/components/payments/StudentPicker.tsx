@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { avatarHueStyle } from '../../utils/avatarStyle';
 import type { ViewStudent } from '../../utils/schedule';
 import { Icon } from '../Icon';
 
@@ -20,7 +21,7 @@ function StudentAvatar({ student, size }: { student: ViewStudent | null; size?: 
   return (
     <span
       className={'avatar picker-avatar' + (size ? ' avatar--sm' : '')}
-      style={{ background: `oklch(0.62 0.13 ${student.hue})` }}
+      style={avatarHueStyle(student.hue)}
     >
       {student.initials}
     </span>

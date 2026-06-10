@@ -1,6 +1,7 @@
 import type { MouseEvent } from 'react';
 import type { BalanceKind } from '../../api/types';
 import { GearIcon } from '../Icon';
+import { avatarHueStyle } from '../../utils/avatarStyle';
 import { fmtMoney } from '../../utils/format';
 import { isBillingDependent } from '../../utils/billingStudent';
 import { studentListBalanceLabel } from '../../utils/studentBalanceDisplay';
@@ -55,7 +56,7 @@ export function StudentCard({
           <span className="student-card__who">
             <span
               className="avatar avatar--sm"
-              style={{ background: `oklch(0.62 0.13 ${student.hue})` }}
+              style={avatarHueStyle(student.hue)}
             >
               {student.initials}
             </span>

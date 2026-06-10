@@ -28,12 +28,7 @@ import {
 } from '../utils/schedule';
 import { loadSchedule } from '../state/loadSchedule';
 import { useAppStore } from '../hooks/useAppStore';
-
-type ShellContext = {
-  theme: 'light' | 'dark';
-  setTheme: (t: 'light' | 'dark') => void;
-  mobile: boolean;
-};
+import type { ShellOutletContext } from '../components/AppShell';
 
 const VARIANTS = [
   { id: 'week' as const, label: 'Неделя', mobileLabel: 'Неделя' },
@@ -44,7 +39,7 @@ const VARIANTS = [
 function Topbar({
   variant,
   setVariant,
-  theme,
+  resolvedTheme,
   setTheme,
   mobile,
   weekLabel,
@@ -56,8 +51,8 @@ function Topbar({
 }: {
   variant: 'week' | 'timeline' | 'agenda';
   setVariant: (v: 'week' | 'timeline' | 'agenda') => void;
-  theme: 'light' | 'dark';
-  setTheme: (t: 'light' | 'dark') => void;
+  resolvedTheme: ShellOutletContext['resolvedTheme'];
+  setTheme: ShellOutletContext['setTheme'];
   mobile: boolean;
   weekLabel: string;
   onPrevWeek: () => void;
@@ -70,10 +65,10 @@ function Topbar({
     <button
       type="button"
       className="iconbtn iconbtn--round"
-      onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+      onClick={() => setTheme(resolvedTheme === 'light' ? 'dark' : 'light')}
       aria-label="Тема"
     >
-      {theme === 'light' ? (
+      {resolvedTheme === 'light' ? (
         <svg viewBox="0 0 24 24" width="18" height="18">
           <path d="M21 13a8 8 0 11-9.5-9 6.5 6.5 0 009.5 9z" />
         </svg>
@@ -235,7 +230,7 @@ function RightRail({ lessons }: { lessons: ViewLesson[] }) {
 }
 
 export function SchedulePage() {
-  const { theme, setTheme, mobile } = useOutletContext<ShellContext>();
+  const { resolvedTheme, setTheme, mobile } = useOutletContext<ShellOutletContext>();
   const navigate = useNavigate();
   const location = useLocation();
   const tutor = useAtomValue(tutorAtom);
@@ -337,7 +332,7 @@ export function SchedulePage() {
       <Topbar
         variant={variant}
         setVariant={setVariant}
-        theme={theme}
+        resolvedTheme={resolvedTheme}
         setTheme={setTheme}
         mobile={mobile}
         weekLabel={weekLabel}

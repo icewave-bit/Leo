@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAtomValue } from 'jotai';
 import { STATUS_LABELS } from '../constants/status';
 import { academicUnitsShort, lessonPrice } from '../utils/academicHour';
+import { avatarHueStyle } from '../utils/avatarStyle';
 import { fmtBalanceAmount, fmtMoney, fmtTime } from '../utils/format';
 import { isLessonPast } from '../utils/lessonBalance';
 import {
@@ -174,7 +175,7 @@ export function LessonDrawer({
       <div className="scrim" onClick={onClose} role="presentation" />
       <aside className="drawer" role="dialog" aria-label="Детали урока">
         <header className="drawer__head">
-          <span className="avatar avatar--lg" style={{ background: `oklch(0.62 0.13 ${stu.hue})` }}>
+          <span className="avatar avatar--lg" style={avatarHueStyle(stu.hue)}>
             {stu.initials}
           </span>
           <div className="drawer__head-txt">

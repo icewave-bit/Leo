@@ -1,13 +1,22 @@
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { tutorAtom } from '../atoms/auth';
-import { lessonsAtom, scheduleLoadErrorAtom, studentsAtom, themeAtom } from '../atoms/schedule';
+import { lessonsAtom, scheduleLoadErrorAtom, studentsAtom } from '../atoms/schedule';
+import { resolvedThemeAtom, themeAtom } from '../atoms/theme';
+import type { ResolvedTheme, ThemePreference } from '../atoms/theme';
 import { api } from '../api/client';
 import { useAppStore } from '../hooks/useAppStore';
 import { useMobile } from '../hooks/useMobile';
 import { loadSchedule } from '../state/loadSchedule';
 import { Icon } from './Icon';
 import { LogoBrand } from './LogoBrand';
+
+export type ShellOutletContext = {
+  theme: ThemePreference;
+  resolvedTheme: ResolvedTheme;
+  setTheme: (t: ThemePreference) => void;
+  mobile: boolean;
+};
 
 const NAV = [
   {
@@ -106,7 +115,7 @@ function SidebarNav({ mobile }: { mobile: boolean }) {
         ))}
       </nav>
       <div className="side__user">
-        <span className="avatar" style={{ background: 'oklch(0.6 0.13 250)' }}>
+        <span className="avatar">
           {tutor?.initials}
         </span>
         <span className="side__user-txt">
@@ -145,6 +154,7 @@ function ScheduleLoadBanner() {
 
 export function AppShell() {
   const [theme, setTheme] = useAtom(themeAtom);
+  const resolvedTheme = useAtomValue(resolvedThemeAtom);
   const mobile = useMobile();
 
   return (
@@ -152,7 +162,7 @@ export function AppShell() {
       <SidebarNav mobile={mobile} />
       <div className="app__main">
         <ScheduleLoadBanner />
-        <Outlet context={{ theme, setTheme, mobile }} />
+        <Outlet context={{ theme, resolvedTheme, setTheme, mobile } satisfies ShellOutletContext} />
       </div>
     </div>
   );

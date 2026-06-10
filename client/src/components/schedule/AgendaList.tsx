@@ -3,6 +3,7 @@ import { tutorAtom } from '../../atoms/auth';
 import { lessonsAtom, weekStartAtom } from '../../atoms/schedule';
 import { visibleGridDays, weekDates, weekDayNames, todayDayIndex } from '../../utils/schedule';
 import { useStudentMap } from '../../hooks/useStudentMap';
+import { avatarHueStyle } from '../../utils/avatarStyle';
 import {
   fmtTime,
   lessonCardClass,
@@ -60,7 +61,7 @@ export function AgendaList({ onSelect }: { onSelect: (id: string) => void }) {
                     </span>
                     <span
                       className="avatar avatar--sm"
-                      style={{ background: `oklch(0.62 0.13 ${stu.hue})` }}
+                      style={avatarHueStyle(stu.hue)}
                     >
                       {stu.initials}
                     </span>

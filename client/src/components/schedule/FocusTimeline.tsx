@@ -4,6 +4,7 @@ import { activeDayAtom, lessonsAtom, weekStartAtom } from '../../atoms/schedule'
 import { visibleGridDays, weekDates, weekDayNames } from '../../utils/schedule';
 import { useStudentMap } from '../../hooks/useStudentMap';
 import { academicUnitsShort } from '../../utils/academicHour';
+import { avatarHueStyle } from '../../utils/avatarStyle';
 import {
   fmtTime,
   lessonCardClass,
@@ -99,7 +100,7 @@ export function FocusTimeline({
                 >
                   <LessonPayMark lesson={l} />
                   <LessonNotesMark notes={l.notes} />
-                  <span className="avatar" style={{ background: `oklch(0.62 0.13 ${stu.hue})` }}>
+                  <span className="avatar" style={avatarHueStyle(stu.hue)}>
                     {stu.initials}
                   </span>
                   <span className="ft__card-main">

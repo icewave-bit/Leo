@@ -2,10 +2,13 @@
    LeO — design tokens & components
    ========================================================= */
 :root {
+  color-scheme: light;
   --bg: oklch(0.985 0.006 80);
   --surf: oklch(0.998 0.003 80);
   --surf-2: oklch(0.965 0.008 80);
   --surf-3: oklch(0.945 0.009 80);
+  --surf-inset: oklch(0.965 0.008 80);
+  --surf-raised: oklch(0.998 0.003 80);
   --border: oklch(0.905 0.008 80);
   --border-strong: oklch(0.84 0.01 80);
   --text: oklch(0.26 0.012 70);
@@ -20,7 +23,11 @@
   --c-amber: oklch(0.76 0.11 75);
   --c-muted: oklch(0.7 0.01 70);
 
-  --tint-l: 0.965;
+  --focus-ring: oklch(0.55 0.135 255 / 0.14);
+  --avatar-l: 0.62;
+  --avatar-c: 0.13;
+  --wg-today-col: color-mix(in oklch, var(--c-primary-weak) 72%, transparent);
+  --wg-slot-hover: color-mix(in oklch, var(--c-primary) 7%, transparent);
   --ev-stripe: oklch(0.48 0.008 70 / 0.22);
   --ev-stripe-alt: oklch(0.48 0.008 70 / 0.04);
 
@@ -31,24 +38,32 @@
   --ff: "Hanken Grotesk", system-ui, sans-serif;
 }
 [data-theme="dark"] {
-  --bg: oklch(0.19 0.012 75);
-  --surf: oklch(0.235 0.013 75);
-  --surf-2: oklch(0.275 0.014 75);
-  --surf-3: oklch(0.31 0.015 75);
+  color-scheme: dark;
+  --bg: oklch(0.17 0.012 75);
+  --surf: oklch(0.24 0.013 75);
+  --surf-2: oklch(0.28 0.014 75);
+  --surf-3: oklch(0.32 0.015 75);
+  --surf-inset: oklch(0.19 0.012 75);
+  --surf-raised: oklch(0.34 0.015 75);
   --border: oklch(0.33 0.014 75);
   --border-strong: oklch(0.42 0.016 75);
   --text: oklch(0.95 0.006 80);
   --muted: oklch(0.72 0.012 80);
-  --faint: oklch(0.55 0.012 80);
+  --faint: oklch(0.62 0.012 80);
 
   --c-primary: oklch(0.68 0.13 255);
   --c-primary-ink: oklch(0.8 0.12 255);
-  --c-primary-weak: oklch(0.33 0.06 255);
+  --c-primary-weak: oklch(0.36 0.06 255);
   --c-credit: oklch(0.72 0.13 158);
   --c-debt: oklch(0.72 0.15 30);
   --c-amber: oklch(0.82 0.1 75);
+  --c-muted: oklch(0.58 0.012 80);
 
-  --tint-l: 0.34;
+  --focus-ring: oklch(0.68 0.13 255 / 0.22);
+  --avatar-l: 0.52;
+  --avatar-c: 0.11;
+  --wg-today-col: color-mix(in oklch, var(--c-primary-weak) 26%, transparent);
+  --wg-slot-hover: color-mix(in oklch, var(--c-primary) 11%, transparent);
   --ev-stripe: oklch(0.78 0.008 80 / 0.28);
   --ev-stripe-alt: oklch(0.78 0.008 80 / 0.07);
   --sh-sm: 0 1px 2px oklch(0 0 0 / 0.3);
@@ -129,6 +144,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .avatar {
   display: inline-flex; align-items: center; justify-content: center;
   width: 38px; height: 38px; border-radius: 11px; color: #fff;
+  background: oklch(var(--avatar-l) var(--avatar-c) var(--avatar-hue, 250));
   font-size: 13px; font-weight: 700; flex: none; letter-spacing: 0.02em;
 }
 .avatar--sm { width: 30px; height: 30px; border-radius: 9px; font-size: 11px; }
@@ -294,7 +310,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 }
 .field input:not(.student-drawer__avatar-input):focus,
 .field select:focus,
-.field textarea:focus { outline: none; border-color: var(--c-primary); box-shadow: 0 0 0 4px oklch(0.55 0.135 255 / 0.14); }
+.field textarea:focus { outline: none; border-color: var(--c-primary); box-shadow: 0 0 0 4px var(--focus-ring); }
 .field__control {
   font: inherit; padding: 11px 13px; border-radius: var(--r-sm);
   border: 1px solid var(--border-strong); background: var(--surf); color: var(--text); transition: .15s;
@@ -308,12 +324,12 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 }
 .field__aux:focus-visible,
 .login__foot a:focus-visible {
-  outline: 3px solid oklch(0.55 0.135 255 / 0.2); outline-offset: 3px; border-radius: 6px;
+  outline: 3px solid var(--focus-ring); outline-offset: 3px; border-radius: 6px;
 }
 .login .btn { min-height: 48px; border-radius: var(--r); }
 .login .btn:disabled { opacity: .55; cursor: not-allowed; transform: none; }
 .login .btn:focus-visible {
-  outline: none; border-color: var(--c-primary); box-shadow: 0 0 0 4px oklch(0.55 0.135 255 / 0.14);
+  outline: none; border-color: var(--c-primary); box-shadow: 0 0 0 4px var(--focus-ring);
 }
 .login__foot { text-align: center; color: var(--muted); font-size: 14px; margin-top: 22px; }
 .login__foot a, .field__aux { color: var(--c-primary); }
@@ -344,7 +360,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 }
 [data-theme="dark"] .login .field input:not(.student-drawer__avatar-input):focus {
   border-color: var(--c-primary);
-  box-shadow: 0 0 0 4px oklch(0.68 0.13 255 / 0.2);
+  box-shadow: 0 0 0 4px var(--focus-ring);
 }
 [data-theme="dark"] .login__alert {
   color: oklch(0.9 0.055 28);
@@ -404,10 +420,14 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .top__r { display: flex; align-items: center; gap: 12px; }
 
 /* segmented control */
-.seg { display: inline-flex; background: var(--surf-2); border-radius: var(--r-sm); padding: 3px; gap: 2px; flex-wrap: wrap; }
+.seg { display: inline-flex; background: var(--surf-inset); border-radius: var(--r-sm); padding: 3px; gap: 2px; flex-wrap: wrap; }
+[data-theme="dark"] .seg { border: 1px solid var(--border); }
 .seg__btn { border: none; background: none; padding: 7px 13px; border-radius: 7px; font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); transition: .14s; }
 .seg__btn:hover { color: var(--text); }
-.seg__btn.is-active { background: var(--surf); color: var(--text); box-shadow: var(--sh-sm); }
+.seg__btn.is-active { background: var(--surf-raised); color: var(--text); box-shadow: var(--sh-sm); }
+[data-theme="dark"] .seg__btn.is-active {
+  box-shadow: var(--sh-sm), inset 0 1px 0 oklch(1 0 0 / 0.07);
+}
 .seg--variant .seg__btn.is-active { color: var(--c-primary-ink); }
 
 /* ---------- lesson cards (shared) ---------- */
@@ -506,6 +526,31 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .ev--cancelled .ev__hint,
 .ev--cancelled .ft__card-sub,
 .ev--cancelled .ev-meta { color: var(--faint); }
+
+[data-theme="dark"] .ev {
+  border-color: oklch(0.38 0.03 var(--ev-hue));
+  background: oklch(0.30 0.04 var(--ev-hue));
+}
+[data-theme="dark"] .ev::before { background: oklch(0.65 0.13 var(--ev-hue)); }
+[data-theme="dark"] .ev--completed {
+  background: oklch(0.28 0.05 var(--ev-hue));
+  border-color: oklch(0.36 0.05 var(--ev-hue));
+}
+[data-theme="dark"] .ev--completed.ev--paid {
+  background: oklch(0.30 0.035 var(--ev-hue));
+  border-color: oklch(0.38 0.04 var(--ev-hue));
+}
+[data-theme="dark"] .ev--completed.ev--paid::before { background: oklch(0.58 0.1 var(--ev-hue)); }
+[data-theme="dark"] .ev--no-show {
+  background: oklch(0.29 0.035 var(--ev-hue));
+  border-color: oklch(0.37 0.04 var(--ev-hue));
+}
+[data-theme="dark"] .ev--no-show::before { background: oklch(0.55 0.1 var(--ev-hue)); }
+[data-theme="dark"] .ev--cancelled {
+  background: oklch(0.27 0.012 var(--ev-hue));
+  border-color: oklch(0.34 0.015 var(--ev-hue));
+}
+[data-theme="dark"] .ev--cancelled::before { background: oklch(0.48 0.04 var(--ev-hue)); }
 
 .ev__mark {
   position: absolute;
@@ -636,10 +681,15 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   grid-template-columns: var(--wg-gutter) repeat(var(--wg-cols, 7), minmax(0, 1fr));
   position: relative;
 }
+.wg__gutter--rows {
+  position: relative;
+  z-index: 1;
+  background: var(--bg);
+}
 .wg__gutter--rows .wg__hour { font-size: 11px; color: var(--faint); text-align: right; padding-right: 8px; position: relative; }
 .wg__hour span { position: relative; top: 0; transform: translateY(-50%); line-height: 1; }
 .wg__col { position: relative; border-left: 1px solid var(--border); }
-.wg__col.is-today { background: oklch(var(--tint-l) 0.02 255); }
+.wg__col.is-today { background: var(--wg-today-col); }
 .wg__slot {
   display: block;
   width: 100%;
@@ -651,7 +701,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   cursor: pointer;
   border-radius: 0;
 }
-.wg__slot:hover { background: oklch(var(--tint-l) 0.03 255); }
+.wg__slot:hover { background: var(--wg-slot-hover); }
 .wg__slot:focus-visible { outline: 2px solid var(--c-primary); outline-offset: -2px; z-index: 1; }
 .wg .ev {
   position: absolute;
@@ -865,7 +915,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   color: #fff;
 }
 .schedule-days__btn.is-on:focus-visible {
-  box-shadow: var(--sh-sm), 0 0 0 3px oklch(0.55 0.135 255 / 0.28);
+  box-shadow: var(--sh-sm), 0 0 0 3px var(--focus-ring);
 }
 @media (hover: hover) and (pointer: fine) {
   .schedule-days__btn.is-on:hover:not(:disabled) {
@@ -952,7 +1002,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   margin: 12px 16px 0;
   padding: 10px 14px;
   border-radius: 10px;
-  background: color-mix(in oklch, var(--c-debt) 12%, var(--surface));
+  background: color-mix(in oklch, var(--c-debt) 12%, var(--surf));
   border: 1px solid color-mix(in oklch, var(--c-debt) 35%, transparent);
 }
 .load-error p {
@@ -2790,7 +2840,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--c-primary), color-mix(in oklch, var(--c-primary), white 18%));
+  background: linear-gradient(90deg, var(--c-primary), color-mix(in oklch, var(--c-primary), var(--text) 18%));
   min-width: 4px;
   transition: width .35s ease;
 }

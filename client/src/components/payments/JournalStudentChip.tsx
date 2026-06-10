@@ -1,3 +1,4 @@
+import { avatarHueStyle } from '../../utils/avatarStyle';
 import type { ViewStudent } from '../../utils/schedule';
 
 export function JournalStudentChip({
@@ -35,7 +36,7 @@ export function JournalStudentChip({
     <span className="pay-entry__student">
       <span
         className="avatar avatar--sm"
-        style={{ background: `oklch(0.62 0.13 ${st.hue})` }}
+        style={avatarHueStyle(st.hue)}
       >
         {st.initials}
       </span>

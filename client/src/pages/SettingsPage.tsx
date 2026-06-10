@@ -4,7 +4,8 @@ import { Link } from 'react-router-dom';
 import type { BalanceKind, TaxDisplayCurrency, WeekStartsOn } from '../api/types';
 import { api } from '../api/client';
 import { tutorAtom } from '../atoms/auth';
-import { themeAtom, weekStartAtom } from '../atoms/schedule';
+import { weekStartAtom } from '../atoms/schedule';
+import { themeAtom } from '../atoms/theme';
 import { useAppStore } from '../hooks/useAppStore';
 import { loadSchedule } from '../state/loadSchedule';
 import { weekRangeUtc } from '../utils/schedule';
@@ -161,7 +162,7 @@ export function SettingsPage() {
         <div className="settings-grid">
           <section className="settings-card">
             <SettingsCardHeader icon={SETTINGS_CARD_ICONS.theme} title="Оформление" />
-            <p className="settings-card__desc">Светлая или тёмная тема интерфейса.</p>
+            <p className="settings-card__desc">Светлая, тёмная или как в системе.</p>
             <div className="seg settings-presets">
               <button
                 type="button"
@@ -176,6 +177,13 @@ export function SettingsPage() {
                 onClick={() => setTheme('dark')}
               >
                 Тёмная
+              </button>
+              <button
+                type="button"
+                className={'seg__btn' + (theme === 'auto' ? ' is-active' : '')}
+                onClick={() => setTheme('auto')}
+              >
+                Авто
               </button>
             </div>
           </section>

@@ -6,6 +6,7 @@ import { tutorAtom } from '../atoms/auth';
 import { StudentDrawer } from '../components/students/StudentDrawer';
 import { useAppStore } from '../hooks/useAppStore';
 import { loadArchivedStudents } from '../state/loadArchivedStudents';
+import { avatarHueStyle } from '../utils/avatarStyle';
 import { fmtLessonWhen } from '../utils/format';
 import type { ViewStudent } from '../utils/schedule';
 
@@ -24,7 +25,7 @@ function ArchiveRow({
       <button type="button" className="archive-row" onClick={onOpen}>
         <span
           className="avatar avatar--sm"
-          style={{ background: `oklch(0.62 0.13 ${student.hue})` }}
+          style={avatarHueStyle(student.hue)}
         >
           {student.initials}
         </span>
