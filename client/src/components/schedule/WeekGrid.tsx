@@ -37,6 +37,8 @@ import {
   lessonEventLabel,
   hasLessonNotes,
   lessonGridHint,
+  LessonCardRotatingLabel,
+  lessonNameClass,
   LessonNotesMark,
   LessonPayMark,
   LessonRecurrenceMark,
@@ -49,6 +51,7 @@ function LessonEvent({
   start,
   layout,
   ghost,
+  compact,
   pxPerHour,
   onPointerDown,
   onClick,
@@ -58,6 +61,7 @@ function LessonEvent({
   start: number;
   layout?: WeekGridLessonLayout;
   ghost?: boolean;
+  compact?: boolean;
   pxPerHour: number;
   onPointerDown?: (e: React.PointerEvent) => void;
   onClick?: () => void;
@@ -94,14 +98,26 @@ function LessonEvent({
       <LessonPayMark lesson={lesson} />
       <LessonRecurrenceMark recurring={Boolean(lesson.recurringScheduleId)} />
       <LessonNotesMark notes={lesson.notes} />
-      <span className="ev__head">
-        <span className="ev__name">{student.name}</span>
-        {lesson.type === 'group' ? <TypeIcon type="group" /> : null}
-      </span>
-      <span className="ev__time">
-        {fmtTime(start)}
-        {!tight ? ` – ${fmtTime(start + lesson.dur)}` : null}
-      </span>
+      {compact ? (
+        <LessonCardRotatingLabel
+          name={student.name}
+          time={
+            fmtTime(start) + (!tight ? ` – ${fmtTime(start + lesson.dur)}` : '')
+          }
+          groupIcon={lesson.type === 'group' ? <TypeIcon type="group" /> : null}
+        />
+      ) : (
+        <>
+          <span className="ev__head">
+            <span className={lessonNameClass(student.name)}>{student.name}</span>
+            {lesson.type === 'group' ? <TypeIcon type="group" /> : null}
+          </span>
+          <span className="ev__time">
+            {fmtTime(start)}
+            {!tight ? ` – ${fmtTime(start + lesson.dur)}` : null}
+          </span>
+        </>
+      )}
       {hint && !tight ? <span className="ev__hint">{hint}</span> : null}
     </button>
   );
@@ -302,6 +318,7 @@ export function WeekGrid({
                       student={stu}
                       start={l.start}
                       layout={layout}
+                      compact={compact}
                       pxPerHour={pxPerHour}
                       onPointerDown={(e) => onPointerDown(e, l)}
                       onClick={() => onLessonClick(l.id)}
@@ -322,6 +339,7 @@ export function WeekGrid({
                       student={stu}
                       start={preview.start}
                       layout={layout}
+                      compact={compact}
                       pxPerHour={pxPerHour}
                       ghost
                     />

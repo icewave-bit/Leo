@@ -556,6 +556,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   min-width: 0;
   flex: 1;
 }
+/* Hanken Grotesk Cyrillic glyphs fill more of the em-box — optical match to Latin names. */
+.wg .ev .ev__name.ev__name--cy { font-size: 11.1px; }
+.wg .ev--tight .ev__name.ev__name--cy { font-size: 10.15px; }
 .ev__time { font-size: 10.5px; color: var(--muted); line-height: 1.2; }
 .ev__hint {
   font-size: 10px;
@@ -2967,12 +2970,72 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 }
 .app--mobile .wg .ev::before { width: 2px; }
 .app--mobile .wg .ev .ev__hint { display: none; }
+
+/* mobile week-grid: alternate name (5s) and time (2s) */
+.app--mobile .wg .ev .ev__rot {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 1.2em;
+  overflow: hidden;
+}
+.app--mobile .wg .ev .ev__rot-slot {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  opacity: 0;
+  transform: translateY(5px);
+  filter: blur(2px);
+  animation-duration: 8s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  animation-iteration-count: infinite;
+  will-change: opacity, transform, filter;
+}
+.app--mobile .wg .ev .ev__rot-slot--name { animation-name: ev-rot-name; }
+.app--mobile .wg .ev .ev__rot-slot--time { animation-name: ev-rot-time; }
+.app--mobile .wg .ev .ev__rot-slot--time .ev__time {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+.app--mobile .wg .ev:hover .ev__rot-slot { animation-play-state: paused; }
+@keyframes ev-rot-name {
+  0%, 62.5% { opacity: 1; transform: translateY(0); filter: blur(0); }
+  66% { opacity: 0; transform: translateY(-4px); filter: blur(2px); }
+  90% { opacity: 0; transform: translateY(4px); filter: blur(2px); }
+  94%, 100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+@keyframes ev-rot-time {
+  0%, 62.5% { opacity: 0; transform: translateY(4px); filter: blur(2px); }
+  66%, 91% { opacity: 1; transform: translateY(0); filter: blur(0); }
+  95%, 100% { opacity: 0; transform: translateY(-4px); filter: blur(2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app--mobile .wg .ev .ev__rot { min-height: 0; }
+  .app--mobile .wg .ev .ev__rot-slot {
+    position: static;
+    opacity: 1;
+    transform: none;
+    filter: none;
+    animation: none;
+  }
+  .app--mobile .wg .ev .ev__rot-slot--time { display: none; }
+}
+
 .app--mobile .wg .ev .ev__head {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 2px;
-  padding-right: 12px;
+  padding-right: 8px;
   justify-content: flex-start;
+  width: 100%;
 }
 .app--mobile .wg .ev .ev__name {
   flex: 1 1 auto;
@@ -2981,45 +3044,34 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   font-weight: 650;
   line-height: 1.2;
   text-align: left;
-  white-space: normal;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-}
-.app--mobile .wg .ev .ev__head svg,
-.app--mobile .wg .ev .ev__head .ev-type {
-  flex: none;
-  width: 10px;
-  height: 10px;
-}
-.app--mobile .wg .ev .ev__time {
-  font-size: 9px;
-  line-height: 1.15;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.app--mobile .wg .ev--tight .ev__name { -webkit-line-clamp: 2; }
-.app--mobile .wg .ev--tight .ev__time { display: block; }
-.app--mobile .wg .ev .ev__mark { top: 3px; right: 3px; }
-.app--mobile .wg .ev .ev__mark svg { width: 9px; height: 9px; }
-.app--mobile .wg .ev .ev__recur { bottom: 3px; right: 3px; }
-.app--mobile .wg .ev .ev__recur svg { width: 10px; height: 10px; }
-.app--mobile .wg .ev--has-recur .ev__notes { right: 17px; }
-.app--mobile .wg .ev .ev__notes {
-  bottom: 3px;
-  right: 3px;
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
+.app--mobile .wg .ev .ev__name.ev__name--cy { font-size: 9.25px; }
+.app--mobile .wg .ev .ev__head svg,
+.app--mobile .wg .ev .ev__head .ev-type {
+  flex: none;
+  width: 6.5px;
+  height: 6.5px;
 }
-.app--mobile .wg .ev .ev__notes svg { width: 8px; height: 8px; }
-.app--mobile .wg .ev--has-recur .ev__time { padding-right: 12px; }
-.app--mobile .wg .ev--completed .ev__head { padding-right: 12px; }
-.app--mobile .wg .ev--has-notes .ev__time { padding-right: 16px; }
+.app--mobile .wg .ev .ev__mark { top: 2px; right: 2px; }
+.app--mobile .wg .ev .ev__mark svg { width: 6px; height: 6px; }
+.app--mobile .wg .ev .ev__recur { bottom: 2px; right: 2px; }
+.app--mobile .wg .ev .ev__recur svg { width: 6.5px; height: 6.5px; }
+.app--mobile .wg .ev--has-recur .ev__notes { right: 11px; }
+.app--mobile .wg .ev .ev__notes {
+  bottom: 2px;
+  right: 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+.app--mobile .wg .ev .ev__notes svg { width: 5px; height: 5px; }
+.app--mobile .wg .ev--has-recur .ev__rot-slot--time { padding-right: 8px; }
+.app--mobile .wg .ev--completed .ev__rot-slot--name .ev__head,
+.app--mobile .wg .ev--completed .ev__head { padding-right: 8px; }
+.app--mobile .wg .ev--has-notes .ev__rot-slot--time { padding-right: 10px; }
 
 /* schedule topbar — compact 2-row mobile toolbar */
 .top--schedule {

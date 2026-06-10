@@ -5,6 +5,21 @@ import type { ViewLesson, ViewStudent } from '../../utils/schedule';
 import { RecurrenceIcon } from '../RecurrenceFields';
 import { NotesPaperIcon } from '../icons/NotesPaperIcon';
 
+const CYRILLIC = /\p{Script=Cyrillic}/u;
+const LATIN = /\p{Script=Latin}/u;
+
+/** Pure Cyrillic names render optically larger in Hanken Grotesk at the same font-size. */
+export function lessonNameClass(name: string): string {
+  let hasCy = false;
+  let hasLat = false;
+  for (const ch of name) {
+    if (LATIN.test(ch)) hasLat = true;
+    else if (CYRILLIC.test(ch)) hasCy = true;
+    if (hasCy && hasLat) return 'ev__name';
+  }
+  return hasCy ? 'ev__name ev__name--cy' : 'ev__name';
+}
+
 export function lessonCardVars(student: ViewStudent): React.CSSProperties {
   return { '--ev-hue': String(student.hue) } as React.CSSProperties;
 }
@@ -132,6 +147,31 @@ export function LessonNotesMark({ notes }: { notes: string | null | undefined })
   return (
     <span className="ev__notes" aria-label="Есть напоминание" title={text}>
       <NotesPaperIcon size={10} />
+    </span>
+  );
+}
+
+/** Mobile week-grid: alternates name (5s) and time (2s). */
+export function LessonCardRotatingLabel({
+  name,
+  time,
+  groupIcon,
+}: {
+  name: string;
+  time: string;
+  groupIcon?: React.ReactNode;
+}) {
+  return (
+    <span className="ev__rot" aria-hidden="true">
+      <span className="ev__rot-slot ev__rot-slot--name">
+        <span className="ev__head">
+          <span className={lessonNameClass(name)}>{name}</span>
+          {groupIcon}
+        </span>
+      </span>
+      <span className="ev__rot-slot ev__rot-slot--time">
+        <span className="ev__time">{time}</span>
+      </span>
     </span>
   );
 }
