@@ -101,9 +101,7 @@ function LessonEvent({
       {compact ? (
         <LessonCardRotatingLabel
           name={student.name}
-          time={
-            fmtTime(start) + (!tight ? ` – ${fmtTime(start + lesson.dur)}` : '')
-          }
+          time={fmtTime(start)}
           groupIcon={lesson.type === 'group' ? <TypeIcon type="group" /> : null}
         />
       ) : (
