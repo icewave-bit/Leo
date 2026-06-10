@@ -196,6 +196,92 @@ describe('taxes', () => {
     expect(list.body[0].amountByn).toBe(390);
   });
 
+  it('lists lesson paid as taxable income when tutor marks lesson paid', async () => {
+    const { agent } = await registerTutor(app);
+    const RATE = 25;
+
+    const studentRes = await agent
+      .post('/api/students')
+      .send({
+        name: 'Lesson Payer',
+        hue: 220,
+        balanceKind: 'money',
+        currency: 'EUR',
+        prepaid: 0,
+        debt: 0,
+        rate: RATE,
+        isGroup: false,
+        members: [],
+      })
+      .expect(201);
+    const studentId = studentRes.body.id as string;
+
+    const startUtc = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    const lesson = await agent
+      .post('/api/lessons')
+      .send({ studentId, startUtc, durationMin: 60 })
+      .expect(201);
+
+    await agent.get('/api/lessons').query({
+      from: new Date(Date.now() - 7 * 86_400_000).toISOString(),
+      to: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+    });
+
+    await agent.patch(`/api/lessons/${lesson.body.id}`).send({ paid: true }).expect(200);
+
+    const month = `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, '0')}`;
+    const list = await agent
+      .get(`/api/taxes?month=${month}&studentId=${studentId}`)
+      .expect(200);
+
+    expect(list.body.length).toBe(1);
+    expect(list.body[0].amount).toBe(RATE);
+    expect(list.body[0].currency).toBe('EUR');
+    expect(list.body[0].amountByn).toBe(RATE * 3.25);
+  });
+
+  it('does not double-count lesson paid settled from prepaid top-up', async () => {
+    const { agent } = await registerTutor(app);
+    const RATE = 30;
+
+    const studentRes = await agent
+      .post('/api/students')
+      .send({
+        name: 'Top-up Payer',
+        hue: 225,
+        balanceKind: 'money',
+        currency: 'EUR',
+        prepaid: 0,
+        debt: 0,
+        rate: RATE,
+        isGroup: false,
+        members: [],
+      })
+      .expect(201);
+    const studentId = studentRes.body.id as string;
+
+    const startUtc = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    await agent
+      .post('/api/lessons')
+      .send({ studentId, startUtc, durationMin: 60 })
+      .expect(201);
+
+    await agent.get('/api/lessons').query({
+      from: new Date(Date.now() - 7 * 86_400_000).toISOString(),
+      to: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+    });
+
+    await agent.patch(`/api/students/${studentId}`).send({ prepaid: RATE }).expect(200);
+
+    const month = `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, '0')}`;
+    const list = await agent
+      .get(`/api/taxes?month=${month}&studentId=${studentId}`)
+      .expect(200);
+
+    expect(list.body.length).toBe(1);
+    expect(list.body[0].amount).toBe(RATE);
+  });
+
   it('excludes manual balance corrections (prepaid + debt patch)', async () => {
     const { agent } = await registerTutor(app);
 

@@ -26,10 +26,12 @@ export function useStudentActions() {
 
   const updateStudent = async (id: string, body: UpdateStudentBody): Promise<void> => {
     const student = await api.updateStudent(id, body);
+    const prev = store.get(studentsAtom).find((s) => s.id === id);
+    const billingChanged =
+      body.billingStudentId !== undefined &&
+      (body.billingStudentId ?? null) !== (prev?.billingStudentId ?? null);
     const affectsFamilyBalance =
-      body.prepaid !== undefined ||
-      body.debt !== undefined ||
-      body.billingStudentId !== undefined;
+      body.prepaid !== undefined || body.debt !== undefined || billingChanged;
     if (affectsFamilyBalance) {
       await reloadStudents(store.get, store.set);
       return;

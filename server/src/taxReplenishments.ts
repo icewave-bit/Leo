@@ -27,6 +27,26 @@ export function isTaxableReplenish(input: {
   return !isMisclassifiedReplenishMovement(input);
 }
 
+/** Direct cash received when tutor marks a lesson paid (debt settled). */
+export function isTaxableLessonPaid(input: {
+  kind: BalanceMovementKind;
+  debtDelta: number;
+}): boolean {
+  return input.kind === 'lesson_paid' && input.debtDelta < 0;
+}
+
+export function isTaxableIncomeMovement(input: {
+  kind: BalanceMovementKind;
+  prepaidDelta: number;
+  prepaidAfter: number;
+  debtDelta: number;
+}): boolean {
+  return (
+    isTaxableReplenish(input) ||
+    isTaxableLessonPaid({ kind: input.kind, debtDelta: input.debtDelta })
+  );
+}
+
 /** Money equivalent in student currency for tax / NBRB conversion. */
 export function replenishDeltaAsMoney(
   prepaidDelta: number,
@@ -36,6 +56,17 @@ export function replenishDeltaAsMoney(
   if (balanceKind === 'money') return roundMoney(prepaidDelta);
   if (studentRate == null || studentRate <= 0) return null;
   return roundMoney(prepaidDelta * studentRate);
+}
+
+/** Money received when a lesson debt is settled (debt_delta is negative). */
+export function lessonPaidDeltaAsMoney(
+  debtDelta: number,
+  balanceKind: BalanceKind,
+  studentRate: number | null,
+): number | null {
+  const received = -debtDelta;
+  if (received <= 0) return null;
+  return replenishDeltaAsMoney(received, balanceKind, studentRate);
 }
 
 export function occurredDateKey(iso: string, timezone: string): string {

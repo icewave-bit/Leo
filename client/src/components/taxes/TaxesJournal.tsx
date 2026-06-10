@@ -176,8 +176,8 @@ export function TaxesJournal() {
         ) : rows.length === 0 ? (
           <p className="pay-journal-empty">
             {studentId
-              ? 'За выбранный месяц пополнений нет.'
-              : 'Нет пополнений за этот месяц.'}
+              ? 'За выбранный месяц поступлений нет.'
+              : 'Нет поступлений за этот месяц.'}
           </p>
         ) : (
           <div className="tax-journal-table-wrap">

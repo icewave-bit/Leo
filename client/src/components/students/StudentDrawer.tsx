@@ -157,6 +157,23 @@ function payloadEquals(a: UpdateStudentBody, b: UpdateStudentBody): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+function diffPayload(
+  next: UpdateStudentBody,
+  baseline: UpdateStudentBody,
+): UpdateStudentBody | null {
+  const diff: UpdateStudentBody = {};
+  const keys = new Set([
+    ...Object.keys(next),
+    ...Object.keys(baseline),
+  ]) as Set<keyof UpdateStudentBody>;
+  for (const key of keys) {
+    if (JSON.stringify(next[key]) !== JSON.stringify(baseline[key])) {
+      diff[key] = next[key] as never;
+    }
+  }
+  return Object.keys(diff).length > 0 ? diff : null;
+}
+
 function revertBillingForm(form: StudentFormValues, server: ViewStudent): StudentFormValues {
   return {
     ...form,
@@ -270,6 +287,7 @@ export function StudentDrawer({
   const [manualBalanceOpen, setManualBalanceOpen] = useState(mode === 'create');
   const loadedStudentIdRef = useRef<string | null>(null);
   const balanceManualTouchedRef = useRef(false);
+  const userEditedRef = useRef(false);
   const formRef = useRef(form);
   const existingRef = useRef(existing);
   const createLockRef = useRef(false);
@@ -300,6 +318,7 @@ export function StudentDrawer({
     if (mode === 'create') {
       loadedStudentIdRef.current = null;
       balanceManualTouchedRef.current = false;
+      userEditedRef.current = false;
       setManualBalanceOpen(true);
       setForm(emptyForm(defaultTz));
       createLockRef.current = false;
@@ -309,6 +328,7 @@ export function StudentDrawer({
       setForm(fromStudent(existing));
       loadedStudentIdRef.current = studentId;
       balanceManualTouchedRef.current = false;
+      userEditedRef.current = false;
       setManualBalanceOpen(false);
     }
   }, [mode, studentId, existing, defaultTz]);
@@ -476,6 +496,7 @@ export function StudentDrawer({
   }, [showFamilyDebt, studentId, lessonsBump, existing?.prepaid, existing?.debt]);
 
   const handleBillingPayerChange = (nextId: string | null) => {
+    userEditedRef.current = true;
     setError(null);
     if (!nextId) {
       setForm((f) => ({
@@ -512,6 +533,7 @@ export function StudentDrawer({
   const onBalanceKindChange = (next: BalanceKind) => {
     if (readOnly || billingDependent) return;
     if (next === form.balanceKind) return;
+    userEditedRef.current = true;
     const rateRaw = form.rate.trim() ? Number(form.rate) : null;
     const rate = rateRaw != null && !Number.isNaN(rateRaw) && rateRaw > 0 ? rateRaw : null;
     const net = parseBalanceNetInput(form.balanceNet, form.balanceKind);
@@ -530,6 +552,7 @@ export function StudentDrawer({
 
   const set = <K extends keyof StudentFormValues>(key: K, value: StudentFormValues[K]) => {
     if (readOnly) return;
+    userEditedRef.current = true;
     setForm((f) => ({ ...f, [key]: value }));
   };
 
@@ -586,7 +609,7 @@ export function StudentDrawer({
       return () => window.clearTimeout(timer);
     }
 
-    if (mode !== 'edit' || !studentId || !existing) return;
+    if (mode !== 'edit' || !studentId || !existing || !userEditedRef.current) return;
     const dependent = isBillingDependent(existing);
     const payload = toPayload(form, { includeBalance: false, billingDependent: dependent });
     if (!payload.name) return;
@@ -594,13 +617,17 @@ export function StudentDrawer({
       includeBalance: false,
       billingDependent: dependent,
     });
-    if (payloadEquals(payload, baseline)) {
+    const patch = diffPayload(payload, baseline);
+    if (!patch) {
       return;
     }
 
     const timer = window.setTimeout(() => {
       setError(null);
-      void updateStudent(studentId, payload)
+      void updateStudent(studentId, patch)
+        .then(() => {
+          userEditedRef.current = false;
+        })
         .catch((e) => {
           const msg = e instanceof Error ? e.message : 'Не удалось сохранить';
           setError(msg);
@@ -881,9 +908,10 @@ export function StudentDrawer({
                 <button
                   type="button"
                   className={'seg__btn' + (form.isGroup ? ' is-active' : '')}
-                  onClick={() =>
-                    setForm((f) => ({ ...f, isGroup: true, billingStudentId: null }))
-                  }
+                  onClick={() => {
+                    userEditedRef.current = true;
+                    setForm((f) => ({ ...f, isGroup: true, billingStudentId: null }));
+                  }}
                 >
                   Группа
                 </button>

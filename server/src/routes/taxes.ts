@@ -6,7 +6,9 @@ import { requireAuth } from '../middleware/requireAuth.js';
 import { getNbrbApiBase } from '../config.js';
 import { convertToByn, fetchNbrbRate } from '../nbrb.js';
 import {
+  isTaxableIncomeMovement,
   isTaxableReplenish,
+  lessonPaidDeltaAsMoney,
   monthBoundsDates,
   movementReceivedDate,
   replenishDeltaAsMoney,
@@ -36,6 +38,7 @@ interface MovementRow {
   kind: BalanceMovementKind;
   prepaid_delta: string;
   prepaid_after: string;
+  debt_delta: string;
   balance_kind: 'money' | 'lessons';
   student_name: string;
   currency: string;
@@ -89,7 +92,7 @@ taxesRouter.get('/', async (req, res, next) => {
 
     const result = await query<MovementRow>(
       `SELECT m.id, m.student_id, m.occurred_at, m.received_on::text AS received_on, m.kind,
-              m.prepaid_delta, m.prepaid_after, m.balance_kind,
+              m.prepaid_delta, m.prepaid_after, m.debt_delta, m.balance_kind,
               s.name AS student_name, s.currency, s.rate,
               t.tax_paid, t.comment
        FROM balance_movements m
@@ -100,8 +103,21 @@ taxesRouter.get('/', async (req, res, next) => {
        WHERE m.tutor_id = $1
          AND COALESCE(m.received_on, m.occurred_at::date) >= $2::date
          AND COALESCE(m.received_on, m.occurred_at::date) < $3::date
-         AND m.kind = 'replenish'
-         AND m.prepaid_delta > 0
+         AND (
+           (m.kind = 'replenish' AND m.prepaid_delta > 0)
+           OR (
+             m.kind = 'lesson_paid'
+             AND m.debt_delta < 0
+             AND NOT EXISTS (
+               SELECT 1 FROM balance_movements r
+               WHERE r.student_id = m.student_id
+                 AND r.tutor_id = m.tutor_id
+                 AND r.kind = 'replenish'
+                 AND r.prepaid_delta > 0
+                 AND r.created_at = m.created_at
+             )
+           )
+         )
          ${studentFilter}
        ORDER BY m.occurred_at DESC, m.created_at DESC`,
       params,
@@ -113,22 +129,25 @@ taxesRouter.get('/', async (req, res, next) => {
     for (const row of result.rows) {
       const prepaidDelta = Number(row.prepaid_delta);
       const prepaidAfter = Number(row.prepaid_after);
+      const debtDelta = Number(row.debt_delta);
       if (
-        !isTaxableReplenish({
+        !isTaxableIncomeMovement({
           kind: row.kind,
           prepaidDelta,
           prepaidAfter,
+          debtDelta,
         })
       ) {
         continue;
       }
 
       const studentRate = row.rate != null ? Number(row.rate) : null;
-      const moneyAmount = replenishDeltaAsMoney(
-        prepaidDelta,
-        row.balance_kind,
-        studentRate,
-      );
+      const sourceAmount =
+        row.kind === 'lesson_paid' ? -debtDelta : prepaidDelta;
+      const moneyAmount =
+        row.kind === 'lesson_paid'
+          ? lessonPaidDeltaAsMoney(debtDelta, row.balance_kind, studentRate)
+          : replenishDeltaAsMoney(prepaidDelta, row.balance_kind, studentRate);
 
       const replenishmentDate = movementReceivedDate(
         row.received_on,
@@ -160,7 +179,7 @@ taxesRouter.get('/', async (req, res, next) => {
         occurredAt: row.occurred_at,
         replenishmentDate,
         balanceKind: row.balance_kind,
-        sourceAmount: prepaidDelta,
+        sourceAmount,
         amount: moneyAmount ?? 0,
         currency: row.currency,
         amountByn,
@@ -187,24 +206,41 @@ taxesRouter.patch('/:movementId', async (req, res, next) => {
       balance_kind: string;
       prepaid_delta: string;
       prepaid_after: string;
+      debt_delta: string;
     }>(
-      `SELECT id, kind, balance_kind, prepaid_delta, prepaid_after
+      `SELECT id, kind, balance_kind, prepaid_delta, prepaid_after, debt_delta
        FROM balance_movements
-       WHERE id = $1 AND tutor_id = $2`,
+       WHERE id = $1 AND tutor_id = $2
+         AND (
+           (kind = 'replenish' AND prepaid_delta > 0)
+           OR (
+             kind = 'lesson_paid'
+             AND debt_delta < 0
+             AND NOT EXISTS (
+               SELECT 1 FROM balance_movements r
+               WHERE r.student_id = balance_movements.student_id
+                 AND r.tutor_id = balance_movements.tutor_id
+                 AND r.kind = 'replenish'
+                 AND r.prepaid_delta > 0
+                 AND r.created_at = balance_movements.created_at
+             )
+           )
+         )`,
       [movementId, req.tutorId],
     );
 
     const row = movement.rows[0];
     if (
       !row ||
-      !isTaxableReplenish({
+      !isTaxableIncomeMovement({
         kind: row.kind,
         prepaidDelta: Number(row.prepaid_delta),
         prepaidAfter: Number(row.prepaid_after),
+        debtDelta: Number(row.debt_delta),
       })
     ) {
       res.status(404).json({
-        error: { code: 'NOT_FOUND', message: 'Пополнение не найдено' },
+        error: { code: 'NOT_FOUND', message: 'Запись не найдена' },
       });
       return;
     }
