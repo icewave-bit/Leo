@@ -1,30 +1,43 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
 import { api } from '../../api/client';
-import type { TaxDisplayCurrency, TaxReplenishment, WeekStartsOn } from '../../api/types';
+import type { TaxDisplayCurrency, TaxReplenishment } from '../../api/types';
 import { tutorAtom } from '../../atoms/auth';
 import {
   taxReplenishmentsAtom,
   taxReplenishmentsErrorAtom,
   taxReplenishmentsLoadingAtom,
   taxesMonthAtom,
+  taxesPaidFilterAtom,
+  taxesSortAtom,
   taxesStudentIdAtom,
+  type TaxesPaidFilter,
 } from '../../atoms/taxes';
 import { studentsAtom } from '../../atoms/schedule';
 import { useAppStore } from '../../hooks/useAppStore';
 import { loadTaxes } from '../../state/loadTaxes';
 import { ConfirmDialog } from '../ConfirmDialog';
-import { fmtDateKey, parseDateKey } from '../../utils/dateKey';
-import { fmtByn } from '../../utils/format';
-import { fmtTaxAmount, fmtTaxDue } from '../../utils/taxDisplay';
 import { taxFromBase, taxRowBase } from '../../utils/taxAmount';
+import { sortTaxRows, toggleTaxSort, type TaxSortKey } from '../../utils/taxJournalSort';
 import { monthLabel } from '../../utils/taxMonth';
-import { JournalStudentChip } from '../payments/JournalStudentChip';
 import { StudentPicker } from '../payments/StudentPicker';
 import { MonthPicker } from './MonthPicker';
+import { TaxPaidFilter } from './TaxPaidFilter';
 import { TaxEntryDialog } from './TaxEntryDialog';
+import { TaxJournalColgroup, taxJournalTableLayout } from './TaxJournalColgroup';
+import { TaxJournalEntryCard } from './TaxJournalEntryCard';
+import { TaxRowUndoCard, TaxRowUndoTable } from './TaxRowUndo';
+import { TaxSummaryStrip } from './TaxSummaryStrip';
+import { TaxSortableTh } from './TaxSortableTh';
+import { TaxTableRow } from './TaxTableRow';
 
 const DELETE_UNDO_MS = 10_000;
+
+function matchesPaidFilter(row: TaxReplenishment, filter: TaxesPaidFilter): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'paid') return row.taxPaid;
+  return !row.taxPaid;
+}
 
 function patchRow(
   rows: TaxReplenishment[],
@@ -43,6 +56,8 @@ export function TaxesJournal() {
   const loading = useAtomValue(taxReplenishmentsLoadingAtom);
   const error = useAtomValue(taxReplenishmentsErrorAtom);
   const [studentId, setStudentId] = useAtom(taxesStudentIdAtom);
+  const paidFilter = useAtomValue(taxesPaidFilterAtom);
+  const [sort, setSort] = useAtom(taxesSortAtom);
   const month = useAtomValue(taxesMonthAtom);
   const [, setRows] = useAtom(taxReplenishmentsAtom);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -76,9 +91,33 @@ export function TaxesJournal() {
 
   const showStudentColumn = !studentId;
 
-  const visibleRows = useMemo(
-    () => rows.filter((r) => pendingDeletes[r.movementId] == null),
-    [rows, pendingDeletes],
+  const filteredRows = useMemo(
+    () => rows.filter((r) => matchesPaidFilter(r, paidFilter)),
+    [rows, paidFilter],
+  );
+
+  const feedRows = useMemo(
+    () =>
+      rows.filter(
+        (r) =>
+          pendingDeletes[r.movementId] != null || matchesPaidFilter(r, paidFilter),
+      ),
+    [rows, paidFilter, pendingDeletes],
+  );
+
+  const summaryRows = useMemo(
+    () => filteredRows.filter((r) => pendingDeletes[r.movementId] == null),
+    [filteredRows, pendingDeletes],
+  );
+
+  const tableRows = useMemo(
+    () => sortTaxRows(feedRows, sort, taxRatePercent, displayCurrency),
+    [feedRows, sort, taxRatePercent, displayCurrency],
+  );
+
+  const onSortColumn = useCallback(
+    (key: TaxSortKey) => setSort((prev) => toggleTaxSort(prev, key)),
+    [setSort],
   );
 
   const tableColSpan =
@@ -148,7 +187,7 @@ export function TaxesJournal() {
     let totalTax = 0;
     let taxCount = 0;
     let taxPaidCount = 0;
-    for (const r of visibleRows) {
+    for (const r of summaryRows) {
       if (r.taxPaid) taxPaidCount += 1;
       if (showByn && r.amountByn != null) {
         totalByn += r.amountByn;
@@ -160,8 +199,8 @@ export function TaxesJournal() {
         taxCount += 1;
       }
     }
-    return { totalByn, bynCount, totalTax, taxCount, taxPaidCount, count: visibleRows.length };
-  }, [visibleRows, showByn, displayCurrency, taxRatePercent]);
+    return { totalByn, bynCount, totalTax, taxCount, taxPaidCount, count: summaryRows.length };
+  }, [summaryRows, showByn, displayCurrency, taxRatePercent]);
 
   const saveMeta = useCallback(
     async (movementId: string, patch: { taxPaid?: boolean; comment?: string }) => {
@@ -211,60 +250,67 @@ export function TaxesJournal() {
   const taxColLabel =
     taxRatePercent > 0 ? `Налог (${taxRatePercent}%)` : 'Налог';
 
+  const sharedRowProps = (r: TaxReplenishment) => ({
+    row: r,
+    showStudent: showStudentColumn,
+    showByn,
+    taxRatePercent,
+    displayCurrency,
+    weekStartsOn,
+    students: studentMap,
+    saving: savingId === r.movementId,
+    onTaxPaidChange: (taxPaid: boolean) => saveMeta(r.movementId, { taxPaid }),
+    onCommentBlur: (comment: string) => {
+      if (comment !== r.comment) saveMeta(r.movementId, { comment });
+    },
+    onReceivedOnSave: (receivedOn: string) => saveReceivedOn(r.movementId, receivedOn),
+    onDelete: () => setDeleteTarget(r),
+  });
+
   return (
     <div className="tax-journal-page">
-      <section className="pay-toolbar" aria-label="Фильтры налогов">
-        <div className="pay-toolbar__fields">
-          <div className="pay-toolbar__field pay-toolbar__field--student">
-            <span className="pay-toolbar__lbl">Ученик</span>
-            <StudentPicker students={taxStudents} value={studentId} onChange={setStudentId} />
+      <div className="tax-journal-controls">
+        <section className="pay-toolbar" aria-label="Фильтры налогов">
+          <div className="pay-toolbar__fields">
+            <div className="pay-toolbar__field pay-toolbar__field--student">
+              <span className="pay-toolbar__lbl">Ученик</span>
+              <StudentPicker students={taxStudents} value={studentId} onChange={setStudentId} />
+            </div>
+            <div className="pay-toolbar__field pay-toolbar__field--month">
+              <span className="pay-toolbar__lbl">Месяц</span>
+              <MonthPicker />
+            </div>
+            <div className="pay-toolbar__field pay-toolbar__field--paid">
+              <span className="pay-toolbar__lbl">Уплачен</span>
+              <TaxPaidFilter />
+            </div>
           </div>
-          <div className="pay-toolbar__field pay-toolbar__field--period">
-            <span className="pay-toolbar__lbl">Месяц</span>
-            <MonthPicker />
+
+          <div className="pay-toolbar__bar">
+            <p className="pay-toolbar__range">{monthTitle}</p>
+            <button
+              type="button"
+              className="btn btn--primary btn--sm pay-toolbar__replenish"
+              onClick={() => setAddOpen(true)}
+            >
+              + Запись
+            </button>
           </div>
-        </div>
+        </section>
 
-        <div className="pay-toolbar__bar">
-          <p className="pay-toolbar__range">{monthTitle}</p>
-          <button
-            type="button"
-            className="btn btn--primary btn--sm pay-toolbar__replenish"
-            onClick={() => setAddOpen(true)}
-          >
-            + Запись
-          </button>
-          {summary.count > 0 ? (
-            <p className="tax-summary-inline tnum">
-              {showByn && summary.bynCount > 0 ? (
-                <span>Итого {fmtByn(summary.totalByn)}</span>
-              ) : null}
-              {showByn && summary.bynCount > 0 && summary.taxCount > 0 ? ' · ' : null}
-              {summary.taxCount > 0 && taxRatePercent > 0 ? (
-                <span>
-                  {taxColLabel}:{' '}
-                  {showByn
-                    ? fmtByn(summary.totalTax)
-                    : 'по строкам'}
-                </span>
-              ) : null}
-              {(showByn && summary.bynCount > 0) ||
-              (summary.taxCount > 0 && taxRatePercent > 0)
-                ? ' · '
-                : null}
-              <span>
-                Уплачен: {summary.taxPaidCount}/{summary.count}
-              </span>
-            </p>
-          ) : null}
-        </div>
-      </section>
+        <TaxSummaryStrip
+          summary={summary}
+          showByn={showByn}
+          taxRatePercent={taxRatePercent}
+          taxColLabel={taxColLabel}
+        />
 
-      {error ? (
-        <p className="pay-journal-error" role="alert">
-          {error}
-        </p>
-      ) : null}
+        {error ? (
+          <p className="pay-journal-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </div>
 
       <section className="tax-journal-feed" aria-busy={loading}>
         {loading ? (
@@ -275,61 +321,123 @@ export function TaxesJournal() {
               ? 'За выбранный месяц поступлений нет.'
               : 'Нет поступлений за этот месяц.'}
           </p>
+        ) : filteredRows.length === 0 ? (
+          <p className="pay-journal-empty">
+            {paidFilter === 'paid'
+              ? 'Нет уплаченных записей за этот месяц.'
+              : 'Нет неуплаченных записей за этот месяц.'}
+          </p>
         ) : (
-          <div className="tax-journal-table-wrap">
-            <table className="tax-journal-table">
-              <thead>
-                <tr>
-                  <th>Дата</th>
-                  {showStudentColumn ? <th>Ученик</th> : null}
-                  <th className="tax-journal-table__num">Сумма (в валюте)</th>
-                  {showByn ? (
-                    <th className="tax-journal-table__num">BYN (НБРБ)</th>
-                  ) : null}
-                  <th className="tax-journal-table__num">{taxColLabel}</th>
-                  <th className="tax-journal-table__tax">Уплачен</th>
-                  <th>Комментарий</th>
-                  <th className="tax-journal-table__actions" aria-label="Действия" />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const expiresAt = pendingDeletes[r.movementId];
-                  if (expiresAt != null) {
-                    return (
-                      <TaxRowUndo
-                        key={r.movementId}
+          <>
+            <ul className="tax-journal-list">
+              {feedRows.map((r) => {
+                const expiresAt = pendingDeletes[r.movementId];
+                if (expiresAt != null) {
+                  return (
+                    <li key={r.movementId}>
+                      <TaxRowUndoCard
                         expiresAt={expiresAt}
-                        colSpan={tableColSpan}
                         onUndo={() => undoDelete(r.movementId)}
                       />
-                    );
-                  }
-                  return (
-                    <TaxRow
-                      key={r.movementId}
-                      row={r}
-                      showStudent={showStudentColumn}
-                      showByn={showByn}
-                      taxRatePercent={taxRatePercent}
-                      displayCurrency={displayCurrency}
-                      students={studentMap}
-                      saving={savingId === r.movementId}
-                      onTaxPaidChange={(taxPaid) => saveMeta(r.movementId, { taxPaid })}
-                      onCommentBlur={(comment) => {
-                        if (comment !== r.comment) saveMeta(r.movementId, { comment });
-                      }}
-                      weekStartsOn={weekStartsOn}
-                      onReceivedOnSave={(receivedOn) =>
-                        saveReceivedOn(r.movementId, receivedOn)
-                      }
-                      onDelete={() => setDeleteTarget(r)}
-                    />
+                    </li>
                   );
-                })}
-              </tbody>
-            </table>
-          </div>
+                }
+                return (
+                  <li key={r.movementId}>
+                    <TaxJournalEntryCard
+                      {...sharedRowProps(r)}
+                      taxColLabel={taxColLabel}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="tax-journal-table-wrap">
+              <table
+                className={
+                  'tax-journal-table ' + taxJournalTableLayout(showStudentColumn, showByn)
+                }
+              >
+                <TaxJournalColgroup showStudent={showStudentColumn} showByn={showByn} />
+                <thead>
+                  <tr>
+                    <TaxSortableTh
+                      label="Дата"
+                      sortKey="date"
+                      sort={sort}
+                      className="tax-journal-table__when"
+                      onSort={onSortColumn}
+                    />
+                    {showStudentColumn ? (
+                      <TaxSortableTh
+                        label="Ученик"
+                        sortKey="student"
+                        sort={sort}
+                        className="tax-journal-table__col-student"
+                        onSort={onSortColumn}
+                      />
+                    ) : null}
+                    <TaxSortableTh
+                      label="Сумма (в валюте)"
+                      sortKey="amount"
+                      sort={sort}
+                      className="tax-journal-table__num tax-journal-table__col-amt"
+                      onSort={onSortColumn}
+                    />
+                    {showByn ? (
+                      <TaxSortableTh
+                        label="BYN (НБРБ)"
+                        sortKey="byn"
+                        sort={sort}
+                        className="tax-journal-table__num tax-journal-table__col-byn"
+                        onSort={onSortColumn}
+                      />
+                    ) : null}
+                    <TaxSortableTh
+                      label={taxColLabel}
+                      sortKey="tax"
+                      sort={sort}
+                      className="tax-journal-table__num tax-journal-table__col-tax"
+                      onSort={onSortColumn}
+                    />
+                    <TaxSortableTh
+                      label="Уплачен"
+                      title="Уплачен"
+                      sortKey="paid"
+                      sort={sort}
+                      className="tax-journal-table__tax"
+                      onSort={onSortColumn}
+                    />
+                    <TaxSortableTh
+                      label="Комментарий"
+                      sortKey="comment"
+                      sort={sort}
+                      className="tax-journal-table__comment"
+                      onSort={onSortColumn}
+                    />
+                    <th className="tax-journal-table__actions" aria-label="Действия" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableRows.map((r) => {
+                    const expiresAt = pendingDeletes[r.movementId];
+                    if (expiresAt != null) {
+                      return (
+                        <TaxRowUndoTable
+                          key={r.movementId}
+                          expiresAt={expiresAt}
+                          colSpan={tableColSpan}
+                          onUndo={() => undoDelete(r.movementId)}
+                        />
+                      );
+                    }
+                    return <TaxTableRow key={r.movementId} {...sharedRowProps(r)} />;
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </section>
 
@@ -353,197 +461,5 @@ export function TaxesJournal() {
         onCancel={() => setDeleteTarget(null)}
       />
     </div>
-  );
-}
-
-function TaxRowUndo({
-  expiresAt,
-  colSpan,
-  onUndo,
-}: {
-  expiresAt: number;
-  colSpan: number;
-  onUndo: () => void;
-}) {
-  const [secondsLeft, setSecondsLeft] = useState(() =>
-    Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)),
-  );
-
-  useEffect(() => {
-    const tick = () => {
-      setSecondsLeft(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
-    };
-    tick();
-    const id = window.setInterval(tick, 250);
-    return () => window.clearInterval(id);
-  }, [expiresAt]);
-
-  return (
-    <tr className="tax-journal-table__row--pending-delete">
-      <td colSpan={colSpan}>
-        <div className="tax-row-undo" role="status">
-          <span className="tax-row-undo__msg">Запись удалена из налогов</span>
-          <button type="button" className="tax-row-undo__btn" onClick={onUndo}>
-            Восстановить
-          </button>
-          <span className="tax-row-undo__timer tnum">{secondsLeft} с</span>
-        </div>
-      </td>
-    </tr>
-  );
-}
-
-function TaxRow({
-  row,
-  showStudent,
-  showByn,
-  taxRatePercent,
-  displayCurrency,
-  weekStartsOn,
-  students,
-  saving,
-  onTaxPaidChange,
-  onCommentBlur,
-  onReceivedOnSave,
-  onDelete,
-}: {
-  row: TaxReplenishment;
-  showStudent: boolean;
-  showByn: boolean;
-  taxRatePercent: number;
-  displayCurrency: TaxDisplayCurrency;
-  weekStartsOn: WeekStartsOn;
-  students: Map<string, import('../../utils/schedule').ViewStudent>;
-  saving: boolean;
-  onTaxPaidChange: (taxPaid: boolean) => void;
-  onCommentBlur: (comment: string) => void;
-  onReceivedOnSave: (receivedOn: string) => void;
-  onDelete: () => void;
-}) {
-  const [commentDraft, setCommentDraft] = useState(row.comment);
-  const [editingDate, setEditingDate] = useState(false);
-  const [dateDraft, setDateDraft] = useState(() =>
-    fmtDateKey(row.replenishmentDate, weekStartsOn),
-  );
-
-  useEffect(() => {
-    setCommentDraft(row.comment);
-  }, [row.comment]);
-
-  useEffect(() => {
-    if (!editingDate) {
-      setDateDraft(fmtDateKey(row.replenishmentDate, weekStartsOn));
-    }
-  }, [row.replenishmentDate, weekStartsOn, editingDate]);
-
-  const amountLabel = fmtTaxAmount(row);
-  const bynLabel =
-    row.amountByn != null ? fmtByn(row.amountByn) : (row.conversionError ?? '—');
-  const taxLabel =
-    taxRatePercent > 0
-      ? (fmtTaxDue(row, taxRatePercent, displayCurrency) ?? '—')
-      : '—';
-
-  return (
-    <tr className={saving ? 'tax-journal-table__row--saving' : undefined}>
-      <td className="tax-journal-table__when">
-        {editingDate ? (
-          <input
-            className="field__control tax-date-input tnum"
-            type="text"
-            inputMode="numeric"
-            value={dateDraft}
-            disabled={saving}
-            autoFocus
-            onChange={(e) => setDateDraft(e.target.value)}
-            onBlur={() => {
-              setEditingDate(false);
-              const parsed = parseDateKey(dateDraft, weekStartsOn);
-              if (parsed && parsed !== row.replenishmentDate) {
-                void onReceivedOnSave(parsed);
-              } else {
-                setDateDraft(fmtDateKey(row.replenishmentDate, weekStartsOn));
-              }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-              if (e.key === 'Escape') {
-                setDateDraft(fmtDateKey(row.replenishmentDate, weekStartsOn));
-                setEditingDate(false);
-              }
-            }}
-          />
-        ) : (
-          <button
-            type="button"
-            className="tax-date-btn tnum"
-            title="Изменить дату поступления"
-            disabled={saving}
-            onClick={() => {
-              setDateDraft(fmtDateKey(row.replenishmentDate, weekStartsOn));
-              setEditingDate(true);
-            }}
-          >
-            {fmtDateKey(row.replenishmentDate, weekStartsOn)}
-          </button>
-        )}
-      </td>
-      {showStudent ? (
-        <td>
-          <JournalStudentChip
-            studentId={row.studentId}
-            name={row.studentName}
-            students={students}
-          />
-        </td>
-      ) : null}
-      <td className="tnum tax-journal-table__num">{amountLabel}</td>
-      {showByn ? (
-        <td
-          className={
-            'tnum tax-journal-table__num' +
-            (row.conversionError ? ' tax-journal-table__num--err' : '')
-          }
-          title={row.conversionError ?? `Курс на ${row.replenishmentDate}`}
-        >
-          {bynLabel}
-        </td>
-      ) : null}
-      <td className="tnum tax-journal-table__num tax-journal-table__tax-amt">{taxLabel}</td>
-      <td className="tax-journal-table__tax">
-        <label className="tax-check">
-          <input
-            type="checkbox"
-            checked={row.taxPaid}
-            disabled={saving}
-            onChange={(e) => onTaxPaidChange(e.target.checked)}
-          />
-          <span className="tax-check__lbl">Да</span>
-        </label>
-      </td>
-      <td className="tax-journal-table__comment">
-        <input
-          className="field__control tax-comment-input"
-          type="text"
-          value={commentDraft}
-          placeholder="Комментарий"
-          disabled={saving}
-          onChange={(e) => setCommentDraft(e.target.value)}
-          onBlur={() => onCommentBlur(commentDraft)}
-        />
-      </td>
-      <td className="tax-journal-table__actions">
-        <button
-          type="button"
-          className="tax-row-delete"
-          title="Удалить из налогов"
-          aria-label="Удалить из налогов"
-          disabled={saving}
-          onClick={onDelete}
-        >
-          ×
-        </button>
-      </td>
-    </tr>
   );
 }

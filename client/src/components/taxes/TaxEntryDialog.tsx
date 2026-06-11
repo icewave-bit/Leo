@@ -112,7 +112,7 @@ export function TaxEntryDialog({
         disabled={saving}
         onClick={onClose}
       />
-      <div className="confirm replenish" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div className="confirm replenish replenish--tax" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <header className="replenish__head">
           <h2 id={titleId} className="replenish__title">
             Добавить запись
@@ -182,7 +182,7 @@ export function TaxEntryDialog({
 
         {error ? <p className="replenish__error" role="alert">{error}</p> : null}
 
-        <div className="replenish__actions">
+        <div className="confirm__actions replenish__actions">
           <button type="button" className="btn btn--ghost" disabled={saving} onClick={onClose}>
             Отмена
           </button>
