@@ -20,18 +20,14 @@ import { AnalyticsPage } from './pages/AnalyticsPage';
 function LandingRoute() {
   const loading = useAtomValue(authLoadingAtom);
   const tutor = useAtomValue(tutorAtom);
-  if (typeof window === 'undefined') return <LandingPage />;
-  if (loading) return null;
-  if (tutor) return <Navigate to="/schedule" replace />;
+  if (!loading && tutor) return <Navigate to="/schedule" replace />;
   return <LandingPage />;
 }
 
 function GuestOnly({ children }: { children: React.ReactNode }) {
   const loading = useAtomValue(authLoadingAtom);
   const tutor = useAtomValue(tutorAtom);
-  if (typeof window === 'undefined') return children;
-  if (loading) return null;
-  if (tutor) return <Navigate to="/schedule" replace />;
+  if (!loading && tutor) return <Navigate to="/schedule" replace />;
   return children;
 }
 
