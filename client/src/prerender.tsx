@@ -6,7 +6,7 @@ import { landingPageHeadElements, landingPageSeo } from './data/landingSeo';
 import './styles.css';
 
 export async function prerender(data: { url: string }) {
-  const { renderToString } = await import('react-dom/server');
+  const { renderToString } = await import('react-dom/server.edge');
 
   const html = renderToString(
     <StrictMode>
