@@ -1,4 +1,13 @@
-export type LogoBrandVariant = 'app' | 'marketing';
+export type LogoBrandVariant = 'app' | 'marketing' | 'landing-nav';
+
+const variantConfig: Record<
+  LogoBrandVariant,
+  { imgSize: number; showTagline: boolean; showWord: boolean; large: boolean }
+> = {
+  app: { imgSize: 56, showTagline: false, showWord: true, large: true },
+  marketing: { imgSize: 28, showTagline: true, showWord: true, large: false },
+  'landing-nav': { imgSize: 38, showTagline: false, showWord: true, large: false },
+};
 
 export function LogoBrand({
   className,
@@ -7,14 +16,14 @@ export function LogoBrand({
   className?: string;
   variant?: LogoBrandVariant;
 }) {
-  const large = variant === 'app';
-  const imgSize = large ? 56 : 28;
+  const { imgSize, showTagline, showWord, large } = variantConfig[variant];
 
   return (
     <span
       className={
         'logo-brand' +
         (large ? ' logo-brand--lg' : '') +
+        (variant.startsWith('landing-') ? ` logo-brand--${variant}` : '') +
         (className ? ` ${className}` : '')
       }
     >
@@ -29,9 +38,9 @@ export function LogoBrand({
           alt=""
           decoding="async"
         />
-        <span className="logo__word">LeO</span>
+        {showWord ? <span className="logo__word">LeO</span> : null}
       </span>
-      {variant === 'marketing' ? (
+      {showTagline ? (
         <span className="logo__tagline">Сделано репетитором для репетиторов</span>
       ) : null}
     </span>

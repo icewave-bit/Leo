@@ -5,7 +5,9 @@ import { api } from '../api/client';
 import { tutorAtom } from '../atoms/auth';
 import { Icon } from '../components/Icon';
 import { LogoBrand } from '../components/LogoBrand';
+import { loginPageSeo } from '../data/loginSeo';
 import { useAppStore } from '../hooks/useAppStore';
+import { usePageMeta } from '../hooks/usePageMeta';
 import { loadSchedule } from '../state/loadSchedule';
 
 const features = [
@@ -42,6 +44,7 @@ const features = [
 ];
 
 export function LoginPage() {
+  usePageMeta(loginPageSeo);
   const navigate = useNavigate();
   const setTutor = useSetAtom(tutorAtom);
   const store = useAppStore();

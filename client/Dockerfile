@@ -13,6 +13,8 @@ COPY tsconfig.json ./
 COPY public ./public
 COPY src ./src
 
+ARG VITE_PUBLIC_ORIGIN
+ENV VITE_PUBLIC_ORIGIN=${VITE_PUBLIC_ORIGIN}
 ENV NODE_ENV=production
 RUN pnpm run build
 

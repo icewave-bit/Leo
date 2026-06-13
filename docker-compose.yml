@@ -60,10 +60,13 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile
+      args:
+        VITE_PUBLIC_ORIGIN: ${VITE_PUBLIC_ORIGIN:-https://leo.super.net.by}
     expose:
       - "80"
     environment:
       VITE_API_URL: ${VITE_API_URL:-}
+      VITE_PUBLIC_ORIGIN: ${VITE_PUBLIC_ORIGIN:-}
       SERVER_FALLBACK_PAGE: /public/index.html
       SERVER_ERROR_PAGE_404: /public/index.html
     depends_on:

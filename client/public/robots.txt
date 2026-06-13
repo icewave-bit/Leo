@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Allow: /login
+Disallow: /schedule
+Disallow: /students
+Disallow: /payments
+Disallow: /taxes
+Disallow: /analytics
+Disallow: /settings
+Disallow: /archive
+Disallow: /register

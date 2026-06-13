@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
 import { useAtomValue, useSetAtom } from 'jotai';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, StaticRouter } from 'react-router-dom';
 import { AuthBootstrap } from './components/AuthBootstrap';
 import { AuthGate } from './components/AuthGate';
 import { AppShell } from './components/AppShell';
 import { resolvedThemeAtom, systemDarkAtom } from './atoms/theme';
 import { authLoadingAtom, tutorAtom } from './atoms/auth';
+import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { SchedulePage } from './pages/SchedulePage';
@@ -16,9 +17,19 @@ import { PaymentsPage } from './pages/PaymentsPage';
 import { TaxesPage } from './pages/TaxesPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 
+function LandingRoute() {
+  const loading = useAtomValue(authLoadingAtom);
+  const tutor = useAtomValue(tutorAtom);
+  if (typeof window === 'undefined') return <LandingPage />;
+  if (loading) return null;
+  if (tutor) return <Navigate to="/schedule" replace />;
+  return <LandingPage />;
+}
+
 function GuestOnly({ children }: { children: React.ReactNode }) {
   const loading = useAtomValue(authLoadingAtom);
   const tutor = useAtomValue(tutorAtom);
+  if (typeof window === 'undefined') return children;
   if (loading) return null;
   if (tutor) return <Navigate to="/schedule" replace />;
   return children;
@@ -49,12 +60,17 @@ function ThemeSync() {
   return null;
 }
 
-export function App() {
-  return (
-    <BrowserRouter>
+type AppProps = {
+  url?: string;
+};
+
+export function App({ url }: AppProps = {}) {
+  const routes = (
+    <>
       <AuthBootstrap />
       <ThemeSync />
       <Routes>
+        <Route path="/" element={<LandingRoute />} />
         <Route
           path="/login"
           element={
@@ -73,7 +89,6 @@ export function App() {
         />
         <Route element={<AuthGate />}>
           <Route element={<AppShell />}>
-            <Route index element={<Navigate to="/schedule" replace />} />
             <Route path="schedule" element={<SchedulePage />} />
             <Route path="students" element={<StudentsPage />} />
             <Route path="students/:studentId" element={<StudentsPage />} />
@@ -86,6 +101,12 @@ export function App() {
         </Route>
         <Route path="*" element={<Navigate to="/schedule" replace />} />
       </Routes>
-    </BrowserRouter>
+    </>
   );
+
+  if (typeof window === 'undefined') {
+    return <StaticRouter location={url ?? '/'}>{routes}</StaticRouter>;
+  }
+
+  return <BrowserRouter>{routes}</BrowserRouter>;
 }
