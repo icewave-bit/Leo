@@ -2,7 +2,7 @@ import { Icon } from '../Icon';
 import type { LineMdIconName } from '../../icons/lineMd';
 
 export const SETTINGS_CARD_ICONS = {
-  theme: 'paint-drop',
+  theme: 'light-dark',
   archive: 'folder',
   replenish: 'clipboard',
   week: 'calendar',
