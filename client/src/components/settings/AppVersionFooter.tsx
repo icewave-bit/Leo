@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { APP_VERSION, BUILD_DATE_ISO, formatDeployDate } from '../../constants/appVersion';
+import { APP_VERSION, RELEASE_DATE_ISO, formatDeployDate } from '../../constants/appVersion';
 import { OrnamentalDivider } from '../OrnamentalDivider';
 import { ChangelogDialog } from './ChangelogDialog';
 
@@ -14,11 +14,11 @@ export function AppVersionFooter() {
           type="button"
           className="settings-version__btn"
           onClick={() => setOpen(true)}
-          aria-label={`Версия ${APP_VERSION}, обновлено ${formatDeployDate(BUILD_DATE_ISO)}. Открыть историю изменений`}
+          aria-label={`Версия ${APP_VERSION}, обновлено ${formatDeployDate(RELEASE_DATE_ISO)}. Открыть историю изменений`}
         >
           <span className="settings-version__name">LeO</span>
           <span className="settings-version__meta">
-            v{APP_VERSION} · {formatDeployDate(BUILD_DATE_ISO)}
+            v{APP_VERSION} · {formatDeployDate(RELEASE_DATE_ISO)}
           </span>
         </button>
       </footer>

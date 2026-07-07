@@ -129,6 +129,20 @@ describe('auth', () => {
     await agent.patch('/api/auth/me').send({ hiddenWeekdays: [0, 1, 2, 3, 4, 5, 6] }).expect(400);
   });
 
+  it('patch me updates default block hours', async () => {
+    const { agent } = await registerTutor(app);
+    const me = await agent.get('/api/auth/me').expect(200);
+    expect(me.body.tutor.defaultBlockStartMinutes).toBe(22 * 60);
+    expect(me.body.tutor.defaultBlockEndMinutes).toBe(8 * 60);
+
+    const patched = await agent
+      .patch('/api/auth/me')
+      .send({ defaultBlockStartMinutes: 21 * 60, defaultBlockEndMinutes: 9 * 60 })
+      .expect(200);
+    expect(patched.body.tutor.defaultBlockStartMinutes).toBe(21 * 60);
+    expect(patched.body.tutor.defaultBlockEndMinutes).toBe(9 * 60);
+  });
+
   it('patch me updates weekStartsOn', async () => {
     const { agent } = await registerTutor(app);
     const me = await agent.get('/api/auth/me').expect(200);

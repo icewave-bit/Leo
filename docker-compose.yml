@@ -8,6 +8,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    ports:
+      - "5433:5432"
     networks:
       - internal
     healthcheck:

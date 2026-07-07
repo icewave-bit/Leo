@@ -6,17 +6,27 @@ import {
   activeDayAtom,
   lessonDraftAtom,
   lessonsAtom,
+  personalEventDraftAtom,
+  personalEventsAtom,
   scheduleVariantAtom,
   selectedLessonIdAtom,
+  selectedPersonalEventIdAtom,
   weekStartAtom,
+  scheduleSlotOverridesAtom,
 } from '../atoms/schedule';
 import { AddLessonDrawer } from '../components/AddLessonDrawer';
+import { AddPersonalEventDrawer } from '../components/AddPersonalEventDrawer';
 import { LessonDrawer } from '../components/LessonDrawer';
+import { PersonalEventDrawer } from '../components/PersonalEventDrawer';
+import { SlotActionSheet } from '../components/schedule/SlotActionSheet';
 import { AgendaList } from '../components/schedule/AgendaList';
 import { FocusTimeline } from '../components/schedule/FocusTimeline';
 import { WeekGrid } from '../components/schedule/WeekGrid';
 import { useLessonActions } from '../hooks/useLessonActions';
+import { usePersonalEventActions } from '../hooks/usePersonalEventActions';
 import { useRecurringScheduleActions } from '../hooks/useRecurringScheduleActions';
+import { useRecurringPersonalActions } from '../hooks/useRecurringPersonalActions';
+import { useScheduleSlotActions } from '../hooks/useScheduleSlotActions';
 import { fmtWeekLabel } from '../utils/format';
 import { isLessonPast } from '../utils/lessonBalance';
 import {
@@ -24,8 +34,17 @@ import {
   shiftWeek,
   todayDayIndex,
   weekRangeUtc,
+  weekDayNames,
   type ViewLesson,
+  type SlotSheetState,
+  slotAnchorFromElement,
 } from '../utils/schedule';
+import {
+  defaultBlockWindowFromTutor,
+  hasEventInHour,
+  isLessonSlotBlocked,
+} from '../utils/scheduleBlocks';
+import { fmtTime } from '../utils/format';
 import { loadSchedule } from '../state/loadSchedule';
 import { useAppStore } from '../hooks/useAppStore';
 import type { ShellOutletContext } from '../components/AppShell';
@@ -231,25 +250,60 @@ export function SchedulePage() {
   const location = useLocation();
   const tutor = useAtomValue(tutorAtom);
   const lessons = useAtomValue(lessonsAtom);
+  const personalEvents = useAtomValue(personalEventsAtom);
+  const slotOverrides = useAtomValue(scheduleSlotOverridesAtom);
   const [variant, setVariant] = useAtom(scheduleVariantAtom);
   const weekStart = useAtomValue(weekStartAtom);
   const [selectedId, setSelectedId] = useAtom(selectedLessonIdAtom);
+  const [selectedPersonalId, setSelectedPersonalId] = useAtom(selectedPersonalEventIdAtom);
   const [draft, setDraft] = useAtom(lessonDraftAtom);
+  const [personalDraft, setPersonalDraft] = useAtom(personalEventDraftAtom);
+  const [slotSheet, setSlotSheet] = useState<SlotSheetState | null>(null);
   const [prefillStudentId, setPrefillStudentId] = useState<string | undefined>();
   const [activeDay, setActiveDay] = useAtom(activeDayAtom);
   const [weekNavBusy, setWeekNavBusy] = useState(false);
   const { setStatus, setPaid, setNotes, createLesson, deleteLesson, rescheduleLesson } =
     useLessonActions();
   const { createRecurringSchedule, deleteRecurringSchedule } = useRecurringScheduleActions();
+  const { createPersonalEvent, patchPersonalEvent, deletePersonalEvent } =
+    usePersonalEventActions();
+  const { createRecurringPersonalSchedule, deleteRecurringPersonalSchedule } =
+    useRecurringPersonalActions();
+  const { toggleSlotBlock } = useScheduleSlotActions();
+  const [slotToggling, setSlotToggling] = useState(false);
   const store = useAppStore();
 
   const tz = tutor?.timezone ?? 'UTC';
   const weekLabel = fmtWeekLabel(weekStart, tz);
   const selected = selectedId ? lessons.find((l) => l.id === selectedId) : null;
+  const selectedPersonal = selectedPersonalId
+    ? personalEvents.find((e) => e.id === selectedPersonalId)
+    : null;
   const effVariant = mobile && variant !== 'week' ? variant : variant;
 
   const weekStartsOn = tutor?.weekStartsOn ?? 'monday';
   const hiddenWeekdays = tutor?.hiddenWeekdays ?? [];
+  const { full: daysFull } = weekDayNames(weekStartsOn);
+
+  const blockWindow = defaultBlockWindowFromTutor(tutor);
+
+  const slotSheetBlocked =
+    slotSheet != null
+      ? isLessonSlotBlocked(
+          slotSheet.day,
+          slotSheet.start,
+          weekStartsOn,
+          slotOverrides,
+          lessons,
+          personalEvents,
+          blockWindow,
+        )
+      : false;
+
+  const slotSheetHasEvent =
+    slotSheet != null
+      ? hasEventInHour(slotSheet.day, slotSheet.start, lessons, personalEvents)
+      : false;
 
   useEffect(() => {
     const today = todayDayIndex(weekStart, tz);
@@ -300,12 +354,28 @@ export function SchedulePage() {
     navigate('/schedule', { replace: true, state: {} });
   }, [location.state, navigate, setDraft, setSelectedId, weekStart, tz]);
 
-  const openCreate = (day: number, start = 10) => {
+  const openCreateLesson = (day: number, start = 10) => {
+    setSelectedPersonalId(null);
     setSelectedId(null);
+    setPersonalDraft(null);
     setDraft({
       day: clampGridDayToVisible(day, weekStartsOn, hiddenWeekdays),
       start,
     });
+  };
+
+  const openCreatePersonal = (day: number, start = 10) => {
+    setSelectedPersonalId(null);
+    setSelectedId(null);
+    setDraft(null);
+    setPersonalDraft({
+      day: clampGridDayToVisible(day, weekStartsOn, hiddenWeekdays),
+      start,
+    });
+  };
+
+  const onSlotClick = (day: number, start: number, anchorEl: HTMLElement) => {
+    setSlotSheet({ day, start, anchor: slotAnchorFromElement(anchorEl) });
   };
 
   const onLessonCreated = async (input: Parameters<typeof createLesson>[0]): Promise<string> => {
@@ -323,6 +393,17 @@ export function SchedulePage() {
     setPrefillStudentId(undefined);
   };
 
+  const onRecurringPersonalCreated = async (
+    input: Parameters<typeof createRecurringPersonalSchedule>[0],
+  ): Promise<void> => {
+    await createRecurringPersonalSchedule(input);
+    setPersonalDraft(null);
+  };
+
+  const reschedulePersonalEvent = async (id: string, day: number, start: number) => {
+    await patchPersonalEvent(id, { day, start });
+  };
+
   return (
     <div className="page">
       <Topbar
@@ -335,7 +416,7 @@ export function SchedulePage() {
         onPrevWeek={onPrevWeek}
         onNextWeek={onNextWeek}
         onToday={onToday}
-        onAddLesson={() => openCreate(todayDayIndex(weekStart, tz) ?? 0, 10)}
+        onAddLesson={() => openCreateLesson(todayDayIndex(weekStart, tz) ?? 0, 10)}
         weekNavBusy={weekNavBusy}
       />
       <div className="app__content">
@@ -343,18 +424,67 @@ export function SchedulePage() {
           {effVariant === 'week' && (
             <WeekGrid
               compact={mobile}
-              onSelect={setSelectedId}
-              onSlotClick={openCreate}
+              onSelect={(id) => {
+                setSelectedPersonalId(null);
+                setSelectedId(id);
+              }}
+              onSelectPersonal={(id) => {
+                setSelectedId(null);
+                setSelectedPersonalId(id);
+              }}
+              onSlotClick={onSlotClick}
               onReschedule={rescheduleLesson}
+              onReschedulePersonal={reschedulePersonalEvent}
             />
           )}
           {effVariant === 'timeline' && (
-            <FocusTimeline onSelect={setSelectedId} onAddLesson={(day) => openCreate(day, 10)} />
+            <FocusTimeline
+              onSelect={(id) => {
+                setSelectedPersonalId(null);
+                setSelectedId(id);
+              }}
+              onAddLesson={(day) => openCreateLesson(day, 10)}
+            />
           )}
           {effVariant === 'agenda' && <AgendaList onSelect={setSelectedId} />}
         </main>
         {!mobile && <RightRail lessons={lessons} />}
       </div>
+      {slotSheet ? (
+        <SlotActionSheet
+          dayLabel={daysFull[slotSheet.day]!}
+          timeLabel={fmtTime(slotSheet.start)}
+          blocked={slotSheetBlocked}
+          lessonDisabled={slotSheetBlocked}
+          toggling={slotToggling}
+          anchored={!mobile}
+          anchor={slotSheet.anchor}
+          onLesson={() => {
+            if (slotSheetBlocked) return;
+            const { day, start } = slotSheet;
+            setSlotSheet(null);
+            openCreateLesson(day, start);
+          }}
+          onPersonal={() => {
+            const { day, start } = slotSheet;
+            setSlotSheet(null);
+            openCreatePersonal(day, start);
+          }}
+          onToggleBlock={() => {
+            if (!slotSheet) return;
+            setSlotToggling(true);
+            void toggleSlotBlock(
+              slotSheet.day,
+              slotSheet.start,
+              weekStartsOn,
+              slotSheetHasEvent,
+            )
+              .then(() => setSlotSheet(null))
+              .finally(() => setSlotToggling(false));
+          }}
+          onClose={() => setSlotSheet(null)}
+        />
+      ) : null}
       {draft && (
         <AddLessonDrawer
           draft={draft}
@@ -367,7 +497,20 @@ export function SchedulePage() {
           onCreateRecurring={onRecurringCreated}
         />
       )}
-      {selected && !draft && (
+      {personalDraft && (
+        <AddPersonalEventDrawer
+          draft={personalDraft}
+          onClose={() => setPersonalDraft(null)}
+          onCreate={async (input) => {
+            const id = await createPersonalEvent(input);
+            setPersonalDraft(null);
+            setSelectedPersonalId(null);
+            return id;
+          }}
+          onCreateRecurring={onRecurringPersonalCreated}
+        />
+      )}
+      {selected && !draft && !personalDraft && (
         <LessonDrawer
           lesson={selected}
           onClose={() => setSelectedId(null)}
@@ -377,6 +520,19 @@ export function SchedulePage() {
           onDelete={deleteLesson}
           onDeleteSeries={(scheduleId, fromLessonId) =>
             deleteRecurringSchedule(scheduleId, fromLessonId)
+          }
+        />
+      )}
+      {selectedPersonal && !draft && !personalDraft && (
+        <PersonalEventDrawer
+          event={selectedPersonal}
+          onClose={() => setSelectedPersonalId(null)}
+          onSave={async (patch) => {
+            await patchPersonalEvent(selectedPersonal.id, patch);
+          }}
+          onDelete={deletePersonalEvent}
+          onDeleteSeries={(scheduleId, fromEventId) =>
+            deleteRecurringPersonalSchedule(scheduleId, fromEventId)
           }
         />
       )}

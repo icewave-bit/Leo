@@ -3,6 +3,7 @@ import type {
   BalanceKind,
   Lesson,
   LessonStatus,
+  PersonalEvent,
   Student,
   WeekStartsOn,
 } from '../api/types';
@@ -255,9 +256,52 @@ export function slotToStartUtc(
   return new Date(utc).toISOString();
 }
 
+export interface ViewPersonalEvent {
+  id: string;
+  groupId: string;
+  title: string;
+  startUtc: string;
+  durationMin: number;
+  day: number;
+  start: number;
+  dur: number;
+  notes: string | null;
+  recurringPersonalScheduleId: string | null;
+}
+
+export interface PersonalEventDraft {
+  day: number;
+  start: number;
+}
+
 export interface LessonDraft {
   day: number;
   start: number;
+}
+
+export interface SlotAnchor {
+  top: number;
+  left: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+}
+
+export interface SlotSheetState extends LessonDraft {
+  anchor: SlotAnchor;
+}
+
+export function slotAnchorFromElement(el: HTMLElement): SlotAnchor {
+  const rect = el.getBoundingClientRect();
+  return {
+    top: rect.top,
+    left: rect.left,
+    right: rect.right,
+    bottom: rect.bottom,
+    width: rect.width,
+    height: rect.height,
+  };
 }
 
 const SNAP_HOURS = WG_SNAP_MINUTES / 60;
@@ -314,6 +358,28 @@ export function lessonToView(
     recurringScheduleId: lesson.recurringScheduleId,
     type: lesson.type,
     notes: lesson.notes,
+  };
+}
+
+export function personalEventToView(
+  event: PersonalEvent,
+  weekStart: Date,
+  timezone: string,
+): ViewPersonalEvent {
+  const start = new Date(event.startUtc);
+  const day = Math.floor((start.getTime() - weekStart.getTime()) / 86_400_000);
+  const { hour, minute } = zonedHourMinute(event.startUtc, timezone);
+  return {
+    id: event.id,
+    groupId: event.groupId,
+    title: event.title,
+    startUtc: event.startUtc,
+    durationMin: event.durationMin,
+    day,
+    start: hour + minute / 60,
+    dur: event.durationMin / 60,
+    notes: event.notes,
+    recurringPersonalScheduleId: event.recurringPersonalScheduleId,
   };
 }
 

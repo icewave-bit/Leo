@@ -1,17 +1,23 @@
 import { atom } from 'jotai';
 import type { BalanceKind } from '../api/types';
-import type { RecurringSchedule } from '../api/types';
-import type { LessonDraft, ViewLesson, ViewStudent } from '../utils/schedule';
+import type { PersonalEventGroup, RecurringPersonalSchedule, RecurringSchedule } from '../api/types';
+import type { LessonDraft, PersonalEventDraft, ViewLesson, ViewPersonalEvent, ViewStudent } from '../utils/schedule';
 
 export const studentsAtom = atom<ViewStudent[]>([]);
 export const lessonsAtom = atom<ViewLesson[]>([]);
+export const personalEventsAtom = atom<ViewPersonalEvent[]>([]);
+export const personalEventGroupsAtom = atom<PersonalEventGroup[]>([]);
+export const scheduleSlotOverridesAtom = atom<import('../api/types').ScheduleSlotOverride[]>([]);
 export const recurringSchedulesAtom = atom<RecurringSchedule[]>([]);
+export const recurringPersonalSchedulesAtom = atom<RecurringPersonalSchedule[]>([]);
 /** Normalized to tutor week start (Mon or Sun) on each schedule load. */
 export const weekStartAtom = atom<Date>(new Date());
 export const scheduleLoadingAtom = atom(false);
 export const scheduleLoadErrorAtom = atom<string | null>(null);
 export const selectedLessonIdAtom = atom<string | null>(null);
 export const lessonDraftAtom = atom<LessonDraft | null>(null);
+export const personalEventDraftAtom = atom<PersonalEventDraft | null>(null);
+export const selectedPersonalEventIdAtom = atom<string | null>(null);
 export const scheduleVariantAtom = atom<'week' | 'timeline' | 'agenda'>('week');
 export const activeDayAtom = atom(0);
 export const selectedStudentIdAtom = atom<string | null>(null);

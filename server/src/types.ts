@@ -21,6 +21,10 @@ export interface Tutor {
   taxDisplayCurrency: TaxDisplayCurrency;
   /** Calendar weekdays to hide in schedule UI: Mon=0 … Sun=6. */
   hiddenWeekdays: number[];
+  /** Default blocked window start, minutes from midnight (hour-aligned). */
+  defaultBlockStartMinutes: number;
+  /** Default blocked window end, minutes from midnight (hour-aligned). */
+  defaultBlockEndMinutes: number;
   createdAt: string;
 }
 
@@ -83,6 +87,52 @@ export interface RecurringSchedule {
   active: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PersonalEventGroup {
+  id: UUID;
+  tutorId: UUID;
+  name: string;
+  color: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PersonalEvent {
+  id: UUID;
+  tutorId: UUID;
+  groupId: UUID;
+  title: string;
+  startUtc: string;
+  durationMin: number;
+  notes: string | null;
+  recurringPersonalScheduleId: UUID | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RecurringPersonalSchedule {
+  id: UUID;
+  tutorId: UUID;
+  groupId: UUID;
+  title: string;
+  weekdays: number[];
+  startMinutes: number;
+  durationMin: number;
+  notes: string | null;
+  intervalWeeks: number;
+  startDate: string;
+  endDate: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScheduleSlotOverride {
+  weekday: number;
+  startMinutes: number;
+  blocked: boolean;
 }
 
 export type ErrorCode =

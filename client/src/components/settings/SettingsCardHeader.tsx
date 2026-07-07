@@ -2,7 +2,7 @@ import { Icon } from '../Icon';
 import type { LineMdIconName } from '../../icons/lineMd';
 
 export const SETTINGS_CARD_ICONS = {
-  theme: 'light-dark',
+  theme: 'paint-drop',
   archive: 'folder',
   replenish: 'clipboard',
   week: 'calendar',
@@ -10,6 +10,8 @@ export const SETTINGS_CARD_ICONS = {
   academic: 'watch',
   taxes: 'document-report',
   development: 'lightbulb',
+  personalGroups: 'clipboard-list',
+  workingHours: 'watch',
 } as const satisfies Record<string, LineMdIconName>;
 
 export function SettingsCardHeader({

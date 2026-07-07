@@ -21,6 +21,7 @@ export const LINE_MD_ICONS = {
   list3: 'list-3',
   menu: 'menu',
   moon: 'moon',
+  paintDrop: 'paint-drop',
   play: 'play',
   sunny: 'sunny',
   textBox: 'text-box',

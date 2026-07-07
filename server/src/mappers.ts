@@ -4,6 +4,9 @@ import type {
   Lesson,
   LessonStatus,
   LessonType,
+  PersonalEvent,
+  PersonalEventGroup,
+  RecurringPersonalSchedule,
   RecurringSchedule,
   Student,
   TaxDisplayCurrency,
@@ -24,6 +27,8 @@ interface TutorRow {
   tax_rate_percent: string;
   tax_display_currency: TaxDisplayCurrency;
   hidden_weekdays: number[];
+  default_block_start_minutes: number;
+  default_block_end_minutes: number;
   created_at: Date;
 }
 
@@ -105,6 +110,8 @@ export function toTutor(row: TutorRow): Tutor {
     taxRatePercent: Number(row.tax_rate_percent),
     taxDisplayCurrency: row.tax_display_currency,
     hiddenWeekdays: row.hidden_weekdays ?? [],
+    defaultBlockStartMinutes: row.default_block_start_minutes,
+    defaultBlockEndMinutes: row.default_block_end_minutes,
     createdAt: toIsoUtc(row.created_at),
   };
 }
@@ -175,4 +182,100 @@ export function toRecurringSchedule(row: RecurringScheduleRow): RecurringSchedul
   };
 }
 
-export type { TutorRow, StudentRow, LessonRow, RecurringScheduleRow };
+interface PersonalEventGroupRow {
+  id: string;
+  tutor_id: string;
+  name: string;
+  color: string;
+  sort_order: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface PersonalEventRow {
+  id: string;
+  tutor_id: string;
+  group_id: string;
+  title: string;
+  start_utc: Date;
+  duration_min: number;
+  notes: string | null;
+  recurring_personal_schedule_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface RecurringPersonalScheduleRow {
+  id: string;
+  tutor_id: string;
+  group_id: string;
+  title: string;
+  weekdays: number[];
+  start_minutes: number;
+  duration_min: number;
+  notes: string | null;
+  interval_weeks: number;
+  start_date: string;
+  end_date: string | null;
+  active: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export function toPersonalEventGroup(row: PersonalEventGroupRow): PersonalEventGroup {
+  return {
+    id: row.id,
+    tutorId: row.tutor_id,
+    name: row.name,
+    color: row.color,
+    sortOrder: row.sort_order,
+    createdAt: toIsoUtc(row.created_at),
+    updatedAt: toIsoUtc(row.updated_at),
+  };
+}
+
+export function toPersonalEvent(row: PersonalEventRow): PersonalEvent {
+  return {
+    id: row.id,
+    tutorId: row.tutor_id,
+    groupId: row.group_id,
+    title: row.title,
+    startUtc: toIsoUtc(row.start_utc),
+    durationMin: row.duration_min,
+    notes: row.notes,
+    recurringPersonalScheduleId: row.recurring_personal_schedule_id,
+    createdAt: toIsoUtc(row.created_at),
+    updatedAt: toIsoUtc(row.updated_at),
+  };
+}
+
+export function toRecurringPersonalSchedule(
+  row: RecurringPersonalScheduleRow,
+): RecurringPersonalSchedule {
+  return {
+    id: row.id,
+    tutorId: row.tutor_id,
+    groupId: row.group_id,
+    title: row.title,
+    weekdays: row.weekdays,
+    startMinutes: row.start_minutes,
+    durationMin: row.duration_min,
+    notes: row.notes,
+    intervalWeeks: row.interval_weeks,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    active: row.active,
+    createdAt: toIsoUtc(row.created_at),
+    updatedAt: toIsoUtc(row.updated_at),
+  };
+}
+
+export type {
+  TutorRow,
+  StudentRow,
+  LessonRow,
+  RecurringScheduleRow,
+  PersonalEventGroupRow,
+  PersonalEventRow,
+  RecurringPersonalScheduleRow,
+};

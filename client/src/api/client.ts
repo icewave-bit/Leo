@@ -155,4 +155,94 @@ export const api = {
     const params = new URLSearchParams({ fromLessonId });
     return request<void>(`/api/recurring-schedules/${id}?${params}`, { method: 'DELETE' });
   },
+
+  personalEventGroups: () =>
+    request<import('./types').PersonalEventGroup[]>('/api/personal-event-groups'),
+  createPersonalEventGroup: (body: { name: string; color: string; sortOrder?: number }) =>
+    request<import('./types').PersonalEventGroup>('/api/personal-event-groups', {
+      method: 'POST',
+      json: body,
+    }),
+  patchPersonalEventGroup: (
+    id: string,
+    body: Partial<{ name: string; color: string; sortOrder: number }>,
+  ) =>
+    request<import('./types').PersonalEventGroup>(`/api/personal-event-groups/${id}`, {
+      method: 'PATCH',
+      json: body,
+    }),
+  deletePersonalEventGroup: (id: string, reassignTo?: string) => {
+    const params = new URLSearchParams();
+    if (reassignTo) params.set('reassignTo', reassignTo);
+    const qs = params.toString();
+    return request<void>(
+      `/api/personal-event-groups/${id}${qs ? `?${qs}` : ''}`,
+      { method: 'DELETE' },
+    );
+  },
+
+  personalEvents: (from: string, to: string) => {
+    const params = new URLSearchParams({ from, to });
+    return request<import('./types').PersonalEvent[]>(`/api/personal-events?${params}`);
+  },
+  createPersonalEvent: (body: {
+    groupId: string;
+    title: string;
+    startUtc: string;
+    durationMin: number;
+    notes?: string | null;
+  }) =>
+    request<import('./types').PersonalEvent>('/api/personal-events', { method: 'POST', json: body }),
+  patchPersonalEvent: (
+    id: string,
+    body: Partial<{
+      groupId: string;
+      title: string;
+      startUtc: string;
+      durationMin: number;
+      notes: string | null;
+    }>,
+  ) =>
+    request<import('./types').PersonalEvent>(`/api/personal-events/${id}`, {
+      method: 'PATCH',
+      json: body,
+    }),
+  deletePersonalEvent: (id: string) =>
+    request<void>(`/api/personal-events/${id}`, { method: 'DELETE' }),
+
+  recurringPersonalSchedules: () =>
+    request<import('./types').RecurringPersonalSchedule[]>('/api/recurring-personal-schedules'),
+  createRecurringPersonalSchedule: (body: {
+    groupId: string;
+    title: string;
+    weekdays: number[];
+    startMinutes: number;
+    durationMin: number;
+    notes?: string | null;
+    intervalWeeks?: number;
+    startDate: string;
+    endDate?: string | null;
+  }) =>
+    request<import('./types').RecurringPersonalSchedule>('/api/recurring-personal-schedules', {
+      method: 'POST',
+      json: body,
+    }),
+  deleteRecurringPersonalSchedule: (id: string, fromEventId: string) => {
+    const params = new URLSearchParams({ fromEventId });
+    return request<void>(`/api/recurring-personal-schedules/${id}?${params}`, {
+      method: 'DELETE',
+    });
+  },
+
+  scheduleSlotOverrides: () =>
+    request<import('./types').ScheduleSlotOverride[]>('/api/schedule-slot-overrides'),
+  toggleScheduleSlot: (body: {
+    weekday: number;
+    startMinutes: number;
+    hasEvent: boolean;
+  }) =>
+    request<{ overrides: import('./types').ScheduleSlotOverride[]; blocked: boolean }>(
+      '/api/schedule-slot-overrides/toggle',
+      { method: 'PUT', json: body },
+    ),
 };

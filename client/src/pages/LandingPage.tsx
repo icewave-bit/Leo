@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   landingBalanceBullets,
@@ -20,12 +21,36 @@ import '../styles/landing.css';
 export function LandingPage() {
   usePageMeta(landingPageSeo);
   useScrollReveal();
+  const [navOpen, setNavOpen] = useState(false);
+
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setNavOpen(false);
+    };
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [navOpen]);
+
+  useEffect(() => () => {
+    document.body.style.overflow = '';
+  }, []);
+
+  const closeNav = () => setNavOpen(false);
 
   return (
     <div className="landing">
-      <header className="nav">
+      <header className={`nav${navOpen ? ' nav--open' : ''}`}>
         <div className="wrap nav__in">
-          <nav className="nav__links">
+          <a className="nav__brand" href="#top" onClick={closeNav}>
+            <LogoBrand variant="landing-nav" />
+          </a>
+          <nav className="nav__links" aria-label="Навигация">
             <a href="#features">Возможности</a>
             <a href="#balance">Баланс</a>
             <a href="#how">Как это работает</a>
@@ -38,11 +63,40 @@ export function LandingPage() {
             <Link className="btn btn--primary btn--sm" to="/register">
               Начать бесплатно
             </Link>
-            <button type="button" className="nav__burger" aria-label="Меню">
-              <Icon icon="menu" size={20} />
+            <button
+              type="button"
+              className="nav__burger"
+              aria-label={navOpen ? 'Закрыть меню' : 'Меню'}
+              aria-expanded={navOpen}
+              onClick={() => setNavOpen((open) => !open)}
+            >
+              {navOpen ? (
+                <span className="nav__close" aria-hidden>
+                  ×
+                </span>
+              ) : (
+                <Icon icon="menu" size={20} />
+              )}
             </button>
           </div>
         </div>
+        <nav className="nav__mobile wrap" aria-label="Мобильная навигация">
+          <a href="#features" onClick={closeNav}>
+            Возможности
+          </a>
+          <a href="#balance" onClick={closeNav}>
+            Баланс
+          </a>
+          <a href="#how" onClick={closeNav}>
+            Как это работает
+          </a>
+          <a href="#pricing" onClick={closeNav}>
+            Цены
+          </a>
+          <Link to="/login" onClick={closeNav}>
+            Войти
+          </Link>
+        </nav>
       </header>
 
       <section className="hero" id="top">

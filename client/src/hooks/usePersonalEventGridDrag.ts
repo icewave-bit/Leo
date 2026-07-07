@@ -9,21 +9,12 @@ import {
 import {
   formatLessonSlot,
   sameLessonSlot,
-  type ViewLesson,
-  type ViewStudent,
+  type ViewPersonalEvent,
 } from '../utils/schedule';
-import { isLessonPast } from '../utils/lessonBalance';
 import { autoScrollGrid, pointerToGridSlot } from '../utils/weekGridDrag';
 
-export interface PendingReschedule {
-  lesson: ViewLesson;
-  studentName: string;
-  from: { day: number; start: number };
-  to: { day: number; start: number };
-}
-
 interface DragSession {
-  lesson: ViewLesson;
+  event: ViewPersonalEvent;
   pointerId: number;
   origin: { day: number; start: number };
   startClientX: number;
@@ -32,20 +23,13 @@ interface DragSession {
   moved: boolean;
 }
 
-export function useWeekGridDrag(opts: {
+export function usePersonalEventGridDrag(opts: {
   scrollRef: RefObject<HTMLDivElement | null>;
   bodyRef: RefObject<HTMLDivElement | null>;
   dates: number[];
-  studentName: (studentId: string) => string | undefined;
-  onSelect: (id: string) => void;
-  onReschedule: (
-    id: string,
-    day: number,
-    start: number,
-    opts?: { restoreBalance?: boolean },
-  ) => Promise<void>;
-  getStudent: (id: string) => ViewStudent | undefined;
   daysFull: readonly string[];
+  onSelect: (id: string) => void;
+  onReschedule: (id: string, day: number, start: number) => Promise<void>;
   pxPerHour?: number;
   gutter?: number;
   visibleDays?: readonly number[];
@@ -54,11 +38,9 @@ export function useWeekGridDrag(opts: {
     scrollRef,
     bodyRef,
     dates,
-    studentName,
+    daysFull,
     onSelect,
     onReschedule,
-    getStudent,
-    daysFull,
     pxPerHour = WG_PX_PER_HOUR,
     gutter = WG_GUTTER,
     visibleDays = [0, 1, 2, 3, 4, 5, 6],
@@ -69,49 +51,49 @@ export function useWeekGridDrag(opts: {
   const suppressClickRef = useRef(false);
 
   const [active, setActive] = useState(false);
-  const [dragLesson, setDragLesson] = useState<ViewLesson | null>(null);
+  const [dragEvent, setDragEvent] = useState<ViewPersonalEvent | null>(null);
   const [preview, setPreview] = useState<{ day: number; start: number } | null>(null);
-  const [pending, setPending] = useState<PendingReschedule | null>(null);
+  const [pending, setPending] = useState<{
+    event: ViewPersonalEvent;
+    from: { day: number; start: number };
+    to: { day: number; start: number };
+  } | null>(null);
   const [rescheduling, setRescheduling] = useState(false);
-  const [restoreBalance, setRestoreBalance] = useState(true);
 
   const endDrag = useCallback(() => {
     sessionRef.current = null;
     setActive(false);
-    setDragLesson(null);
+    setDragEvent(null);
     setPreview(null);
   }, []);
 
-  const onPointerDown = useCallback(
-    (e: React.PointerEvent, lesson: ViewLesson) => {
-      if (e.button !== 0) return;
-      const target = e.currentTarget as HTMLElement;
-      target.setPointerCapture(e.pointerId);
+  const onPointerDown = useCallback((e: React.PointerEvent, event: ViewPersonalEvent) => {
+    if (e.button !== 0) return;
+    const target = e.currentTarget as HTMLElement;
+    target.setPointerCapture(e.pointerId);
 
-      const scrollEl = scrollRef.current;
-      let grabOffsetPx = 0;
-      if (scrollEl) {
-        const scrollRect = scrollEl.getBoundingClientRect();
-        grabOffsetPx =
-          scrollEl.scrollTop +
-          (e.clientY - scrollRect.top) -
-          WG_HOUR_LABEL_INSET -
-          lesson.start * pxPerHour;
-      }
+    const scrollEl = scrollRef.current;
+    let grabOffsetPx = 0;
+    if (scrollEl) {
+      const scrollRect = scrollEl.getBoundingClientRect();
+      grabOffsetPx =
+        scrollEl.scrollTop +
+        (e.clientY - scrollRect.top) -
+        WG_HOUR_LABEL_INSET -
+        event.start * pxPerHour;
+    }
 
-      sessionRef.current = {
-        lesson,
-        pointerId: e.pointerId,
-        origin: { day: lesson.day, start: lesson.start },
-        startClientX: e.clientX,
-        startClientY: e.clientY,
-        grabOffsetPx,
-        moved: false,
-      };
-      lastClientYRef.current = e.clientY;
-    },
-    [pxPerHour, scrollRef],
-  );
+    sessionRef.current = {
+      event,
+      pointerId: e.pointerId,
+      origin: { day: event.day, start: event.start },
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      grabOffsetPx,
+      moved: false,
+    };
+    lastClientYRef.current = e.clientY;
+  }, [pxPerHour, scrollRef]);
 
   useEffect(() => {
     if (!active) return;
@@ -143,22 +125,23 @@ export function useWeekGridDrag(opts: {
         if (Math.hypot(dx, dy) < WG_DRAG_THRESHOLD_PX) return;
         session.moved = true;
         setActive(true);
-        setDragLesson(session.lesson);
+        setDragEvent(session.event);
       }
 
       e.preventDefault();
-      const slot = pointerToGridSlot(
-        scrollEl,
-        bodyEl,
-        e.clientX,
-        e.clientY,
-        session.lesson.dur,
-        pxPerHour,
-        gutter,
-        visibleDays,
-        session.grabOffsetPx,
+      setPreview(
+        pointerToGridSlot(
+          scrollEl,
+          bodyEl,
+          e.clientX,
+          e.clientY,
+          session.event.dur,
+          pxPerHour,
+          gutter,
+          visibleDays,
+          session.grabOffsetPx,
+        ),
       );
-      setPreview(slot);
     };
 
     const onUp = (e: PointerEvent) => {
@@ -174,7 +157,7 @@ export function useWeekGridDrag(opts: {
           bodyEl,
           e.clientX,
           e.clientY,
-          session.lesson.dur,
+          session.event.dur,
           pxPerHour,
           gutter,
           visibleDays,
@@ -182,17 +165,10 @@ export function useWeekGridDrag(opts: {
         );
         suppressClickRef.current = true;
         if (!sameLessonSlot(session.origin, slot)) {
-          const lesson = session.lesson;
-          setRestoreBalance(lesson.balanceCharged);
-          setPending({
-            lesson,
-            studentName: studentName(lesson.studentId) ?? 'Ученик',
-            from: session.origin,
-            to: slot,
-          });
+          setPending({ event: session.event, from: session.origin, to: slot });
         }
       } else if (!session.moved) {
-        onSelect(session.lesson.id);
+        onSelect(session.event.id);
       }
 
       endDrag();
@@ -213,9 +189,9 @@ export function useWeekGridDrag(opts: {
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [bodyRef, endDrag, gutter, onSelect, pxPerHour, scrollRef, studentName, visibleDays]);
+  }, [bodyRef, endDrag, gutter, onSelect, pxPerHour, scrollRef, visibleDays]);
 
-  const onLessonClick = useCallback(
+  const onEventClick = useCallback(
     (id: string) => {
       if (suppressClickRef.current) {
         suppressClickRef.current = false;
@@ -226,48 +202,34 @@ export function useWeekGridDrag(opts: {
     [onSelect],
   );
 
-  const needsBalanceConfirm = pending
-    ? isLessonPast(pending.lesson.startUtc, pending.lesson.durationMin)
-    : false;
-  const pendingStudent = pending ? getStudent(pending.lesson.studentId) : undefined;
-
   const confirmReschedule = useCallback(async () => {
     if (!pending) return;
     setRescheduling(true);
     try {
-      await onReschedule(
-        pending.lesson.id,
-        pending.to.day,
-        pending.to.start,
-        needsBalanceConfirm ? { restoreBalance } : undefined,
-      );
+      await onReschedule(pending.event.id, pending.to.day, pending.to.start);
       setPending(null);
     } finally {
       setRescheduling(false);
     }
-  }, [needsBalanceConfirm, onReschedule, pending, restoreBalance]);
+  }, [onReschedule, pending]);
 
   const cancelReschedule = useCallback(() => {
     if (!rescheduling) setPending(null);
   }, [rescheduling]);
 
   const rescheduleDescription = pending
-    ? `${pending.studentName}: ${formatLessonSlot(pending.from.day, pending.from.start, pending.lesson.dur, dates, daysFull)} → ${formatLessonSlot(pending.to.day, pending.to.start, pending.lesson.dur, dates, daysFull)}`
+    ? `${pending.event.title}: ${formatLessonSlot(pending.from.day, pending.from.start, pending.event.dur, dates, daysFull)} → ${formatLessonSlot(pending.to.day, pending.to.start, pending.event.dur, dates, daysFull)}`
     : '';
 
   return {
     active,
-    dragLesson,
+    dragEvent,
     preview,
     pending,
-    pendingStudent,
-    needsBalanceConfirm,
-    restoreBalance,
-    setRestoreBalance,
     rescheduling,
     rescheduleDescription,
     onPointerDown,
-    onLessonClick,
+    onEventClick,
     confirmReschedule,
     cancelReschedule,
   };

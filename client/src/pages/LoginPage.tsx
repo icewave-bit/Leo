@@ -84,7 +84,7 @@ export function LoginPage() {
 
   return (
     <div className="login">
-      <aside className="login__aside">
+      <aside className="login__aside" id="login-more">
         <div className="login__glow login__glow--a" aria-hidden="true" />
         <div className="login__glow login__glow--b" aria-hidden="true" />
         <div className="login__brand">
@@ -217,6 +217,19 @@ export function LoginPage() {
             Нет аккаунта? <Link to="/register">Создать</Link>
           </p>
         </div>
+
+        <a className="login__scroll-hint" href="#login-more" aria-label="Подробнее о возможностях">
+          <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+            <path
+              d="M6 9l6 6 6-6"
+              stroke="currentColor"
+              strokeWidth="2"
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </a>
 
         <div className="login__mobile-chips" aria-label="Ключевые возможности">
           <span className="mobile-chip">Расписание</span>

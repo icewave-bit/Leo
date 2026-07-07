@@ -1,31 +1,36 @@
 import type { CSSProperties } from 'react';
-import type { ViewLesson } from './schedule';
 
 const TIME_EPS = 0.001;
+
+export interface TimedGridItem {
+  id: string;
+  start: number;
+  dur: number;
+}
 
 export interface WeekGridLessonLayout {
   column: number;
   columnCount: number;
 }
 
-export function lessonTimeRangesOverlap(
-  a: Pick<ViewLesson, 'start' | 'dur'>,
-  b: Pick<ViewLesson, 'start' | 'dur'>,
+export function timedRangesOverlap(
+  a: Pick<TimedGridItem, 'start' | 'dur'>,
+  b: Pick<TimedGridItem, 'start' | 'dur'>,
 ): boolean {
   return a.start < b.start + b.dur - TIME_EPS && b.start < a.start + a.dur - TIME_EPS;
 }
 
-function overlapCluster(lesson: ViewLesson, lessons: ViewLesson[]): ViewLesson[] {
-  const cluster: ViewLesson[] = [];
+function overlapCluster<T extends TimedGridItem>(item: T, items: T[]): T[] {
+  const cluster: T[] = [];
   const seen = new Set<string>();
-  const stack = [lesson];
+  const stack = [item];
   while (stack.length) {
     const cur = stack.pop()!;
     if (seen.has(cur.id)) continue;
     seen.add(cur.id);
     cluster.push(cur);
-    for (const other of lessons) {
-      if (!seen.has(other.id) && lessonTimeRangesOverlap(cur, other)) {
+    for (const other of items) {
+      if (!seen.has(other.id) && timedRangesOverlap(cur, other)) {
         stack.push(other);
       }
     }
@@ -33,34 +38,41 @@ function overlapCluster(lesson: ViewLesson, lessons: ViewLesson[]): ViewLesson[]
   return cluster;
 }
 
-/** Side-by-side columns for overlapping lessons in one day column. */
-export function layoutDayLessons(lessons: ViewLesson[]): Map<string, WeekGridLessonLayout> {
+export function layoutDayTimedItems<T extends TimedGridItem>(
+  items: T[],
+): Map<string, WeekGridLessonLayout> {
   const result = new Map<string, WeekGridLessonLayout>();
-  if (lessons.length === 0) return result;
+  if (items.length === 0) return result;
 
-  const sorted = [...lessons].sort((a, b) => a.start - b.start || b.dur - a.dur);
+  const sorted = [...items].sort((a, b) => a.start - b.start || b.dur - a.dur);
   const colEnds: number[] = [];
   const columnById = new Map<string, number>();
 
-  for (const lesson of sorted) {
+  for (const item of sorted) {
     let col = 0;
-    while (col < colEnds.length && colEnds[col] > lesson.start + TIME_EPS) col++;
+    while (col < colEnds.length && colEnds[col] > item.start + TIME_EPS) col++;
     if (col === colEnds.length) colEnds.push(0);
-    colEnds[col] = lesson.start + lesson.dur;
-    columnById.set(lesson.id, col);
+    colEnds[col] = item.start + item.dur;
+    columnById.set(item.id, col);
   }
 
-  for (const lesson of lessons) {
-    const cluster = overlapCluster(lesson, lessons);
-    const columnCount =
-      Math.max(...cluster.map((l) => columnById.get(l.id) ?? 0)) + 1;
-    result.set(lesson.id, {
-      column: columnById.get(lesson.id) ?? 0,
+  for (const item of items) {
+    const cluster = overlapCluster(item, items);
+    const columnCount = Math.max(...cluster.map((l) => columnById.get(l.id) ?? 0)) + 1;
+    result.set(item.id, {
+      column: columnById.get(item.id) ?? 0,
       columnCount,
     });
   }
 
   return result;
+}
+
+/** @deprecated Use layoutDayTimedItems */
+export function layoutDayLessons(
+  lessons: TimedGridItem[],
+): Map<string, WeekGridLessonLayout> {
+  return layoutDayTimedItems(lessons);
 }
 
 const WG_COL_INSET_PX = 3;

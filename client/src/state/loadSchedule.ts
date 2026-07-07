@@ -3,29 +3,39 @@ import { api } from '../api/client';
 import { tutorAtom } from '../atoms/auth';
 import {
   lessonsAtom,
+  personalEventGroupsAtom,
+  personalEventsAtom,
+  recurringPersonalSchedulesAtom,
   recurringSchedulesAtom,
   scheduleLoadErrorAtom,
   scheduleLoadingAtom,
   studentLessonsBumpAtom,
   studentsAtom,
   weekStartAtom,
+  scheduleSlotOverridesAtom,
 } from '../atoms/schedule';
-import { lessonToView, studentToView, weekRangeUtc } from '../utils/schedule';
+import {
+  lessonToView,
+  personalEventToView,
+  studentToView,
+  weekRangeUtc,
+} from '../utils/schedule';
 
 export type LoadScheduleOptions = {
   /** Week to load; defaults to current `weekStartAtom`. */
   anchor?: Date;
-  /** Week navigation — only lessons; skip students and recurring schedules. */
+  /** Week navigation — only lessons and personal events; skip students and recurring. */
   lessonsOnly?: boolean;
 };
 
 let loadScheduleSeq = 0;
 
-function applyWeekLessons(
+function applyWeekEvents(
   get: Getter,
   set: Setter,
   weekStart: Date,
   lessons: Awaited<ReturnType<typeof api.lessons>>,
+  personalEvents: Awaited<ReturnType<typeof api.personalEvents>>,
   timezone: string,
 ): void {
   const prevWeekStart = get(weekStartAtom);
@@ -35,6 +45,10 @@ function applyWeekLessons(
   set(
     lessonsAtom,
     lessons.map((l) => lessonToView(l, weekStart, timezone)),
+  );
+  set(
+    personalEventsAtom,
+    personalEvents.map((e) => personalEventToView(e, weekStart, timezone)),
   );
   set(studentLessonsBumpAtom, (n) => n + 1);
 }
@@ -54,27 +68,34 @@ export async function loadSchedule(
     const weekStartsOn = tutor.weekStartsOn ?? 'monday';
     const anchor = opts?.anchor ?? get(weekStartAtom);
     const { from, to, weekStart } = weekRangeUtc(anchor, weekStartsOn);
-    // Lessons first: GET /lessons runs auto-complete + balance charge before we read students.
-    const lessons = await api.lessons(from, to);
-    if (seq !== loadScheduleSeq) return;
 
-    if (opts?.lessonsOnly) {
-      applyWeekLessons(get, set, weekStart, lessons, tutor.timezone);
-      return;
-    }
-
-    const [students, recurringSchedules] = await Promise.all([
-      api.students(),
-      api.recurringSchedules(),
+    const [lessons, personalEvents] = await Promise.all([
+      api.lessons(from, to),
+      api.personalEvents(from, to),
     ]);
     if (seq !== loadScheduleSeq) return;
 
-    set(
-      studentsAtom,
-      students.map(studentToView),
-    );
+    if (opts?.lessonsOnly) {
+      applyWeekEvents(get, set, weekStart, lessons, personalEvents, tutor.timezone);
+      return;
+    }
+
+    const [students, recurringSchedules, recurringPersonalSchedules, groups, slotOverrides] =
+      await Promise.all([
+        api.students(),
+        api.recurringSchedules(),
+        api.recurringPersonalSchedules(),
+        api.personalEventGroups(),
+        api.scheduleSlotOverrides(),
+      ]);
+    if (seq !== loadScheduleSeq) return;
+
+    set(studentsAtom, students.map(studentToView));
     set(recurringSchedulesAtom, recurringSchedules);
-    applyWeekLessons(get, set, weekStart, lessons, tutor.timezone);
+    set(recurringPersonalSchedulesAtom, recurringPersonalSchedules);
+    set(personalEventGroupsAtom, groups);
+    set(scheduleSlotOverridesAtom, slotOverrides);
+    applyWeekEvents(get, set, weekStart, lessons, personalEvents, tutor.timezone);
   } catch (err) {
     if (seq !== loadScheduleSeq) return;
     const message = err instanceof Error ? err.message : 'Не удалось загрузить расписание';

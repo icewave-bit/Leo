@@ -19,6 +19,10 @@ export interface Tutor {
   taxDisplayCurrency: TaxDisplayCurrency;
   /** Calendar weekdays hidden in schedule: Mon=0 … Sun=6. */
   hiddenWeekdays: number[];
+  /** Default blocked window start, minutes from midnight (hour-aligned). */
+  defaultBlockStartMinutes: number;
+  /** Default blocked window end, minutes from midnight (hour-aligned). */
+  defaultBlockEndMinutes: number;
   createdAt: string;
 }
 
@@ -29,6 +33,8 @@ export type PatchTutorBody = {
   taxRatePercent?: number;
   taxDisplayCurrency?: TaxDisplayCurrency;
   hiddenWeekdays?: number[];
+  defaultBlockStartMinutes?: number;
+  defaultBlockEndMinutes?: number;
 };
 
 export interface Student {
@@ -155,6 +161,52 @@ export interface RecurrenceConfig {
   intervalWeeks: number;
   weekdays: number[];
   endDate: string | null;
+}
+
+export interface PersonalEventGroup {
+  id: string;
+  tutorId: string;
+  name: string;
+  color: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PersonalEvent {
+  id: string;
+  tutorId: string;
+  groupId: string;
+  title: string;
+  startUtc: string;
+  durationMin: number;
+  notes: string | null;
+  recurringPersonalScheduleId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RecurringPersonalSchedule {
+  id: string;
+  tutorId: string;
+  groupId: string;
+  title: string;
+  weekdays: number[];
+  startMinutes: number;
+  durationMin: number;
+  notes: string | null;
+  intervalWeeks: number;
+  startDate: string;
+  endDate: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScheduleSlotOverride {
+  weekday: number;
+  startMinutes: number;
+  blocked: boolean;
 }
 
 export interface TaxReplenishment {

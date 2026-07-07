@@ -31,13 +31,28 @@ const patchMeSchema = z
       .max(6)
       .refine((arr) => new Set(arr).size === arr.length, 'Duplicate weekdays')
       .optional(),
+    defaultBlockStartMinutes: z
+      .number()
+      .int()
+      .min(0)
+      .max(23 * 60)
+      .refine((n) => n % 60 === 0, 'Hour-aligned')
+      .optional(),
+    defaultBlockEndMinutes: z
+      .number()
+      .int()
+      .min(0)
+      .max(23 * 60)
+      .refine((n) => n % 60 === 0, 'Hour-aligned')
+      .optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field is required',
   });
 
 const TUTOR_COLUMNS = `id, email, name, initials, subject, timezone, academic_hour_min, week_starts_on,
-  default_replenish_balance_kind, tax_rate_percent, tax_display_currency, hidden_weekdays, created_at`;
+  default_replenish_balance_kind, tax_rate_percent, tax_display_currency, hidden_weekdays,
+  default_block_start_minutes, default_block_end_minutes, created_at`;
 
 export const authRouter = Router();
 
@@ -147,6 +162,14 @@ authRouter.patch('/me', requireAuth, async (req, res, next) => {
     if (body.hiddenWeekdays !== undefined) {
       fields.push(`hidden_weekdays = $${idx++}`);
       values.push(body.hiddenWeekdays);
+    }
+    if (body.defaultBlockStartMinutes !== undefined) {
+      fields.push(`default_block_start_minutes = $${idx++}`);
+      values.push(body.defaultBlockStartMinutes);
+    }
+    if (body.defaultBlockEndMinutes !== undefined) {
+      fields.push(`default_block_end_minutes = $${idx++}`);
+      values.push(body.defaultBlockEndMinutes);
     }
 
     values.push(req.tutorId);

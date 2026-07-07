@@ -1,10 +1,10 @@
 import { useAtom } from 'jotai';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { BalanceKind, TaxDisplayCurrency, WeekStartsOn } from '../api/types';
 import { api } from '../api/client';
 import { tutorAtom } from '../atoms/auth';
-import { weekStartAtom } from '../atoms/schedule';
+import { weekStartAtom, personalEventGroupsAtom, scheduleSlotOverridesAtom } from '../atoms/schedule';
 import { themeAtom } from '../atoms/theme';
 import { useAppStore } from '../hooks/useAppStore';
 import { loadSchedule } from '../state/loadSchedule';
@@ -16,23 +16,33 @@ import {
 } from '../components/settings/SettingsCardHeader';
 import { AppVersionFooter } from '../components/settings/AppVersionFooter';
 import { VisibleWeekdaysField } from '../components/settings/VisibleWeekdaysField';
+import { PersonalEventGroupsField } from '../components/settings/PersonalEventGroupsField';
+import { DefaultBlockHoursField } from '../components/settings/DefaultBlockHoursField';
 import { ACADEMIC_HOUR_PRESETS, academicHourHint } from '../utils/academicHour';
 import { TAX_DISPLAY_OPTIONS, TAX_RATE_PRESETS } from '../utils/taxSettings';
 
 export function SettingsPage() {
   const [tutor, setTutor] = useAtom(tutorAtom);
   const [theme, setTheme] = useAtom(themeAtom);
+  const [groups, setGroups] = useAtom(personalEventGroupsAtom);
+  const [slotOverrides] = useAtom(scheduleSlotOverridesAtom);
   const [custom, setCustom] = useState(false);
   const [customMin, setCustomMin] = useState(String(tutor?.academicHourMin ?? 60));
   const [saving, setSaving] = useState(false);
   const [weekSaving, setWeekSaving] = useState(false);
   const [replenishSaving, setReplenishSaving] = useState(false);
   const [taxSaving, setTaxSaving] = useState(false);
+  const [blockSaving, setBlockSaving] = useState(false);
   const [taxRateCustom, setTaxRateCustom] = useState(false);
   const [taxRateDraft, setTaxRateDraft] = useState(String(tutor?.taxRatePercent ?? 10));
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const store = useAppStore();
+
+  useEffect(() => {
+    if (!tutor || groups.length > 0) return;
+    void api.personalEventGroups().then(setGroups).catch(() => {});
+  }, [tutor, groups.length, setGroups]);
 
   if (!tutor) return null;
 
@@ -104,6 +114,33 @@ export function SettingsPage() {
     }
     if (taxRatePercent === tutor.taxRatePercent) return;
     await saveTaxSettings({ taxRatePercent });
+  };
+
+  const saveDefaultBlockHours = async (patch: {
+    startMinutes: number;
+    endMinutes: number;
+  }) => {
+    if (
+      patch.startMinutes === tutor.defaultBlockStartMinutes &&
+      patch.endMinutes === tutor.defaultBlockEndMinutes
+    ) {
+      return;
+    }
+    setBlockSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const { tutor: updated } = await api.patchMe({
+        defaultBlockStartMinutes: patch.startMinutes,
+        defaultBlockEndMinutes: patch.endMinutes,
+      });
+      setTutor(updated);
+      setSaved(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось сохранить');
+    } finally {
+      setBlockSaving(false);
+    }
   };
 
   const saveHiddenWeekdays = async (hiddenWeekdays: number[]) => {
@@ -252,6 +289,31 @@ export function SettingsPage() {
               hiddenWeekdays={tutor.hiddenWeekdays ?? []}
               disabled={weekSaving}
               onChange={(hidden) => void saveHiddenWeekdays(hidden)}
+            />
+          </section>
+
+          <section className="settings-card settings-card--compact">
+            <SettingsCardHeader
+              icon={SETTINGS_CARD_ICONS.personalGroups}
+              title="Группы личных событий"
+            />
+            <p className="settings-card__desc">
+              Название и цвет групп для личных событий в расписании.
+            </p>
+            <PersonalEventGroupsField groups={groups} onChange={setGroups} />
+          </section>
+
+          <section className="settings-card settings-card--compact">
+            <SettingsCardHeader
+              icon={SETTINGS_CARD_ICONS.workingHours}
+              title="Заблокированное время"
+            />
+            <DefaultBlockHoursField
+              startMinutes={tutor.defaultBlockStartMinutes}
+              endMinutes={tutor.defaultBlockEndMinutes}
+              overrideCount={slotOverrides.length}
+              disabled={blockSaving}
+              onChange={(patch) => void saveDefaultBlockHours(patch)}
             />
           </section>
 

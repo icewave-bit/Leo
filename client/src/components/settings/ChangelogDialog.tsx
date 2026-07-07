@@ -58,11 +58,18 @@ export function ChangelogDialog({ open, onClose }: { open: boolean; onClose: () 
                   <span className="changelog__badge">Текущая</span>
                 ) : null}
               </div>
-              <ul className="changelog__list">
-                {release.changes.map((item) => (
-                  <li key={item}>{item}</li>
+              <div className="changelog__sections">
+                {release.sections.map((section) => (
+                  <div key={section.title} className="changelog__section">
+                    <h4 className="changelog__section-title">{section.title}</h4>
+                    <ul className="changelog__list">
+                      {section.items.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </section>
           ))}
         </div>
