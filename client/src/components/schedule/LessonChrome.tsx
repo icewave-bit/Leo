@@ -3,7 +3,7 @@ import { lessonDebtClosed } from '../../utils/lessonPay';
 import { fmtTime } from '../../utils/format';
 import type { ViewLesson, ViewStudent } from '../../utils/schedule';
 import { RecurrenceIcon } from '../RecurrenceFields';
-import { NotesPaperIcon } from '../icons/NotesPaperIcon';
+import { Icon } from '../Icon';
 
 const CYRILLIC = /\p{Script=Cyrillic}/u;
 const LATIN = /\p{Script=Latin}/u;
@@ -58,16 +58,7 @@ export function LessonPayMark({
       className={'ev__mark' + (ok ? ' ev__mark--ok' : ' ev__mark--debt')}
       aria-label={ok ? 'Долг по уроку закрыт' : PAY_LABELS.unpaid.ru}
     >
-      <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
-        <path
-          d="M2.2 6.1 4.8 8.6 9.8 3.4"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
+      <Icon icon="confirm" size={11} />
     </span>
   );
 }
@@ -146,7 +137,7 @@ export function LessonNotesMark({ notes }: { notes: string | null | undefined })
   const text = notes!.trim();
   return (
     <span className="ev__notes" aria-label="Есть напоминание" title={text}>
-      <NotesPaperIcon size={10} />
+      <Icon icon="text-box" size={10} />
     </span>
   );
 }
@@ -178,13 +169,7 @@ export function LessonCardRotatingLabel({
 
 export function TypeIcon({ type }: { type: 'solo' | 'group' }) {
   if (type === 'group') {
-    return (
-      <svg viewBox="0 0 24 24" width="12" height="12" className="ev-type" aria-hidden="true">
-        <circle cx="9" cy="8" r="3.2" />
-        <circle cx="16" cy="9" r="2.6" />
-        <path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5M14 19c0-2.3 1.6-3.8 4-3.8s4 1.5 4 3.8" />
-      </svg>
-    );
+    return <Icon icon="account-add" size={12} className="ev-type" />;
   }
   return null;
 }

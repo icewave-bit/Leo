@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { Icon } from './Icon';
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -59,15 +60,9 @@ export function ConfirmDialog({
       >
         <div className="confirm__icon" aria-hidden="true">
           {variant === 'danger' ? (
-            <svg viewBox="0 0 24 24" width="22" height="22">
-              <path d="M12 9v5M12 17h.01" />
-              <path d="M10.3 4.3h3.4l7.3 12.6a1.2 1.2 0 01-1 1.8H4a1.2 1.2 0 01-1-1.8l7.3-12.6z" />
-            </svg>
+            <Icon icon="alert" size={22} />
           ) : (
-            <svg viewBox="0 0 24 24" width="22" height="22">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M12 8v5M12 16h.01" />
-            </svg>
+            <Icon icon="alert-circle" size={22} />
           )}
         </div>
         <h2 id={titleId} className="confirm__title">

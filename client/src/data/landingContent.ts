@@ -1,35 +1,41 @@
-export const landingFeatures = [
+import type { LineMdIconName } from '../icons/lineMd';
+
+export const landingFeatures: {
+  title: string;
+  icon: LineMdIconName;
+  text: string;
+}[] = [
   {
     title: 'Расписание',
-    icon: 'M7 3v4M17 3v4M4 9h16M5 6h14a1 1 0 011 1v12a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1z',
+    icon: 'calendar',
     text: 'Гибкое расписание недели, фокус-день и статусы уроков.',
   },
   {
     title: 'Студенты',
-    icon: 'M12 8a3.4 3.4 0 100 6.8 3.4 3.4 0 000-6.8M5 20c0-3.4 3-5.6 7-5.6s7 2.2 7 5.6',
+    icon: 'account',
     text: 'Учёт учеников, баланса, пополнений и заметок без лишней суеты.',
   },
   {
     title: 'Оплаты',
-    icon: 'M3 6h18v12H3zM3 10h18M7 14h4',
+    icon: 'clipboard-list',
     text: 'Журнал операций с привязкой к ученику и периоду.',
   },
   {
     title: 'Налоги',
-    icon: 'M8 3h6l4 4v14H6zM14 3v4h4M9.5 13h5M9.5 16.5h5',
+    icon: 'document-report',
     text: 'Доход по месяцам — просто и понятно с автоматическим подсчётом налогов.',
   },
   {
     title: 'Аналитика',
-    icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+    icon: 'list-3',
     text: 'Доход, статусы занятий и финансовые показатели.',
   },
   {
     title: 'Настройки',
-    icon: 'M12 9a3 3 0 100 6 3 3 0 000-6zM4 12l-1.5-1 1.5-3 1.8.5M20 12l1.5-1-1.5-3-1.8.5M12 4V2M12 22v-2',
+    icon: 'cog',
     text: 'Настройте LeO под свой формат работы: неделя, академический час, пополнения, архив и налоги.',
   },
-] as const;
+];
 
 export const landingBalanceRows = [
   {

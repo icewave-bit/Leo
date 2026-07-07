@@ -11,26 +11,11 @@ import {
   landingSteps,
 } from '../data/landingContent';
 import { LogoBrand } from '../components/LogoBrand';
+import { Icon } from '../components/Icon';
 import { landingPageSeo } from '../data/landingSeo';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { useScrollReveal } from '../hooks/useScrollReveal';
 import '../styles/landing.css';
-
-function TickIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M5 13l4 4L19 7" />
-    </svg>
-  );
-}
-
-function FeatureIcon({ d }: { d: string }) {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d={d} />
-    </svg>
-  );
-}
 
 export function LandingPage() {
   usePageMeta(landingPageSeo);
@@ -54,9 +39,7 @@ export function LandingPage() {
               Начать бесплатно
             </Link>
             <button type="button" className="nav__burger" aria-label="Меню">
-              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                <path d="M4 7h16M4 12h16M4 17h16" />
-              </svg>
+              <Icon icon="menu" size={20} />
             </button>
           </div>
         </div>
@@ -158,7 +141,7 @@ export function LandingPage() {
             {landingFeatures.map((feature) => (
               <div className="gcard reveal" key={feature.title}>
                 <span className="gcard__ic">
-                  <FeatureIcon d={feature.icon} />
+                  <Icon icon={feature.icon} />
                 </span>
                 <h3>{feature.title}</h3>
                 <p>{feature.text}</p>
@@ -209,7 +192,7 @@ export function LandingPage() {
               {landingBalanceBullets.map((item) => (
                 <li key={item.title}>
                   <span className="tick">
-                    <TickIcon />
+                    <Icon icon="confirm" />
                   </span>
                   <span>
                     <strong>{item.title}</strong> {item.text}
@@ -278,7 +261,7 @@ export function LandingPage() {
                   {plan.features.map((feature) => (
                     <li key={feature}>
                       <span className="tick">
-                        <TickIcon />
+                        <Icon icon="confirm" />
                       </span>
                       {feature}
                     </li>

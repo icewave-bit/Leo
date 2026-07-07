@@ -9,37 +9,38 @@ import { loginPageSeo } from '../data/loginSeo';
 import { useAppStore } from '../hooks/useAppStore';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { loadSchedule } from '../state/loadSchedule';
+import type { LineMdIconName } from '../icons/lineMd';
 
-const features = [
+const features: { title: string; text: string; icon: LineMdIconName }[] = [
   {
     title: 'Расписание',
     text: 'Гибкое расписание недели, фокус-день и статусы уроков.',
-    icon: 'M8 2v4M16 2v4M3 10h18M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z',
+    icon: 'calendar',
   },
   {
     title: 'Студенты',
     text: 'Учет учеников, баланса, пополнений и заметок без лишней суеты.',
-    icon: 'M16 11a4 4 0 10-8 0 4 4 0 008 0zM4 21a8 8 0 0116 0',
+    icon: 'account',
   },
   {
     title: 'Оплаты',
     text: 'Журнал операций с привязкой к ученику и периоду.',
-    icon: 'M4 7h16v10H4zM4 10h16M8 15h4',
+    icon: 'clipboard-list',
   },
   {
     title: 'Налоги',
     text: 'Доход по месяцам — просто и понятно с автоматическим подсчетом налогов.',
-    icon: 'M6 3h9l3 3v15H6zM14 3v4h4M9 12h6M9 16h6',
+    icon: 'document-report',
   },
   {
     title: 'Аналитика',
     text: 'Доход, статусы занятий и финансовые показатели.',
-    icon: 'M4 19V5M4 19h16M8 16v-5M12 16V8M16 16v-8',
+    icon: 'list-3',
   },
   {
     title: 'Настройки',
     text: 'Настройте LeO под свой формат работы: неделя, академический час, пополнения, архив и налоги.',
-    icon: 'M12 3v3M12 18v3M4.8 6.8l2.1 2.1M17.1 17.1l2.1 2.1M3 12h3M18 12h3M4.8 17.2l2.1-2.1M17.1 6.9l2.1-2.1M15 12a3 3 0 11-6 0 3 3 0 016 0z',
+    icon: 'cog',
   },
 ];
 
@@ -116,7 +117,7 @@ export function LoginPage() {
             {features.map((feature) => (
               <article className="login-feature" key={feature.title}>
                 <span className="login-feature__icon">
-                  <Icon d={feature.icon} size={18} />
+                  <Icon icon={feature.icon} size={18} />
                 </span>
                 <span>
                   <strong>{feature.title}</strong>

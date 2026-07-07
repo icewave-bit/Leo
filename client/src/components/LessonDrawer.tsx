@@ -27,6 +27,7 @@ import {
   type LessonDeleteScope,
 } from './LessonDeleteScopeOptions';
 import { RecurrenceIcon } from './RecurrenceFields';
+import { Icon } from './Icon';
 import { StudentBalance } from './StudentBalance';
 import { BillingPayerLink } from './students/BillingPayerLink';
 import { TypeIcon } from './schedule/LessonChrome';
@@ -200,9 +201,7 @@ export function LessonDrawer({
           </div>
           {meetHref ? (
             <a className="btn btn--primary btn--sm" href={meetHref} target="_blank" rel="noreferrer">
-              <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
-                <path d="M15 8l5-3v14l-5-3M3 6h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V7a1 1 0 011-1z" />
-              </svg>
+              <Icon icon="play" size={15} />
               Join
             </a>
           ) : (

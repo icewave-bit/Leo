@@ -29,6 +29,7 @@ import {
 import { loadSchedule } from '../state/loadSchedule';
 import { useAppStore } from '../hooks/useAppStore';
 import type { ShellOutletContext } from '../components/AppShell';
+import { Icon } from '../components/Icon';
 
 const VARIANTS = [
   { id: 'week' as const, label: 'Неделя', mobileLabel: 'Неделя' },
@@ -69,14 +70,9 @@ function Topbar({
       aria-label="Тема"
     >
       {resolvedTheme === 'light' ? (
-        <svg viewBox="0 0 24 24" width="18" height="18">
-          <path d="M21 13a8 8 0 11-9.5-9 6.5 6.5 0 009.5 9z" />
-        </svg>
+        <Icon icon="moon" size={18} />
       ) : (
-        <svg viewBox="0 0 24 24" width="18" height="18">
-          <circle cx="12" cy="12" r="4.5" />
-          <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M5 5l1.8 1.8M17.2 17.2L19 19M19 5l-1.8 1.8M6.8 17.2L5 19" />
-        </svg>
+        <Icon icon="sunny" size={18} />
       )}
     </button>
   );

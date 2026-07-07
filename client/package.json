@@ -12,12 +12,14 @@
     "test:watch": "npm run test:watch --prefix ../server"
   },
   "dependencies": {
+    "@iconify/react": "^6.0.2",
     "jotai": "^2.12.5",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.2"
   },
   "devDependencies": {
+    "@iconify-json/line-md": "^1.2.16",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
     "@vitejs/plugin-react": "^4.5.2",

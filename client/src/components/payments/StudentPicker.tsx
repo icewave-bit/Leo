@@ -14,7 +14,7 @@ function StudentAvatar({ student, size }: { student: ViewStudent | null; size?: 
   if (!student) {
     return (
       <span className={'avatar picker-avatar' + (size ? ' avatar--sm' : '')} style={{ background: 'var(--surf-2)', color: 'var(--muted)' }}>
-        <Icon d="M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5M16 13c2.2 0 4 1.6 4 4" />
+        <Icon icon="account" />
       </span>
     );
   }
