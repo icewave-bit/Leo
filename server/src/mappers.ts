@@ -6,6 +6,7 @@ import type {
   LessonType,
   PersonalEvent,
   PersonalEventGroup,
+  PersonalEventOutline,
   RecurringPersonalSchedule,
   RecurringSchedule,
   Student,
@@ -29,6 +30,7 @@ interface TutorRow {
   hidden_weekdays: number[];
   default_block_start_minutes: number;
   default_block_end_minutes: number;
+  personal_event_outline: PersonalEventOutline;
   created_at: Date;
 }
 
@@ -112,6 +114,7 @@ export function toTutor(row: TutorRow): Tutor {
     hiddenWeekdays: row.hidden_weekdays ?? [],
     defaultBlockStartMinutes: row.default_block_start_minutes,
     defaultBlockEndMinutes: row.default_block_end_minutes,
+    personalEventOutline: row.personal_event_outline,
     createdAt: toIsoUtc(row.created_at),
   };
 }

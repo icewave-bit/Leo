@@ -143,6 +143,20 @@ describe('auth', () => {
     expect(patched.body.tutor.defaultBlockEndMinutes).toBe(9 * 60);
   });
 
+  it('patch me updates personalEventOutline', async () => {
+    const { agent } = await registerTutor(app);
+    const me = await agent.get('/api/auth/me').expect(200);
+    expect(me.body.tutor.personalEventOutline).toBe('tab');
+
+    const patched = await agent
+      .patch('/api/auth/me')
+      .send({ personalEventOutline: 'dashed' })
+      .expect(200);
+    expect(patched.body.tutor.personalEventOutline).toBe('dashed');
+
+    await agent.patch('/api/auth/me').send({ personalEventOutline: 'invalid' }).expect(400);
+  });
+
   it('patch me updates weekStartsOn', async () => {
     const { agent } = await registerTutor(app);
     const me = await agent.get('/api/auth/me').expect(200);

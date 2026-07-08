@@ -1,96 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import type { PersonalEventGroup } from '../../api/types';
 import { api } from '../../api/client';
-
-const COLOR_PRESETS = [
-  '#6366f1',
-  '#8b5cf6',
-  '#ec4899',
-  '#f59e0b',
-  '#10b981',
-  '#06b6d4',
-  '#64748b',
-  '#ef4444',
-] as const;
-
-function GroupColorChip({
-  color,
-  disabled,
-  label,
-  onChange,
-}: {
-  color: string;
-  disabled?: boolean;
-  label: string;
-  onChange: (color: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [open]);
-
-  return (
-    <div className="pe-groups__color-wrap" ref={wrapRef}>
-      <button
-        type="button"
-        className="pe-groups__chip"
-        style={{ background: color }}
-        disabled={disabled}
-        aria-label={label}
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      />
-      {open ? (
-        <div className="pe-groups__palette" role="listbox" aria-label="Цвет группы">
-          {COLOR_PRESETS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              role="option"
-              aria-selected={color === c}
-              className={'pe-groups__palette-swatch' + (color === c ? ' is-active' : '')}
-              style={{ background: c }}
-              onClick={() => {
-                onChange(c);
-                setOpen(false);
-              }}
-            />
-          ))}
-          <button
-            type="button"
-            className="pe-groups__palette-custom"
-            aria-label="Свой цвет"
-            onClick={() => inputRef.current?.click()}
-          >
-            ···
-          </button>
-        </div>
-      ) : null}
-      <input
-        ref={inputRef}
-        className="pe-groups__color-input"
-        type="color"
-        value={color}
-        tabIndex={-1}
-        aria-hidden
-        onChange={(e) => {
-          onChange(e.target.value);
-          setOpen(false);
-        }}
-      />
-    </div>
-  );
-}
+import { COLOR_PRESETS } from '../../constants/colorPresets';
+import { ColorPalettePicker } from '../ColorPalettePicker';
 
 export function PersonalEventGroupsField({
   groups,
@@ -153,7 +65,7 @@ export function PersonalEventGroupsField({
       <ul className="pe-groups__list">
         {groups.map((g) => (
           <li key={g.id} className="pe-groups__row">
-            <GroupColorChip
+            <ColorPalettePicker
               color={g.color}
               disabled={disabled || saving}
               label={`Цвет группы ${g.name}`}
@@ -190,7 +102,7 @@ export function PersonalEventGroupsField({
           </li>
         ))}
         <li className="pe-groups__row pe-groups__row--add">
-          <GroupColorChip
+          <ColorPalettePicker
             color={color}
             disabled={disabled || saving}
             label="Цвет новой группы"

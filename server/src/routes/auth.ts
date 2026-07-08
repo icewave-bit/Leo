@@ -45,6 +45,7 @@ const patchMeSchema = z
       .max(23 * 60)
       .refine((n) => n % 60 === 0, 'Hour-aligned')
       .optional(),
+    personalEventOutline: z.enum(['tab', 'frame', 'dashed']).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field is required',
@@ -52,7 +53,7 @@ const patchMeSchema = z
 
 const TUTOR_COLUMNS = `id, email, name, initials, subject, timezone, academic_hour_min, week_starts_on,
   default_replenish_balance_kind, tax_rate_percent, tax_display_currency, hidden_weekdays,
-  default_block_start_minutes, default_block_end_minutes, created_at`;
+  default_block_start_minutes, default_block_end_minutes, personal_event_outline, created_at`;
 
 export const authRouter = Router();
 
@@ -170,6 +171,10 @@ authRouter.patch('/me', requireAuth, async (req, res, next) => {
     if (body.defaultBlockEndMinutes !== undefined) {
       fields.push(`default_block_end_minutes = $${idx++}`);
       values.push(body.defaultBlockEndMinutes);
+    }
+    if (body.personalEventOutline !== undefined) {
+      fields.push(`personal_event_outline = $${idx++}`);
+      values.push(body.personalEventOutline);
     }
 
     values.push(req.tutorId);

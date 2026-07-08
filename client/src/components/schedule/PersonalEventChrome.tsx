@@ -1,8 +1,11 @@
+import { useAtomValue } from 'jotai';
 import type { PersonalEventGroup } from '../../api/types';
+import { tutorAtom } from '../../atoms/auth';
 import { fmtTime } from '../../utils/format';
 import type { ViewPersonalEvent } from '../../utils/schedule';
 import { RecurrenceIcon } from '../RecurrenceFields';
 import { Icon } from '../Icon';
+import { hexToOklchHue } from '../../utils/colorHue';
 import {
   weekGridLessonLayoutClass,
   weekGridLessonPositionStyle,
@@ -10,7 +13,10 @@ import {
 } from '../../utils/weekGridLayout';
 
 export function personalEventCardVars(color: string): React.CSSProperties {
-  return { '--pe-color': color } as React.CSSProperties;
+  return {
+    '--pe-color': color,
+    '--pe-hue': String(hexToOklchHue(color)),
+  } as React.CSSProperties;
 }
 
 export function hasPersonalNotes(notes: string | null | undefined): boolean {
@@ -45,6 +51,8 @@ export function PersonalEventCard({
   onPointerDown?: (e: React.PointerEvent) => void;
   onClick?: () => void;
 }) {
+  const tutor = useAtomValue(tutorAtom);
+  const outline = tutor?.personalEventOutline ?? 'tab';
   const color = group?.color ?? '#64748b';
   const slotStart = start ?? event.start;
   const top = slotStart * pxPerHour;
@@ -57,6 +65,7 @@ export function PersonalEventCard({
       type="button"
       className={
         'pe' +
+        ` pe--outline-${outline}` +
         (hasPersonalNotes(event.notes) ? ' pe--has-notes' : '') +
         (event.recurringPersonalScheduleId ? ' pe--recur' : '') +
         (tight ? ' pe--tight' : '') +

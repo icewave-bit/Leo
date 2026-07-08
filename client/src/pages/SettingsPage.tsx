@@ -1,7 +1,7 @@
 import { useAtom } from 'jotai';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { BalanceKind, TaxDisplayCurrency, WeekStartsOn } from '../api/types';
+import type { BalanceKind, PersonalEventOutline, TaxDisplayCurrency, WeekStartsOn } from '../api/types';
 import { api } from '../api/client';
 import { tutorAtom } from '../atoms/auth';
 import { weekStartAtom, personalEventGroupsAtom, scheduleSlotOverridesAtom } from '../atoms/schedule';
@@ -17,6 +17,7 @@ import {
 import { AppVersionFooter } from '../components/settings/AppVersionFooter';
 import { VisibleWeekdaysField } from '../components/settings/VisibleWeekdaysField';
 import { PersonalEventGroupsField } from '../components/settings/PersonalEventGroupsField';
+import { PersonalEventOutlineField } from '../components/settings/PersonalEventOutlineField';
 import { DefaultBlockHoursField } from '../components/settings/DefaultBlockHoursField';
 import { ACADEMIC_HOUR_PRESETS, academicHourHint } from '../utils/academicHour';
 import { TAX_DISPLAY_OPTIONS, TAX_RATE_PRESETS } from '../utils/taxSettings';
@@ -33,6 +34,7 @@ export function SettingsPage() {
   const [replenishSaving, setReplenishSaving] = useState(false);
   const [taxSaving, setTaxSaving] = useState(false);
   const [blockSaving, setBlockSaving] = useState(false);
+  const [outlineSaving, setOutlineSaving] = useState(false);
   const [taxRateCustom, setTaxRateCustom] = useState(false);
   const [taxRateDraft, setTaxRateDraft] = useState(String(tutor?.taxRatePercent ?? 10));
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +142,22 @@ export function SettingsPage() {
       setError(e instanceof Error ? e.message : 'Не удалось сохранить');
     } finally {
       setBlockSaving(false);
+    }
+  };
+
+  const savePersonalEventOutline = async (personalEventOutline: PersonalEventOutline) => {
+    if (personalEventOutline === (tutor.personalEventOutline ?? 'tab')) return;
+    setOutlineSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const { tutor: updated } = await api.patchMe({ personalEventOutline });
+      setTutor(updated);
+      setSaved(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось сохранить');
+    } finally {
+      setOutlineSaving(false);
     }
   };
 
@@ -298,9 +316,14 @@ export function SettingsPage() {
               title="Группы личных событий"
             />
             <p className="settings-card__desc">
-              Название и цвет групп для личных событий в расписании.
+              Группы, цвет и рамка личных событий в расписании.
             </p>
             <PersonalEventGroupsField groups={groups} onChange={setGroups} />
+            <PersonalEventOutlineField
+              value={tutor.personalEventOutline ?? 'tab'}
+              disabled={outlineSaving}
+              onChange={(outline) => void savePersonalEventOutline(outline)}
+            />
           </section>
 
           <section className="settings-card settings-card--compact">

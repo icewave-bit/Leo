@@ -30,7 +30,9 @@ import {
   enrichMovements,
 } from '../../utils/paymentJournal';
 import { avatarHueStyle } from '../../utils/avatarStyle';
+import { hexFromHue, hueFromHex } from '../../utils/colorHue';
 import { studentToView, toUiStatus, type ViewStudent } from '../../utils/schedule';
+import { ColorPalettePicker } from '../ColorPalettePicker';
 import { useAppStore } from '../../hooks/useAppStore';
 import { loadSchedule } from '../../state/loadSchedule';
 import type { BalanceMovement, BillingDebtBreakdown } from '../../api/types';
@@ -1050,15 +1052,10 @@ export function StudentDrawer({
                       />
                     )}
                   </span>
-                  <input
-                    className="field__control field__control--hue"
-                    type="range"
-                    min={0}
-                    max={360}
-                    value={form.hue}
-                    onChange={(e) => set('hue', Number(e.target.value))}
-                    aria-label="Цвет аватара"
-                    aria-valuetext={`${form.hue}°`}
+                  <ColorPalettePicker
+                    color={hexFromHue(form.hue)}
+                    label="Цвет аватара"
+                    onChange={(hex) => set('hue', hueFromHex(hex))}
                   />
                 </div>
               </div>

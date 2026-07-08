@@ -6,6 +6,7 @@ export type BalanceKind = 'money' | 'lessons';
 export type WeekStartsOn = 'monday' | 'sunday';
 export type AcademicUnits = 1 | 2;
 export type TaxDisplayCurrency = 'BYN' | 'none';
+export type PersonalEventOutline = 'tab' | 'frame' | 'dashed';
 
 export interface Tutor {
   id: UUID;
@@ -25,6 +26,8 @@ export interface Tutor {
   defaultBlockStartMinutes: number;
   /** Default blocked window end, minutes from midnight (hour-aligned). */
   defaultBlockEndMinutes: number;
+  /** Personal schedule card outline style in week grid. */
+  personalEventOutline: PersonalEventOutline;
   createdAt: string;
 }
 
