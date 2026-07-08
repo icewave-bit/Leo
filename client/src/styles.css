@@ -796,6 +796,52 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .pe__time { font-size: 11px; color: var(--muted); }
 .pe .ev-recur { position: absolute; top: 4px; right: 4px; opacity: 0.75; }
 .pe__mark { position: absolute; bottom: 4px; right: 4px; opacity: 0.7; }
+.pe-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--pe-color);
+  box-shadow: inset 0 0 0 1px oklch(0 0 0 / 0.08);
+}
+.pe__group { font-size: 12px; color: var(--muted); }
+.ag__card.pe,
+.ft__card.pe {
+  position: relative;
+  text-align: left;
+  border: 1px solid oklch(0.88 0.03 var(--pe-hue));
+  background: oklch(0.97 0.025 var(--pe-hue));
+  color: var(--text);
+}
+[data-theme="dark"] .ag__card.pe,
+[data-theme="dark"] .ft__card.pe {
+  border-color: oklch(0.38 0.04 var(--pe-hue));
+  background: oklch(0.30 0.04 var(--pe-hue));
+}
+.ag__card.pe.pe--outline-tab,
+.ft__card.pe.pe--outline-tab {
+  border-left: 3px solid var(--pe-color);
+}
+.ag__card.pe.pe--outline-frame,
+.ft__card.pe.pe--outline-frame {
+  border: 2px solid var(--pe-color);
+}
+.ag__card.pe.pe--outline-dashed,
+.ft__card.pe.pe--outline-dashed {
+  border: 2px dashed var(--pe-color);
+}
+.ag__card.pe .ev-recur,
+.ft__card.pe .ev-recur {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0.75;
+}
+.ag__card.pe .pe__mark,
+.ft__card.pe .pe__mark {
+  bottom: 8px;
+  right: 8px;
+}
 .drawer__head--pe { border-left: 4px solid var(--pe-color); }
 .drawer__notice {
   margin: 0 0 12px;

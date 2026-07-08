@@ -1,5 +1,5 @@
 import { useAtomValue } from 'jotai';
-import type { PersonalEventGroup } from '../../api/types';
+import type { PersonalEventGroup, PersonalEventOutline } from '../../api/types';
 import { tutorAtom } from '../../atoms/auth';
 import { fmtTime } from '../../utils/format';
 import type { ViewPersonalEvent } from '../../utils/schedule';
@@ -17,6 +17,26 @@ export function personalEventCardVars(color: string): React.CSSProperties {
     '--pe-color': color,
     '--pe-hue': String(hexToOklchHue(color)),
   } as React.CSSProperties;
+}
+
+export function personalEventListCardClass(
+  outline: PersonalEventOutline,
+  opts?: { recurring?: boolean; hasNotes?: boolean },
+): string {
+  return [
+    'pe',
+    `pe--outline-${outline}`,
+    opts?.recurring ? 'pe--recur' : '',
+    opts?.hasNotes ? 'pe--has-notes' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+export function PersonalEventGroupSwatch({ color }: { color: string }) {
+  return (
+    <span className="pe-swatch" style={personalEventCardVars(color)} aria-hidden="true" />
+  );
 }
 
 export function hasPersonalNotes(notes: string | null | undefined): boolean {

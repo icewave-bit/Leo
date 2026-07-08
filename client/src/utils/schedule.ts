@@ -361,6 +361,29 @@ export function lessonToView(
   };
 }
 
+export type DayScheduleItem =
+  | { kind: 'lesson'; lesson: ViewLesson }
+  | { kind: 'personal'; event: ViewPersonalEvent };
+
+export function dayScheduleItems(
+  lessons: readonly ViewLesson[],
+  personalEvents: readonly ViewPersonalEvent[],
+  day: number,
+): DayScheduleItem[] {
+  const items: DayScheduleItem[] = [
+    ...lessons.filter((l) => l.day === day).map((lesson) => ({ kind: 'lesson' as const, lesson })),
+    ...personalEvents
+      .filter((e) => e.day === day)
+      .map((event) => ({ kind: 'personal' as const, event })),
+  ];
+  items.sort((a, b) => {
+    const startA = a.kind === 'lesson' ? a.lesson.start : a.event.start;
+    const startB = b.kind === 'lesson' ? b.lesson.start : b.event.start;
+    return startA - startB;
+  });
+  return items;
+}
+
 export function personalEventToView(
   event: PersonalEvent,
   weekStart: Date,

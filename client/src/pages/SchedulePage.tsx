@@ -443,10 +443,25 @@ export function SchedulePage() {
                 setSelectedPersonalId(null);
                 setSelectedId(id);
               }}
+              onSelectPersonal={(id) => {
+                setSelectedId(null);
+                setSelectedPersonalId(id);
+              }}
               onAddLesson={(day) => openCreateLesson(day, 10)}
             />
           )}
-          {effVariant === 'agenda' && <AgendaList onSelect={setSelectedId} />}
+          {effVariant === 'agenda' && (
+            <AgendaList
+              onSelect={(id) => {
+                setSelectedPersonalId(null);
+                setSelectedId(id);
+              }}
+              onSelectPersonal={(id) => {
+                setSelectedId(null);
+                setSelectedPersonalId(id);
+              }}
+            />
+          )}
         </main>
         {!mobile && <RightRail lessons={lessons} />}
       </div>
