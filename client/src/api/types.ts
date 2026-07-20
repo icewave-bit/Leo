@@ -82,6 +82,8 @@ export interface Student {
   excludeFromTaxes: boolean;
   billingStudentId: string | null;
   openLessonDebt: number;
+  telegramLinked: boolean;
+  telegramUsername: string | null;
   archivedAt: string | null;
   createdAt: string;
 }
@@ -118,11 +120,14 @@ export type CreateStudentBody = {
   debt?: number;
   excludeFromTaxes?: boolean;
   billingStudentId?: string | null;
+  telegramUsername?: string | null;
 };
 
 export type UpdateStudentBody = Partial<CreateStudentBody> & {
   /** YYYY-MM-DD — дата поступления при пополнении prepaid */
   receivedOn?: string;
+  /** Clear Telegram link (user id + username). */
+  unlinkTelegram?: true;
 };
 
 export type BalanceMovementKind =

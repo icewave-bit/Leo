@@ -21,6 +21,13 @@ type Monitor interface {
 	Week(ctx context.Context, telegramUserID int64) (tutorapi.Schedule, error)
 	Students(ctx context.Context, telegramUserID int64) ([]tutorapi.Student, error)
 	Debt(ctx context.Context, telegramUserID int64) ([]tutorapi.Student, error)
+
+	RegisterStudent(ctx context.Context, in tutorapi.StudentRegisterInput) (tutorapi.BotStudent, error)
+	StudentMe(ctx context.Context, telegramUserID int64) (tutorapi.BotStudent, error)
+	StudentWeek(ctx context.Context, telegramUserID int64) (tutorapi.Schedule, error)
+	StudentToday(ctx context.Context, telegramUserID int64) (tutorapi.Schedule, error)
+	StudentBalance(ctx context.Context, telegramUserID int64) (tutorapi.StudentBalance, error)
+	StudentOpenSlots(ctx context.Context, telegramUserID int64) (tutorapi.OpenSlots, error)
 }
 
 type TelegramClient interface {
@@ -75,6 +82,11 @@ func New(cfg Config) (*Bot, error) {
 			return nil, fmt.Errorf("get telegram bot user: %w", err)
 		}
 		b.logger.Info("telegram authorized", "username", me.Username)
+		if _, err := tg.SetMyCommands(context.Background(), &telegram.SetMyCommandsParams{
+			Commands: botCommands(),
+		}); err != nil {
+			return nil, fmt.Errorf("set telegram commands: %w", err)
+		}
 		b.api = tg
 	default:
 		return nil, errors.New("TelegramClient or TelegramToken is required")
@@ -108,7 +120,7 @@ func (b *Bot) handleUpdate(ctx context.Context, update *models.Update) error {
 
 	b.chats.remember(update.Message.From.ID, update.Message.Chat.ID)
 
-	cmd, arg := parseCommand(update.Message.Text)
+	cmd, arg := resolveInput(update.Message.Text)
 	if cmd == "" {
 		return nil
 	}
@@ -123,9 +135,11 @@ func (b *Bot) handleUpdate(ctx context.Context, update *models.Update) error {
 		text = userFacingError(err)
 	}
 
+	role := b.chats.role(update.Message.From.ID)
 	reply := &telegram.SendMessageParams{
-		ChatID: update.Message.Chat.ID,
-		Text:   text,
+		ChatID:      update.Message.Chat.ID,
+		Text:        text,
+		ReplyMarkup: keyboardForRole(role),
 	}
 	if _, err := b.api.SendMessage(ctx, reply); err != nil {
 		return fmt.Errorf("send message: %w", err)
@@ -146,15 +160,19 @@ func (b *Bot) dispatch(ctx context.Context, req commandRequest) (string, error) 
 		if req.arg != "" {
 			return b.link(ctx, req)
 		}
-		return helpText(), nil
+		return b.startOrHelp(ctx, req)
 	case "/link":
 		return b.link(ctx, req)
 	case "/me":
-		return b.me(ctx, req.telegramUserID)
+		return b.me(ctx, req)
 	case "/today":
-		return b.today(ctx, req.telegramUserID)
+		return b.today(ctx, req)
 	case "/week":
-		return b.week(ctx, req.telegramUserID)
+		return b.week(ctx, req)
+	case "/balance":
+		return b.studentBalance(ctx, req)
+	case "/slots":
+		return b.studentSlots(ctx, req)
 	case "/students":
 		return b.students(ctx, req.telegramUserID)
 	case "/debt":
@@ -162,6 +180,70 @@ func (b *Bot) dispatch(ctx context.Context, req commandRequest) (string, error) 
 	default:
 		return "Неизвестная команда. Нажмите /help", nil
 	}
+}
+
+func (b *Bot) startOrHelp(ctx context.Context, req commandRequest) (string, error) {
+	role, err := b.resolveRole(ctx, req.telegramUserID)
+	if err == nil && role == roleTutor {
+		b.chats.setRole(req.telegramUserID, roleTutor)
+		return helpTextTutor(), nil
+	}
+
+	if req.cmd == "/start" {
+		return b.registerStudent(ctx, req)
+	}
+
+	if err == nil && role == roleStudent {
+		b.chats.setRole(req.telegramUserID, roleStudent)
+		return helpTextStudent(), nil
+	}
+	return helpTextGuest(), nil
+}
+
+func (b *Bot) registerStudent(ctx context.Context, req commandRequest) (string, error) {
+	if strings.TrimSpace(req.username) == "" {
+		return "Чтобы бот нашёл вас, задайте @username в настройках Telegram и снова нажмите /start", nil
+	}
+
+	student, err := b.monitor.RegisterStudent(ctx, tutorapi.StudentRegisterInput{
+		TelegramUserID:   req.telegramUserID,
+		TelegramUsername: req.username,
+	})
+	if err != nil {
+		var apiErr *tutorapi.Error
+		if errors.As(err, &apiErr) && apiErr.NotFound() {
+			return "Ученик не найден. Попросите репетитора указать ваш Telegram @username в LeO.", nil
+		}
+		return "", err
+	}
+	b.chats.setRole(req.telegramUserID, roleStudent)
+	return fmt.Sprintf("Привет, %s! Аккаунт привязан к репетитору %s.\n\n%s",
+		student.Name, student.TutorName, helpTextStudent()), nil
+}
+
+func (b *Bot) resolveRole(ctx context.Context, telegramUserID int64) (botRole, error) {
+	if role := b.chats.role(telegramUserID); role != roleUnknown {
+		return role, nil
+	}
+	if _, err := b.monitor.Me(ctx, telegramUserID); err == nil {
+		b.chats.setRole(telegramUserID, roleTutor)
+		return roleTutor, nil
+	} else {
+		var apiErr *tutorapi.Error
+		if !errors.As(err, &apiErr) || !apiErr.NotLinked() {
+			return roleUnknown, err
+		}
+	}
+	if _, err := b.monitor.StudentMe(ctx, telegramUserID); err == nil {
+		b.chats.setRole(telegramUserID, roleStudent)
+		return roleStudent, nil
+	} else {
+		var apiErr *tutorapi.Error
+		if !errors.As(err, &apiErr) || !apiErr.NotLinked() {
+			return roleUnknown, err
+		}
+	}
+	return roleUnknown, &tutorapi.Error{Code: "TELEGRAM_NOT_LINKED", Message: "not linked", Status: 403}
 }
 
 func (b *Bot) link(ctx context.Context, req commandRequest) (string, error) {
@@ -178,31 +260,95 @@ func (b *Bot) link(ctx context.Context, req commandRequest) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	b.chats.setRole(req.telegramUserID, roleTutor)
 	return fmt.Sprintf("Аккаунт привязан: %s", tutor.Name), nil
 }
 
-func (b *Bot) me(ctx context.Context, telegramUserID int64) (string, error) {
-	tutor, err := b.monitor.Me(ctx, telegramUserID)
+func (b *Bot) me(ctx context.Context, req commandRequest) (string, error) {
+	role, err := b.resolveRole(ctx, req.telegramUserID)
+	if err != nil {
+		return "", err
+	}
+	if role == roleStudent {
+		student, err := b.monitor.StudentMe(ctx, req.telegramUserID)
+		if err != nil {
+			return "", err
+		}
+		return b.formatBotStudent(student), nil
+	}
+	tutor, err := b.monitor.Me(ctx, req.telegramUserID)
 	if err != nil {
 		return "", err
 	}
 	return b.formatTutor(tutor), nil
 }
 
-func (b *Bot) today(ctx context.Context, telegramUserID int64) (string, error) {
-	schedule, err := b.monitor.Today(ctx, telegramUserID)
+func (b *Bot) today(ctx context.Context, req commandRequest) (string, error) {
+	role, err := b.resolveRole(ctx, req.telegramUserID)
+	if err != nil {
+		return "", err
+	}
+	if role == roleStudent {
+		schedule, err := b.monitor.StudentToday(ctx, req.telegramUserID)
+		if err != nil {
+			return "", err
+		}
+		return b.formatStudentSchedule("Уроки на сегодня", schedule), nil
+	}
+	schedule, err := b.monitor.Today(ctx, req.telegramUserID)
 	if err != nil {
 		return "", err
 	}
 	return b.formatSchedule("Уроки на сегодня", schedule), nil
 }
 
-func (b *Bot) week(ctx context.Context, telegramUserID int64) (string, error) {
-	schedule, err := b.monitor.Week(ctx, telegramUserID)
+func (b *Bot) week(ctx context.Context, req commandRequest) (string, error) {
+	role, err := b.resolveRole(ctx, req.telegramUserID)
+	if err != nil {
+		return "", err
+	}
+	if role == roleStudent {
+		schedule, err := b.monitor.StudentWeek(ctx, req.telegramUserID)
+		if err != nil {
+			return "", err
+		}
+		return b.formatStudentSchedule("Уроки на неделю", schedule), nil
+	}
+	schedule, err := b.monitor.Week(ctx, req.telegramUserID)
 	if err != nil {
 		return "", err
 	}
 	return b.formatSchedule("Уроки на неделю", schedule), nil
+}
+
+func (b *Bot) studentBalance(ctx context.Context, req commandRequest) (string, error) {
+	role, err := b.resolveRole(ctx, req.telegramUserID)
+	if err != nil {
+		return "", err
+	}
+	if role != roleStudent {
+		return "Команда доступна ученикам. Репетиторам: /students или /debt", nil
+	}
+	bal, err := b.monitor.StudentBalance(ctx, req.telegramUserID)
+	if err != nil {
+		return "", err
+	}
+	return b.formatBalance(bal), nil
+}
+
+func (b *Bot) studentSlots(ctx context.Context, req commandRequest) (string, error) {
+	role, err := b.resolveRole(ctx, req.telegramUserID)
+	if err != nil {
+		return "", err
+	}
+	if role != roleStudent {
+		return "Команда доступна ученикам.", nil
+	}
+	slots, err := b.monitor.StudentOpenSlots(ctx, req.telegramUserID)
+	if err != nil {
+		return "", err
+	}
+	return b.formatOpenSlots(slots), nil
 }
 
 func (b *Bot) students(ctx context.Context, telegramUserID int64) (string, error) {
@@ -210,6 +356,7 @@ func (b *Bot) students(ctx context.Context, telegramUserID int64) (string, error
 	if err != nil {
 		return "", err
 	}
+	b.chats.setRole(telegramUserID, roleTutor)
 	return b.formatStudents("Ученики", list), nil
 }
 
@@ -218,6 +365,7 @@ func (b *Bot) debt(ctx context.Context, telegramUserID int64) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	b.chats.setRole(telegramUserID, roleTutor)
 	return b.formatStudents("Долги", list), nil
 }
 
@@ -237,9 +385,9 @@ func parseCommand(text string) (cmd, arg string) {
 	return cmd, arg
 }
 
-func helpText() string {
+func helpTextTutor() string {
 	return strings.TrimSpace(`
-LeO — команды:
+LeO — пользуйтесь кнопками внизу или командами:
 /link КОД — привязать аккаунт (код в настройках LeO)
 /me — профиль
 /today — уроки на сегодня
@@ -252,11 +400,38 @@ LeO — команды:
 `)
 }
 
+func helpTextStudent() string {
+	return strings.TrimSpace(`
+LeO для ученика — кнопки внизу или команды:
+/week — уроки на неделю
+/balance — баланс
+/slots — свободные слоты репетитора
+/help — эта справка
+
+Напоминания о уроках приходят автоматически за 30 минут.
+`)
+}
+
+func helpTextGuest() string {
+	return strings.TrimSpace(`
+LeO бот
+• Ученик: попросите репетитора указать ваш @username в LeO и нажмите /start
+• Репетитор: создайте код в настройках LeO и отправьте /link КОД
+`)
+}
+
+func helpText() string {
+	return helpTextTutor()
+}
+
 func userFacingError(err error) string {
 	var apiErr *tutorapi.Error
 	if errors.As(err, &apiErr) {
 		if apiErr.NotLinked() {
-			return "Telegram не привязан. Откройте настройки LeO, создайте код и отправьте /link КОД"
+			return "Telegram не привязан. Ученикам: /start. Репетиторам: /link КОД из настроек LeO"
+		}
+		if apiErr.NotFound() {
+			return "Ученик не найден. Попросите репетитора указать ваш Telegram @username в LeO."
 		}
 		if apiErr.Message != "" {
 			return apiErr.Message

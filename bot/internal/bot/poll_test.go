@@ -217,3 +217,30 @@ func TestRunPoll_disabledWaitsForCancel(t *testing.T) {
 	cancel()
 	assert.ErrorIs(t, <-done, context.Canceled)
 }
+
+func TestPollOnce_studentReminder(t *testing.T) {
+	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
+	msg := &mockMessenger{}
+	b, err := New(Config{
+		TelegramClient: msg,
+		Monitor: &mockMonitor{
+			notLink: true,
+			student: &tutorapi.BotStudent{Name: "Leo", TutorName: "Anna", Timezone: "UTC"},
+			studentToday: tutorapi.Schedule{
+				Timezone: "UTC",
+				Lessons:  []tutorapi.Lesson{plannedLesson(start)},
+			},
+		},
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PollInterval: time.Minute,
+	})
+	require.NoError(t, err)
+	b.chats.remember(1, 99)
+	b.chats.setRole(1, roleStudent)
+
+	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
+	require.Len(t, msg.messages(), 1)
+	out := msg.messages()[0]
+	assert.Contains(t, out.Text, "Напоминание")
+	assert.NotContains(t, out.Text, "с Leo")
+}

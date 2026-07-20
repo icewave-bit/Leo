@@ -77,6 +77,54 @@ export function TelegramConnectField({
     return () => window.clearTimeout(t);
   }, [expiresAt]);
 
+  // Pairing happens in Telegram (external to this tab). Keep tutorAtom in sync
+  // so the UI can switch to the paired state without a full page reload.
+  useEffect(() => {
+    if (tutor.telegramLinked) {
+      setCode(null);
+      setExpiresAt(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const refreshTutor = async () => {
+      try {
+        const { tutor: updated } = await api.me();
+        if (cancelled || !updated.telegramLinked) return;
+        setTutor(updated);
+        setCode(null);
+        setExpiresAt(null);
+      } catch {
+        // Ignore transient errors while waiting for pairing.
+      }
+    };
+
+    void refreshTutor();
+
+    const onFocus = () => {
+      void refreshTutor();
+    };
+    window.addEventListener('focus', onFocus);
+
+    if (!code) {
+      return () => {
+        cancelled = true;
+        window.removeEventListener('focus', onFocus);
+      };
+    }
+
+    const interval = window.setInterval(() => {
+      void refreshTutor();
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [tutor.telegramLinked, code, setTutor]);
+
   const createCode = async () => {
     setBusy(true);
     setError(null);

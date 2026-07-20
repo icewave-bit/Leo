@@ -67,6 +67,10 @@ export interface Student {
   /** When set, balance operations use this student's account. */
   billingStudentId: string | null;
   openLessonDebt: number;
+  /** Whether a Telegram account is linked for the student bot. */
+  telegramLinked: boolean;
+  /** Telegram @username (invite hint / display). */
+  telegramUsername: string | null;
   archivedAt: string | null;
   createdAt: string;
 }

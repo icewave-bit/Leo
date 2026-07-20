@@ -49,6 +49,8 @@ export interface ViewStudent {
   excludeFromTaxes: boolean;
   billingStudentId: string | null;
   openLessonDebt: number;
+  telegramLinked: boolean;
+  telegramUsername: string | null;
   archivedAt?: string | null;
 }
 
@@ -425,6 +427,8 @@ export function studentToView(s: Student): ViewStudent {
     excludeFromTaxes: s.excludeFromTaxes,
     billingStudentId: s.billingStudentId,
     openLessonDebt: s.openLessonDebt,
+    telegramLinked: s.telegramLinked,
+    telegramUsername: s.telegramUsername,
     archivedAt: s.archivedAt,
   };
 }

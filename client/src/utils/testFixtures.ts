@@ -19,6 +19,8 @@ export function stubStudent(overrides: Partial<ViewStudent> = {}): ViewStudent {
     excludeFromTaxes: false,
     billingStudentId: null,
     openLessonDebt: 0,
+    telegramLinked: false,
+    telegramUsername: null,
     ...overrides,
   };
 }

@@ -36,7 +36,7 @@ const LESSON_COLUMNS = `l.id, l.tutor_id, l.student_id, l.start_utc, l.duration_
 
 const STUDENT_COLUMNS = `id, tutor_id, name, initials, hue, tz, meet_url, rate, currency, note,
   is_group, members, balance_kind, prepaid, debt, exclude_from_taxes, billing_student_id,
-  archived_at, created_at`;
+  telegram_user_id::text, telegram_username, archived_at, created_at`;
 
 export const botRouter = Router();
 

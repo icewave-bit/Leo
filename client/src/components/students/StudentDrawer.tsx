@@ -68,6 +68,7 @@ export interface StudentFormValues {
   balanceNet: string;
   excludeFromTaxes: boolean;
   billingStudentId: string | null;
+  telegramUsername: string;
 }
 
 function emptyForm(tz: string): StudentFormValues {
@@ -86,6 +87,7 @@ function emptyForm(tz: string): StudentFormValues {
     balanceNet: '0',
     excludeFromTaxes: false,
     billingStudentId: null,
+    telegramUsername: '',
   };
 }
 
@@ -105,6 +107,7 @@ function fromStudent(s: ViewStudent): StudentFormValues {
     balanceNet: formatBalanceNetInput(s.prepaid, s.debt, s.balanceKind),
     excludeFromTaxes: s.excludeFromTaxes,
     billingStudentId: s.billingStudentId,
+    telegramUsername: s.telegramUsername ?? '',
   };
 }
 
@@ -123,6 +126,8 @@ function toPayload(
     .filter(Boolean);
   const rate = form.rate.trim() ? Number(form.rate) : null;
   const meetUrl = form.meetUrl.trim() || null;
+  const telegramRaw = form.telegramUsername.trim().replace(/^@+/, '');
+  const telegramUsername = telegramRaw === '' ? null : telegramRaw;
   const base: UpdateStudentBody = {
     name: form.name.trim(),
     initials: form.initials.trim() || undefined,
@@ -133,6 +138,7 @@ function toPayload(
     note: form.note.trim() || null,
     isGroup: form.isGroup,
     members: form.isGroup ? members : [],
+    telegramUsername,
   };
 
   if (opts?.billingDependent) {
@@ -418,6 +424,8 @@ export function StudentDrawer({
       excludeFromTaxes: form.excludeFromTaxes,
       billingStudentId: null,
       openLessonDebt: 0,
+      telegramLinked: false,
+      telegramUsername: null,
       ...balancePartsFromForm(form),
     };
     const rateRaw = form.rate.trim() ? Number(form.rate) : null;
@@ -1001,6 +1009,48 @@ export function StudentDrawer({
                   placeholder="https://meet.google.com/…"
                 />
               </label>
+              <label className="field">
+                <span className="field__label">Telegram</span>
+                <input
+                  className="field__control"
+                  value={form.telegramUsername}
+                  onChange={(e) => set('telegramUsername', e.target.value)}
+                  placeholder="@username"
+                  autoComplete="off"
+                />
+              </label>
+              {existing?.telegramLinked ? (
+                <>
+                  <p className="drawer-panel__hint">
+                    Бот привязан
+                    {existing.telegramUsername ? ` как @${existing.telegramUsername}` : ''}.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    disabled={saving || readOnly}
+                    onClick={() => {
+                      if (!existing) return;
+                      setSaving(true);
+                      setError(null);
+                      void updateStudent(existing.id, { unlinkTelegram: true })
+                        .then(() => {
+                          set('telegramUsername', '');
+                        })
+                        .catch((e: unknown) => {
+                          setError(e instanceof Error ? e.message : 'Не удалось отвязать');
+                        })
+                        .finally(() => setSaving(false));
+                    }}
+                  >
+                    Отвязать
+                  </button>
+                </>
+              ) : (
+                <p className="drawer-panel__hint">
+                  Укажите @username ученика — после /start в боте аккаунт привяжется автоматически.
+                </p>
+              )}
               <div className="drawer-panel__grid drawer-panel__grid--2">
                 <label className="field">
                   <span className="field__label">Ставка / ак. ч</span>

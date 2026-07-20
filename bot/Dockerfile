@@ -9,7 +9,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/leo-bot ./cmd/echo-bot
 
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=build /out/leo-bot /app/leo-bot
 USER nobody

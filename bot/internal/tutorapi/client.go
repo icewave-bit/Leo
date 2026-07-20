@@ -124,6 +124,88 @@ func (c *Client) Debt(ctx context.Context, telegramUserID int64) ([]Student, err
 	return out.Students, nil
 }
 
+func (c *Client) RegisterStudent(ctx context.Context, in StudentRegisterInput) (BotStudent, error) {
+	body := map[string]any{
+		"telegramUserId":   strconv.FormatInt(in.TelegramUserID, 10),
+		"telegramUsername": in.TelegramUsername,
+	}
+	var out struct {
+		Student BotStudent `json:"student"`
+	}
+	if err := c.do(ctx, httpRequest{
+		method: http.MethodPost,
+		path:   "/api/bot/student/register",
+		body:   body,
+	}, &out); err != nil {
+		return BotStudent{}, err
+	}
+	return out.Student, nil
+}
+
+func (c *Client) StudentMe(ctx context.Context, telegramUserID int64) (BotStudent, error) {
+	var out struct {
+		Student BotStudent `json:"student"`
+	}
+	if err := c.do(ctx, httpRequest{
+		method:         http.MethodGet,
+		path:           "/api/bot/student/me",
+		telegramUserID: telegramUserID,
+	}, &out); err != nil {
+		return BotStudent{}, err
+	}
+	return out.Student, nil
+}
+
+func (c *Client) StudentWeek(ctx context.Context, telegramUserID int64) (Schedule, error) {
+	var out Schedule
+	if err := c.do(ctx, httpRequest{
+		method:         http.MethodGet,
+		path:           "/api/bot/student/week",
+		telegramUserID: telegramUserID,
+	}, &out); err != nil {
+		return Schedule{}, err
+	}
+	return out, nil
+}
+
+func (c *Client) StudentToday(ctx context.Context, telegramUserID int64) (Schedule, error) {
+	var out Schedule
+	if err := c.do(ctx, httpRequest{
+		method:         http.MethodGet,
+		path:           "/api/bot/student/today",
+		telegramUserID: telegramUserID,
+	}, &out); err != nil {
+		return Schedule{}, err
+	}
+	return out, nil
+}
+
+func (c *Client) StudentBalance(ctx context.Context, telegramUserID int64) (StudentBalance, error) {
+	var out struct {
+		Balance StudentBalance `json:"balance"`
+	}
+	if err := c.do(ctx, httpRequest{
+		method:         http.MethodGet,
+		path:           "/api/bot/student/balance",
+		telegramUserID: telegramUserID,
+	}, &out); err != nil {
+		return StudentBalance{}, err
+	}
+	return out.Balance, nil
+}
+
+func (c *Client) StudentOpenSlots(ctx context.Context, telegramUserID int64) (OpenSlots, error) {
+	var out OpenSlots
+	if err := c.do(ctx, httpRequest{
+		method:         http.MethodGet,
+		path:           "/api/bot/student/open-slots",
+		telegramUserID: telegramUserID,
+	}, &out); err != nil {
+		return OpenSlots{}, err
+	}
+	return out, nil
+}
+
 type httpRequest struct {
 	method         string
 	path           string
