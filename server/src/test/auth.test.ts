@@ -169,6 +169,53 @@ describe('auth', () => {
     expect(patched.body.tutor.weekStartsOn).toBe('sunday');
   });
 
+  it('patch me updates telegramNotify', async () => {
+    const { agent } = await registerTutor(app);
+    const me = await agent.get('/api/auth/me').expect(200);
+    expect(me.body.tutor.telegramNotify).toEqual({
+      enabled: true,
+      leadMinutes: 30,
+      silent: false,
+      lessons: true,
+      personal: false,
+      personalGroupIds: [],
+    });
+
+    const patched = await agent
+      .patch('/api/auth/me')
+      .send({ telegramNotify: { leadMinutes: 5, silent: true } })
+      .expect(200);
+    expect(patched.body.tutor.telegramNotify).toEqual({
+      enabled: true,
+      leadMinutes: 5,
+      silent: true,
+      lessons: true,
+      personal: false,
+      personalGroupIds: [],
+    });
+
+    await agent.patch('/api/auth/me').send({ telegramNotify: { leadMinutes: 7 } }).expect(400);
+  });
+
+  it('patch me updates telegramNotify personalGroupIds', async () => {
+    const { agent, tutorId } = await registerTutor(app);
+    const { ensureDefaultPersonalEventGroups } = await import('../personalEventGroups.js');
+    const groups = await ensureDefaultPersonalEventGroups(tutorId);
+    const workGroup = groups.find((g) => g.name === 'Работа')!;
+
+    const patched = await agent
+      .patch('/api/auth/me')
+      .send({ telegramNotify: { personalGroupIds: [workGroup.id] } })
+      .expect(200);
+    expect(patched.body.tutor.telegramNotify.personalGroupIds).toEqual([workGroup.id]);
+
+    const cleared = await agent
+      .patch('/api/auth/me')
+      .send({ telegramNotify: { personalGroupIds: [] } })
+      .expect(200);
+    expect(cleared.body.tutor.telegramNotify.personalGroupIds).toEqual([]);
+  });
+
   it('me with and without session; logout clears session', async () => {
     const { agent } = await registerTutor(app);
     await agent.get('/api/auth/me').expect(200);

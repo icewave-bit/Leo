@@ -13,6 +13,7 @@ const envSchema = z.object({
     .transform((v) => v === 'true'),
   CORS_ORIGIN: z.string().min(1),
   NBRB_API_URL: z.string().url().default('https://api.nbrb.by'),
+  BOT_API_TOKEN: z.string().min(16),
 });
 
 export type Env = z.infer<typeof envSchema>;

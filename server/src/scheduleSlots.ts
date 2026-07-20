@@ -84,3 +84,59 @@ export function addDaysToDateOnly(isoDate: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+/** Local wall-clock Y-M-D H:M in `timezone` → UTC Date. */
+export function wallClockToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  timezone: string,
+): Date {
+  let utc = Date.UTC(year, month - 1, day, hour, minute);
+  for (let i = 0; i < 4; i++) {
+    const p = zonedParts(new Date(utc), timezone);
+    const want = Date.UTC(year, month - 1, day, hour, minute);
+    const got = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute);
+    utc += want - got;
+  }
+  return new Date(utc);
+}
+
+/** [start, end) of the calendar day containing `now` in `timezone`. */
+export function zonedDayRangeUtc(now: Date, timezone: string): { from: Date; to: Date } {
+  const key = dateKeyInTz(now, timezone);
+  const { year, month, day } = parseDateOnly(key);
+  const from = wallClockToUtc(year, month, day, 0, 0, timezone);
+  const next = addDaysToDateOnly(key, 1);
+  const n = parseDateOnly(next);
+  const to = wallClockToUtc(n.year, n.month, n.day, 0, 0, timezone);
+  return { from, to };
+}
+
+/**
+ * Current week [start, end) in tutor timezone, using weekStartsOn
+ * (Mon=0 … Sun=6 alignment matching the schedule grid).
+ */
+export function zonedWeekRangeUtc(
+  now: Date,
+  timezone: string,
+  weekStartsOn: WeekStartsOn,
+): { from: Date; to: Date } {
+  const todayKey = dateKeyInTz(now, timezone);
+  const { year, month, day } = parseDateOnly(todayKey);
+  // UTC noon on that calendar date → weekday in that zone is stable for week math.
+  const noonUtc = wallClockToUtc(year, month, day, 12, 0, timezone);
+  const parts = zonedParts(noonUtc, timezone);
+  const asUtcDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  const weekStartUtc = startOfWeekUTC(asUtcDate, weekStartsOn);
+  const startKey = weekStartUtc.toISOString().slice(0, 10);
+  const endKey = addDaysToDateOnly(startKey, 7);
+  const s = parseDateOnly(startKey);
+  const e = parseDateOnly(endKey);
+  return {
+    from: wallClockToUtc(s.year, s.month, s.day, 0, 0, timezone),
+    to: wallClockToUtc(e.year, e.month, e.day, 0, 0, timezone),
+  };
+}

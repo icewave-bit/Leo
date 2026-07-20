@@ -9,6 +9,7 @@ export const SETTINGS_CARD_ICONS = {
   workdays: 'grid-3',
   academic: 'watch',
   taxes: 'document-report',
+  telegram: 'account',
   development: 'lightbulb',
   personalGroups: 'clipboard-list',
   workingHours: 'watch',

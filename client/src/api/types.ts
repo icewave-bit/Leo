@@ -5,6 +5,17 @@ export type WeekStartsOn = 'monday' | 'sunday';
 export type AcademicUnits = 1 | 2;
 export type TaxDisplayCurrency = 'BYN' | 'none';
 export type PersonalEventOutline = 'tab' | 'frame' | 'dashed';
+export type TelegramNotifyLeadMinutes = 5 | 10 | 15 | 30 | 60;
+
+export interface TelegramNotify {
+  enabled: boolean;
+  leadMinutes: TelegramNotifyLeadMinutes;
+  silent: boolean;
+  lessons: boolean;
+  personal: boolean;
+  /** Empty = all groups when personal is true. */
+  personalGroupIds: string[];
+}
 
 export interface Tutor {
   id: string;
@@ -26,6 +37,9 @@ export interface Tutor {
   defaultBlockEndMinutes: number;
   /** Personal schedule card outline in week grid. */
   personalEventOutline: PersonalEventOutline;
+  telegramLinked: boolean;
+  telegramUsername: string | null;
+  telegramNotify: TelegramNotify;
   createdAt: string;
 }
 
@@ -39,6 +53,14 @@ export type PatchTutorBody = {
   defaultBlockStartMinutes?: number;
   defaultBlockEndMinutes?: number;
   personalEventOutline?: PersonalEventOutline;
+  telegramNotify?: {
+    enabled?: boolean;
+    leadMinutes?: TelegramNotifyLeadMinutes;
+    silent?: boolean;
+    lessons?: boolean;
+    personal?: boolean;
+    personalGroupIds?: string[];
+  };
 };
 
 export interface Student {

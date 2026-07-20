@@ -19,6 +19,7 @@ import { VisibleWeekdaysField } from '../components/settings/VisibleWeekdaysFiel
 import { PersonalEventGroupsField } from '../components/settings/PersonalEventGroupsField';
 import { PersonalEventOutlineField } from '../components/settings/PersonalEventOutlineField';
 import { DefaultBlockHoursField } from '../components/settings/DefaultBlockHoursField';
+import { TelegramConnectField } from '../components/settings/TelegramConnectField';
 import { ACADEMIC_HOUR_PRESETS, academicHourHint } from '../utils/academicHour';
 import { TAX_DISPLAY_OPTIONS, TAX_RATE_PRESETS } from '../utils/taxSettings';
 
@@ -504,6 +505,11 @@ export function SettingsPage() {
                 </button>
               ))}
             </div>
+          </section>
+
+          <section className="settings-card">
+            <SettingsCardHeader icon={SETTINGS_CARD_ICONS.telegram} title="Telegram" />
+            <TelegramConnectField tutor={tutor} groups={groups} />
           </section>
 
           <section className="settings-card settings-card--muted">

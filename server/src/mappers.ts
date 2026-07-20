@@ -11,6 +11,7 @@ import type {
   RecurringSchedule,
   Student,
   TaxDisplayCurrency,
+  TelegramNotifyLeadMinutes,
   Tutor,
   WeekStartsOn,
 } from './types.js';
@@ -31,6 +32,14 @@ interface TutorRow {
   default_block_start_minutes: number;
   default_block_end_minutes: number;
   personal_event_outline: PersonalEventOutline;
+  telegram_user_id: string | null;
+  telegram_username: string | null;
+  telegram_notify_enabled: boolean;
+  telegram_notify_lead_minutes: number;
+  telegram_notify_silent: boolean;
+  telegram_notify_lessons: boolean;
+  telegram_notify_personal: boolean;
+  telegram_notify_personal_group_ids: string[];
   created_at: Date;
 }
 
@@ -115,6 +124,16 @@ export function toTutor(row: TutorRow): Tutor {
     defaultBlockStartMinutes: row.default_block_start_minutes,
     defaultBlockEndMinutes: row.default_block_end_minutes,
     personalEventOutline: row.personal_event_outline,
+    telegramLinked: row.telegram_user_id != null,
+    telegramUsername: row.telegram_username,
+    telegramNotify: {
+      enabled: row.telegram_notify_enabled,
+      leadMinutes: row.telegram_notify_lead_minutes as TelegramNotifyLeadMinutes,
+      silent: row.telegram_notify_silent,
+      lessons: row.telegram_notify_lessons,
+      personal: row.telegram_notify_personal,
+      personalGroupIds: row.telegram_notify_personal_group_ids ?? [],
+    },
     createdAt: toIsoUtc(row.created_at),
   };
 }
@@ -249,6 +268,21 @@ export function toPersonalEvent(row: PersonalEventRow): PersonalEvent {
     recurringPersonalScheduleId: row.recurring_personal_schedule_id,
     createdAt: toIsoUtc(row.created_at),
     updatedAt: toIsoUtc(row.updated_at),
+  };
+}
+
+interface BotPersonalEventRow extends PersonalEventRow {
+  group_name: string;
+}
+
+export function toBotPersonalEvent(row: BotPersonalEventRow) {
+  return {
+    id: row.id,
+    groupId: row.group_id,
+    groupName: row.group_name,
+    title: row.title,
+    startUtc: toIsoUtc(row.start_utc),
+    durationMin: row.duration_min,
   };
 }
 

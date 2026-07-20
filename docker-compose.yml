@@ -33,6 +33,7 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       CORS_ORIGIN: ${CORS_ORIGIN}
       NBRB_API_URL: https://api.nbrb.by
+      BOT_API_TOKEN: ${BOT_API_TOKEN:-change-me-to-a-long-random-bot-token}
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,6 +57,23 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    restart: unless-stopped
+
+  leo-bot:
+    profiles: ["bot"]
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TUTOR_MONITOR_API_URL: http://server:${API_PORT:-3001}
+      BOT_API_TOKEN: ${BOT_API_TOKEN:-change-me-to-a-long-random-bot-token}
+      POLL_INTERVAL: ${POLL_INTERVAL:-1m}
+    depends_on:
+      server:
+        condition: service_healthy
+    networks:
+      - internal
     restart: unless-stopped
 
   client:
