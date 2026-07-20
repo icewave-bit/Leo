@@ -7,6 +7,17 @@ export type WeekStartsOn = 'monday' | 'sunday';
 export type AcademicUnits = 1 | 2;
 export type TaxDisplayCurrency = 'BYN' | 'none';
 export type PersonalEventOutline = 'tab' | 'frame' | 'dashed';
+export type TelegramNotifyLeadMinutes = 5 | 10 | 15 | 30 | 60;
+
+export interface TelegramNotify {
+  enabled: boolean;
+  leadMinutes: TelegramNotifyLeadMinutes;
+  silent: boolean;
+  lessons: boolean;
+  personal: boolean;
+  /** Empty = all groups when personal is true. */
+  personalGroupIds: UUID[];
+}
 
 export interface Tutor {
   id: UUID;
@@ -28,6 +39,11 @@ export interface Tutor {
   defaultBlockEndMinutes: number;
   /** Personal schedule card outline style in week grid. */
   personalEventOutline: PersonalEventOutline;
+  /** Whether a Telegram account is linked for the bot. */
+  telegramLinked: boolean;
+  /** Telegram @username when linked (display only). */
+  telegramUsername: string | null;
+  telegramNotify: TelegramNotify;
   createdAt: string;
 }
 
@@ -145,4 +161,5 @@ export type ErrorCode =
   | 'CONFLICT'
   | 'EMAIL_TAKEN'
   | 'INVALID_CREDENTIALS'
+  | 'TELEGRAM_NOT_LINKED'
   | 'INTERNAL';

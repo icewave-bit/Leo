@@ -1049,6 +1049,100 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .pe-outline-row__seg { flex: 1; min-width: 0; }
 .pe-outline-row__seg .seg__btn { flex: 1; }
 .settings-card__error { color: var(--c-danger); font-size: 13px; margin: 8px 0 0; }
+.telegram-connect__nick { font-weight: 600; color: var(--text); }
+.telegram-connect__cmd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--surf-2);
+  border: 1px solid var(--border);
+}
+.telegram-connect__code-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+}
+.telegram-connect__code {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  line-height: 1.2;
+  color: var(--text);
+}
+.telegram-connect__expiry {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.telegram-connect__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.telegram-notify {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.telegram-notify__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.telegram-notify__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.telegram-notify__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.telegram-notify__lead .seg__btn {
+  flex: 1;
+  min-width: 3.5rem;
+}
+.telegram-notify__checks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.telegram-notify__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+}
+.telegram-notify__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.telegram-notify__check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--c-primary);
+}
+.telegram-notify .is-disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
 .wg__slot:focus-visible { outline: 2px solid var(--c-primary); outline-offset: -2px; z-index: 1; }
 .wg .ev {
   position: absolute;

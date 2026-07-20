@@ -57,6 +57,12 @@ export const api = {
   me: () => request<{ tutor: Tutor }>('/api/auth/me'),
   patchMe: (body: PatchTutorBody) =>
     request<{ tutor: Tutor }>('/api/auth/me', { method: 'PATCH', json: body }),
+  createTelegramLinkCode: () =>
+    request<{ code: string; expiresAt: string }>('/api/auth/telegram/link-code', {
+      method: 'POST',
+    }),
+  unlinkTelegram: () =>
+    request<{ tutor: Tutor }>('/api/auth/telegram/unlink', { method: 'POST' }),
   login: (email: string, password: string) =>
     request<{ tutor: Tutor }>('/api/auth/login', {
       method: 'POST',
