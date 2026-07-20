@@ -22,6 +22,17 @@ import {
   validateBillingPayer,
   validateBillingStudentAssignment,
 } from '../billingStudent.js';
+import { normalizeTelegramUsername } from '../telegramUsername.js';
+
+const telegramUsernameSchema = z
+  .string()
+  .trim()
+  .max(64)
+  .nullable()
+  .transform((v) => normalizeTelegramUsername(v))
+  .refine((v) => v === null || /^[A-Za-z0-9_]{5,32}$/.test(v), {
+    message: 'Invalid Telegram username',
+  });
 
 const studentFieldsSchema = {
   name: z.string().min(1),
@@ -37,6 +48,7 @@ const studentFieldsSchema = {
   balanceKind: z.enum(['money', 'lessons']),
   prepaid: z.number().min(0),
   debt: z.number().min(0),
+  telegramUsername: telegramUsernameSchema,
 };
 
 const createStudentSchema = z.object({
@@ -55,6 +67,7 @@ const createStudentSchema = z.object({
   debt: studentFieldsSchema.debt.default(0),
   excludeFromTaxes: z.boolean().optional(),
   billingStudentId: z.string().uuid().nullable().optional(),
+  telegramUsername: studentFieldsSchema.telegramUsername.optional(),
 });
 
 const patchStudentSchema = z
@@ -75,6 +88,9 @@ const patchStudentSchema = z
     receivedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     excludeFromTaxes: z.boolean().optional(),
     billingStudentId: z.string().uuid().nullable().optional(),
+    telegramUsername: studentFieldsSchema.telegramUsername.optional(),
+    /** Clear Telegram link (user id + username). */
+    unlinkTelegram: z.literal(true).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field is required',
@@ -82,7 +98,7 @@ const patchStudentSchema = z
 
 const STUDENT_COLUMNS = `id, tutor_id, name, initials, hue, tz, meet_url, rate, currency, note,
               is_group, members, balance_kind, prepaid, debt, exclude_from_taxes, billing_student_id,
-              archived_at, created_at`;
+              telegram_user_id::text, telegram_username, archived_at, created_at`;
 
 export const studentsRouter = Router();
 
@@ -189,14 +205,26 @@ studentsRouter.post('/', async (req, res, next) => {
       excludeFromTaxes = true;
     }
 
+    if (body.telegramUsername) {
+      const taken = await client.query<{ id: string }>(
+        `SELECT id FROM students
+         WHERE LOWER(telegram_username) = LOWER($1) AND archived_at IS NULL`,
+        [body.telegramUsername],
+      );
+      if (taken.rows[0]) {
+        throw new AppError('CONFLICT', 409, 'Telegram username is already used by another student');
+      }
+    }
+
     await client.query('BEGIN');
 
     const inserted = await client.query<StudentRow>(
       `INSERT INTO students (
          tutor_id, name, initials, hue, tz, meet_url, rate, currency, note,
-         is_group, members, balance_kind, prepaid, debt, exclude_from_taxes, billing_student_id
+         is_group, members, balance_kind, prepaid, debt, exclude_from_taxes, billing_student_id,
+         telegram_username
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
        RETURNING ${STUDENT_COLUMNS}`,
       [
         req.tutorId,
@@ -215,6 +243,7 @@ studentsRouter.post('/', async (req, res, next) => {
         debt,
         excludeFromTaxes,
         billingStudentId,
+        body.telegramUsername ?? null,
       ],
     );
 
@@ -422,6 +451,31 @@ studentsRouter.patch('/:id', async (req, res, next) => {
       } else if (beforeRow.billing_student_id) {
         fields.push(`exclude_from_taxes = $${idx++}`);
         values.push(false);
+      }
+    }
+    if (body.unlinkTelegram === true) {
+      fields.push(`telegram_user_id = $${idx++}`);
+      values.push(null);
+      fields.push(`telegram_username = $${idx++}`);
+      values.push(null);
+    } else if (body.telegramUsername !== undefined) {
+      if (body.telegramUsername !== null) {
+        const taken = await client.query<{ id: string }>(
+          `SELECT id FROM students
+           WHERE LOWER(telegram_username) = LOWER($1)
+             AND id <> $2
+             AND archived_at IS NULL`,
+          [body.telegramUsername, req.params.id],
+        );
+        if (taken.rows[0]) {
+          throw new AppError('CONFLICT', 409, 'Telegram username is already used by another student');
+        }
+      }
+      fields.push(`telegram_username = $${idx++}`);
+      values.push(body.telegramUsername);
+      if (body.telegramUsername === null) {
+        fields.push(`telegram_user_id = $${idx++}`);
+        values.push(null);
       }
     }
 

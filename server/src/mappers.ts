@@ -61,6 +61,8 @@ interface StudentRow {
   debt: string;
   exclude_from_taxes: boolean;
   billing_student_id: string | null;
+  telegram_user_id: string | null;
+  telegram_username: string | null;
   archived_at: Date | null;
   created_at: Date;
 }
@@ -158,6 +160,8 @@ export function toStudent(row: StudentRow, openLessonDebt = 0): Student {
     excludeFromTaxes: row.exclude_from_taxes,
     billingStudentId: row.billing_student_id,
     openLessonDebt,
+    telegramLinked: row.telegram_user_id != null,
+    telegramUsername: row.telegram_username,
     archivedAt: row.archived_at ? toIsoUtc(row.archived_at) : null,
     createdAt: toIsoUtc(row.created_at),
   };

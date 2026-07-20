@@ -11,6 +11,8 @@ import (
 	"github.com/fedortarasov/leo-bot/internal/tutorapi"
 )
 
+const studentReminderLead = 30 * time.Minute
+
 func (b *Bot) runPoll(ctx context.Context) error {
 	if b.pollInterval <= 0 {
 		<-ctx.Done()
@@ -35,14 +37,14 @@ func (b *Bot) runPoll(ctx context.Context) error {
 }
 
 func (b *Bot) pollOnce(ctx context.Context, now time.Time) error {
-	chats := b.chats.snapshot()
+	chats := b.chats.snapshotEntries()
 	if len(chats) == 0 {
 		return nil
 	}
 
 	var firstErr error
-	for userID, chatID := range chats {
-		if err := b.pollUser(ctx, userID, chatID, now); err != nil {
+	for userID, entry := range chats {
+		if err := b.pollUser(ctx, userID, entry, now); err != nil {
 			b.logger.Error("poll user", "telegram_user_id", userID, "err", err)
 			if firstErr == nil {
 				firstErr = err
@@ -52,7 +54,31 @@ func (b *Bot) pollOnce(ctx context.Context, now time.Time) error {
 	return firstErr
 }
 
-func (b *Bot) pollUser(ctx context.Context, telegramUserID, chatID int64, now time.Time) error {
+func (b *Bot) pollUser(ctx context.Context, telegramUserID int64, entry chatEntry, now time.Time) error {
+	role := entry.role
+	if role == roleUnknown {
+		resolved, err := b.resolveRole(ctx, telegramUserID)
+		if err != nil {
+			var apiErr *tutorapi.Error
+			if errors.As(err, &apiErr) && apiErr.NotLinked() {
+				return nil
+			}
+			return err
+		}
+		role = resolved
+	}
+
+	switch role {
+	case roleTutor:
+		return b.pollTutor(ctx, telegramUserID, entry.chatID, now)
+	case roleStudent:
+		return b.pollStudent(ctx, telegramUserID, entry.chatID, now)
+	default:
+		return nil
+	}
+}
+
+func (b *Bot) pollTutor(ctx context.Context, telegramUserID, chatID int64, now time.Time) error {
 	tutor, err := b.monitor.Me(ctx, telegramUserID)
 	if err != nil {
 		var apiErr *tutorapi.Error
@@ -68,7 +94,6 @@ func (b *Bot) pollUser(ctx context.Context, telegramUserID, chatID int64, now ti
 	if !tutor.TelegramNotify.Lessons {
 		return nil
 	}
-	// telegramNotify.personal is stored in LeO for future personal-event reminders; no bot action yet.
 
 	schedule, err := b.monitor.Today(ctx, telegramUserID)
 	if err != nil {
@@ -80,14 +105,46 @@ func (b *Bot) pollUser(ctx context.Context, telegramUserID, chatID int64, now ti
 	}
 
 	for _, lesson := range schedule.Lessons {
-		if err := b.maybeRemind(ctx, chatID, lesson, schedule.Timezone, now, tutor.TelegramNotify); err != nil {
+		if err := b.maybeRemind(ctx, chatID, lesson, schedule.Timezone, now, tutor.TelegramNotify, false); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (b *Bot) maybeRemind(ctx context.Context, chatID int64, lesson tutorapi.Lesson, timezone string, now time.Time, notify tutorapi.TelegramNotify) error {
+func (b *Bot) pollStudent(ctx context.Context, telegramUserID, chatID int64, now time.Time) error {
+	schedule, err := b.monitor.StudentToday(ctx, telegramUserID)
+	if err != nil {
+		var apiErr *tutorapi.Error
+		if errors.As(err, &apiErr) && apiErr.NotLinked() {
+			return nil
+		}
+		return err
+	}
+
+	notify := tutorapi.TelegramNotify{
+		Enabled:     true,
+		LeadMinutes: int(studentReminderLead / time.Minute),
+		Silent:      false,
+		Lessons:     true,
+	}
+	for _, lesson := range schedule.Lessons {
+		if err := b.maybeRemind(ctx, chatID, lesson, schedule.Timezone, now, notify, true); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *Bot) maybeRemind(
+	ctx context.Context,
+	chatID int64,
+	lesson tutorapi.Lesson,
+	timezone string,
+	now time.Time,
+	notify tutorapi.TelegramNotify,
+	forStudent bool,
+) error {
 	if lesson.Status != "planned" {
 		return nil
 	}
@@ -112,7 +169,7 @@ func (b *Bot) maybeRemind(ctx context.Context, chatID int64, lesson tutorapi.Les
 		return nil
 	}
 
-	text := b.formatReminder(lesson, timezone, lead)
+	text := b.formatReminder(lesson, timezone, lead, forStudent)
 	msg := &telegram.SendMessageParams{
 		ChatID:              chatID,
 		Text:                text,
@@ -131,8 +188,11 @@ func (b *Bot) reminderKey(chatID int64, lesson tutorapi.Lesson) string {
 	return fmt.Sprintf("%d:%s:%s", chatID, lesson.StartUTC, lesson.StudentName)
 }
 
-func (b *Bot) formatReminder(lesson tutorapi.Lesson, timezone string, lead time.Duration) string {
+func (b *Bot) formatReminder(lesson tutorapi.Lesson, timezone string, lead time.Duration, forStudent bool) string {
 	when := formatInZone(lesson.StartUTC, timezone, "15:04")
+	if forStudent {
+		return fmt.Sprintf("Напоминание: через %s урок (%s)", formatLead(lead), when)
+	}
 	return fmt.Sprintf("Напоминание: через %s урок с %s (%s)",
 		formatLead(lead),
 		lesson.StudentName,

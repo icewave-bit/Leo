@@ -4,27 +4,66 @@ import (
 	"sync"
 )
 
+type botRole string
+
+const (
+	roleUnknown botRole = ""
+	roleTutor   botRole = "tutor"
+	roleStudent botRole = "student"
+)
+
+type chatEntry struct {
+	chatID int64
+	role   botRole
+}
+
 type chatRegistry struct {
 	mu    sync.Mutex
-	chats map[int64]int64 // telegram user id → chat id
+	chats map[int64]chatEntry // telegram user id → entry
 }
 
 func newChatRegistry() *chatRegistry {
-	return &chatRegistry{chats: make(map[int64]int64)}
+	return &chatRegistry{chats: make(map[int64]chatEntry)}
 }
 
 func (r *chatRegistry) remember(telegramUserID, chatID int64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.chats[telegramUserID] = chatID
+	entry := r.chats[telegramUserID]
+	entry.chatID = chatID
+	r.chats[telegramUserID] = entry
+}
+
+func (r *chatRegistry) setRole(telegramUserID int64, role botRole) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	entry := r.chats[telegramUserID]
+	entry.role = role
+	r.chats[telegramUserID] = entry
+}
+
+func (r *chatRegistry) role(telegramUserID int64) botRole {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.chats[telegramUserID].role
 }
 
 func (r *chatRegistry) snapshot() map[int64]int64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	out := make(map[int64]int64, len(r.chats))
-	for userID, chatID := range r.chats {
-		out[userID] = chatID
+	for userID, entry := range r.chats {
+		out[userID] = entry.chatID
+	}
+	return out
+}
+
+func (r *chatRegistry) snapshotEntries() map[int64]chatEntry {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[int64]chatEntry, len(r.chats))
+	for userID, entry := range r.chats {
+		out[userID] = entry
 	}
 	return out
 }

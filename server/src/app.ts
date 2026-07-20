@@ -17,6 +17,7 @@ import { scheduleSlotOverridesRouter } from './routes/scheduleSlotOverrides.js';
 import { balanceMovementsRouter } from './routes/balanceMovements.js';
 import { taxesRouter } from './routes/taxes.js';
 import { botRouter } from './routes/bot.js';
+import { botStudentRouter } from './routes/botStudent.js';
 
 const PgSession = connectPgSimple(session);
 
@@ -56,6 +57,7 @@ export async function createApp(): Promise<express.Express> {
 
   app.use('/health', healthRouter);
   app.use('/api/auth', authRouter);
+  app.use('/api/bot/student', botStudentRouter);
   app.use('/api/bot', botRouter);
   app.use('/api/students', studentsRouter);
   app.use('/api/lessons', lessonsRouter);
