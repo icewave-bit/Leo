@@ -118,7 +118,7 @@ export const landingPlans = [
       'Группы и абонементы',
       'Налоги и аналитика дохода',
       'Google Calendar — скоро',
-      'Telegram-бот — скоро',
+      'Telegram-бот',
     ],
   },
   {
@@ -134,7 +134,7 @@ export const landingHeroChips = [
   { text: 'Предоплата и долг наглядно', dot: 'green' },
   { text: '1-на-1 и мини-группы', dot: 'blue' },
   { text: 'Google Calendar — скоро', dot: 'amber' },
-  { text: 'Telegram-бот — скоро', dot: 'blue' },
+  { text: 'Telegram-бот', dot: 'blue' },
 ] as const;
 
 export const landingHeroPills = [
