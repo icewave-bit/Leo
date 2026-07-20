@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -26,7 +25,7 @@ func plannedLesson(start time.Time) tutorapi.Lesson {
 
 func TestPollOnce_sendsReminderOnce(t *testing.T) {
 	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
-	msg := &mockMessenger{updates: make(chan tgbotapi.Update)}
+	msg := &mockMessenger{}
 	mon := &mockMonitor{
 		today: tutorapi.Schedule{
 			Timezone: "UTC",
@@ -39,19 +38,20 @@ func TestPollOnce_sendsReminderOnce(t *testing.T) {
 			Lessons:     true,
 		},
 	}
-	b := New(Config{
-		API:          msg,
-		Monitor:      mon,
-		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
-		PollInterval: time.Minute,
+	b, err := New(Config{
+		TelegramClient: msg,
+		Monitor:        mon,
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PollInterval:   time.Minute,
 	})
+	require.NoError(t, err)
 	b.chats.remember(1, 99)
 
 	now := time.Now().UTC()
 	require.NoError(t, b.pollOnce(context.Background(), now))
 	require.Len(t, msg.messages(), 1)
 
-	out := msg.messages()[0].(tgbotapi.MessageConfig)
+	out := msg.messages()[0]
 	assert.Equal(t, int64(99), out.ChatID)
 	assert.True(t, out.DisableNotification)
 	assert.Contains(t, out.Text, "Leo")
@@ -62,9 +62,9 @@ func TestPollOnce_sendsReminderOnce(t *testing.T) {
 
 func TestPollOnce_skipsOutsideWindow(t *testing.T) {
 	start := time.Now().UTC().Add(2 * time.Hour).Truncate(time.Second)
-	msg := &mockMessenger{updates: make(chan tgbotapi.Update)}
-	b := New(Config{
-		API: msg,
+	msg := &mockMessenger{}
+	b, err := New(Config{
+		TelegramClient: msg,
 		Monitor: &mockMonitor{
 			today: tutorapi.Schedule{
 				Timezone: "UTC",
@@ -74,6 +74,7 @@ func TestPollOnce_skipsOutsideWindow(t *testing.T) {
 		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 		PollInterval: time.Minute,
 	})
+	require.NoError(t, err)
 	b.chats.remember(1, 99)
 
 	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
@@ -82,9 +83,9 @@ func TestPollOnce_skipsOutsideWindow(t *testing.T) {
 
 func TestPollOnce_skipsWhenNotificationsDisabled(t *testing.T) {
 	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
-	msg := &mockMessenger{updates: make(chan tgbotapi.Update)}
-	b := New(Config{
-		API: msg,
+	msg := &mockMessenger{}
+	b, err := New(Config{
+		TelegramClient: msg,
 		Monitor: &mockMonitor{
 			today: tutorapi.Schedule{
 				Timezone: "UTC",
@@ -99,6 +100,7 @@ func TestPollOnce_skipsWhenNotificationsDisabled(t *testing.T) {
 		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 		PollInterval: time.Minute,
 	})
+	require.NoError(t, err)
 	b.chats.remember(1, 99)
 
 	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
@@ -107,9 +109,9 @@ func TestPollOnce_skipsWhenNotificationsDisabled(t *testing.T) {
 
 func TestPollOnce_skipsWhenLessonsDisabled(t *testing.T) {
 	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
-	msg := &mockMessenger{updates: make(chan tgbotapi.Update)}
-	b := New(Config{
-		API: msg,
+	msg := &mockMessenger{}
+	b, err := New(Config{
+		TelegramClient: msg,
 		Monitor: &mockMonitor{
 			today: tutorapi.Schedule{
 				Timezone: "UTC",
@@ -124,6 +126,7 @@ func TestPollOnce_skipsWhenLessonsDisabled(t *testing.T) {
 		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 		PollInterval: time.Minute,
 	})
+	require.NoError(t, err)
 	b.chats.remember(1, 99)
 
 	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
@@ -132,9 +135,9 @@ func TestPollOnce_skipsWhenLessonsDisabled(t *testing.T) {
 
 func TestPollOnce_usesLeadMinutesFromPrefs(t *testing.T) {
 	start := time.Now().UTC().Add(12 * time.Minute).Truncate(time.Second)
-	msg := &mockMessenger{updates: make(chan tgbotapi.Update)}
-	b := New(Config{
-		API: msg,
+	msg := &mockMessenger{}
+	b, err := New(Config{
+		TelegramClient: msg,
 		Monitor: &mockMonitor{
 			today: tutorapi.Schedule{
 				Timezone: "UTC",
@@ -149,18 +152,19 @@ func TestPollOnce_usesLeadMinutesFromPrefs(t *testing.T) {
 		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 		PollInterval: time.Minute,
 	})
+	require.NoError(t, err)
 	b.chats.remember(1, 99)
 
 	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
 	require.Len(t, msg.messages(), 1)
-	assert.Contains(t, msg.messages()[0].(tgbotapi.MessageConfig).Text, "15 мин")
+	assert.Contains(t, msg.messages()[0].Text, "15 мин")
 }
 
 func TestPollOnce_skipsOutsideCustomLeadWindow(t *testing.T) {
 	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
-	msg := &mockMessenger{updates: make(chan tgbotapi.Update)}
-	b := New(Config{
-		API: msg,
+	msg := &mockMessenger{}
+	b, err := New(Config{
+		TelegramClient: msg,
 		Monitor: &mockMonitor{
 			today: tutorapi.Schedule{
 				Timezone: "UTC",
@@ -175,6 +179,7 @@ func TestPollOnce_skipsOutsideCustomLeadWindow(t *testing.T) {
 		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 		PollInterval: time.Minute,
 	})
+	require.NoError(t, err)
 	b.chats.remember(1, 99)
 
 	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
@@ -183,9 +188,9 @@ func TestPollOnce_skipsOutsideCustomLeadWindow(t *testing.T) {
 
 func TestPollOnce_skipsNotLinked(t *testing.T) {
 	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
-	msg := &mockMessenger{updates: make(chan tgbotapi.Update)}
-	b := New(Config{
-		API: msg,
+	msg := &mockMessenger{}
+	b, err := New(Config{
+		TelegramClient: msg,
 		Monitor: &mockMonitor{
 			notLink: true,
 			today: tutorapi.Schedule{
@@ -196,6 +201,7 @@ func TestPollOnce_skipsNotLinked(t *testing.T) {
 		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 		PollInterval: time.Minute,
 	})
+	require.NoError(t, err)
 	b.chats.remember(1, 99)
 
 	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
@@ -203,7 +209,7 @@ func TestPollOnce_skipsNotLinked(t *testing.T) {
 }
 
 func TestRunPoll_disabledWaitsForCancel(t *testing.T) {
-	b := newTestBot(&mockMessenger{updates: make(chan tgbotapi.Update)}, &mockMonitor{})
+	b := newTestBot(&mockMessenger{}, &mockMonitor{})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- b.runPoll(ctx) }()

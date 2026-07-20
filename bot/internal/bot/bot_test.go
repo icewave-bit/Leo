@@ -8,7 +8,8 @@ import (
 	"testing"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	telegram "github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -17,29 +18,28 @@ import (
 
 type mockMessenger struct {
 	mu      sync.Mutex
-	sent    []tgbotapi.Chattable
-	updates chan tgbotapi.Update
+	sent    []*telegram.SendMessageParams
 	sendErr error
 }
 
-func (m *mockMessenger) Send(c tgbotapi.Chattable) (tgbotapi.Message, error) {
+func (m *mockMessenger) SendMessage(_ context.Context, params *telegram.SendMessageParams) (*models.Message, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.sent = append(m.sent, c)
+	m.sent = append(m.sent, params)
 	if m.sendErr != nil {
-		return tgbotapi.Message{}, m.sendErr
+		return nil, m.sendErr
 	}
-	return tgbotapi.Message{MessageID: 1}, nil
+	return &models.Message{ID: 1}, nil
 }
 
-func (m *mockMessenger) GetUpdatesChan(_ tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel {
-	return m.updates
+func (m *mockMessenger) Start(ctx context.Context) {
+	<-ctx.Done()
 }
 
-func (m *mockMessenger) messages() []tgbotapi.Chattable {
+func (m *mockMessenger) messages() []*telegram.SendMessageParams {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]tgbotapi.Chattable, len(m.sent))
+	out := make([]*telegram.SendMessageParams, len(m.sent))
 	copy(out, m.sent)
 	return out
 }
@@ -107,41 +107,45 @@ func (m *mockMonitor) Debt(_ context.Context, _ int64) ([]tutorapi.Student, erro
 	return nil, nil
 }
 
-func newTestBot(api Messenger, monitor Monitor) *Bot {
-	return New(Config{
-		API:          api,
-		Monitor:      monitor,
-		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
-		PollInterval: 0,
+func newTestBot(api TelegramClient, monitor Monitor) *Bot {
+	b, err := New(Config{
+		TelegramClient: api,
+		Monitor:        monitor,
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PollInterval:   0,
 	})
+	if err != nil {
+		panic(err)
+	}
+	return b
 }
 
 func TestHandleUpdate_help(t *testing.T) {
-	msg := &mockMessenger{updates: make(chan tgbotapi.Update)}
+	msg := &mockMessenger{}
 	b := newTestBot(msg, &mockMonitor{})
 
-	require.NoError(t, b.handleUpdate(context.Background(), tgbotapi.Update{
-		Message: &tgbotapi.Message{
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		Message: &models.Message{
 			Text: "/help",
-			Chat: &tgbotapi.Chat{ID: 7},
-			From: &tgbotapi.User{ID: 1},
+			Chat: models.Chat{ID: 7},
+			From: &models.User{ID: 1},
 		},
 	}))
 	require.Len(t, msg.messages(), 1)
-	out := msg.messages()[0].(tgbotapi.MessageConfig)
+	out := msg.messages()[0]
 	assert.Contains(t, out.Text, "/today")
 }
 
 func TestHandleUpdate_link(t *testing.T) {
-	msg := &mockMessenger{updates: make(chan tgbotapi.Update)}
+	msg := &mockMessenger{}
 	mon := &mockMonitor{}
 	b := newTestBot(msg, mon)
 
-	require.NoError(t, b.handleUpdate(context.Background(), tgbotapi.Update{
-		Message: &tgbotapi.Message{
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		Message: &models.Message{
 			Text: "/link ab12",
-			Chat: &tgbotapi.Chat{ID: 7},
-			From: &tgbotapi.User{ID: 99, UserName: "fedor"},
+			Chat: models.Chat{ID: 7},
+			From: &models.User{ID: 99, Username: "fedor"},
 		},
 	}))
 
@@ -149,28 +153,28 @@ func TestHandleUpdate_link(t *testing.T) {
 	assert.Equal(t, int64(99), mon.linkIn.TelegramUserID)
 	assert.Equal(t, "fedor", mon.linkIn.TelegramUsername)
 
-	out := msg.messages()[0].(tgbotapi.MessageConfig)
+	out := msg.messages()[0]
 	assert.Contains(t, out.Text, "Anna")
 }
 
 func TestHandleUpdate_notLinked(t *testing.T) {
-	msg := &mockMessenger{updates: make(chan tgbotapi.Update)}
+	msg := &mockMessenger{}
 	b := newTestBot(msg, &mockMonitor{notLink: true})
 
-	require.NoError(t, b.handleUpdate(context.Background(), tgbotapi.Update{
-		Message: &tgbotapi.Message{
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		Message: &models.Message{
 			Text: "/today",
-			Chat: &tgbotapi.Chat{ID: 7},
-			From: &tgbotapi.User{ID: 1},
+			Chat: models.Chat{ID: 7},
+			From: &models.User{ID: 1},
 		},
 	}))
 
-	out := msg.messages()[0].(tgbotapi.MessageConfig)
+	out := msg.messages()[0]
 	assert.Contains(t, out.Text, "/link")
 }
 
 func TestHandleUpdate_today(t *testing.T) {
-	msg := &mockMessenger{updates: make(chan tgbotapi.Update)}
+	msg := &mockMessenger{}
 	b := newTestBot(msg, &mockMonitor{
 		today: tutorapi.Schedule{
 			Timezone: "UTC",
@@ -183,28 +187,28 @@ func TestHandleUpdate_today(t *testing.T) {
 		},
 	})
 
-	require.NoError(t, b.handleUpdate(context.Background(), tgbotapi.Update{
-		Message: &tgbotapi.Message{
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		Message: &models.Message{
 			Text: "/today@For_Leo_Bot",
-			Chat: &tgbotapi.Chat{ID: 7},
-			From: &tgbotapi.User{ID: 1},
+			Chat: models.Chat{ID: 7},
+			From: &models.User{ID: 1},
 		},
 	}))
 
-	out := msg.messages()[0].(tgbotapi.MessageConfig)
+	out := msg.messages()[0]
 	assert.Contains(t, out.Text, "Leo")
 	assert.Contains(t, out.Text, "запланирован")
 }
 
 func TestHandleUpdate_remembersChat(t *testing.T) {
-	msg := &mockMessenger{updates: make(chan tgbotapi.Update)}
+	msg := &mockMessenger{}
 	b := newTestBot(msg, &mockMonitor{})
 
-	require.NoError(t, b.handleUpdate(context.Background(), tgbotapi.Update{
-		Message: &tgbotapi.Message{
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		Message: &models.Message{
 			Text: "/help",
-			Chat: &tgbotapi.Chat{ID: 42},
-			From: &tgbotapi.User{ID: 7},
+			Chat: models.Chat{ID: 42},
+			From: &models.User{ID: 7},
 		},
 	}))
 
@@ -213,14 +217,14 @@ func TestHandleUpdate_remembersChat(t *testing.T) {
 }
 
 func TestHandleUpdate_ignoresNonCommand(t *testing.T) {
-	msg := &mockMessenger{updates: make(chan tgbotapi.Update)}
+	msg := &mockMessenger{}
 	b := newTestBot(msg, &mockMonitor{})
 
-	require.NoError(t, b.handleUpdate(context.Background(), tgbotapi.Update{
-		Message: &tgbotapi.Message{
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		Message: &models.Message{
 			Text: "hello",
-			Chat: &tgbotapi.Chat{ID: 7},
-			From: &tgbotapi.User{ID: 1},
+			Chat: models.Chat{ID: 7},
+			From: &models.User{ID: 1},
 		},
 	}))
 	assert.Empty(t, msg.messages())
@@ -228,7 +232,7 @@ func TestHandleUpdate_ignoresNonCommand(t *testing.T) {
 }
 
 func TestRun_stopsOnContextCancel(t *testing.T) {
-	msg := &mockMessenger{updates: make(chan tgbotapi.Update)}
+	msg := &mockMessenger{}
 	b := newTestBot(msg, &mockMonitor{})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -252,4 +256,12 @@ func TestParseCommand(t *testing.T) {
 	cmd, arg := parseCommand("/link@Bot AB12")
 	assert.Equal(t, "/link", cmd)
 	assert.Equal(t, "AB12", arg)
+}
+
+func TestNew_requiresTelegramClientOrToken(t *testing.T) {
+	_, err := New(Config{
+		Monitor: &mockMonitor{},
+		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	require.Error(t, err)
 }

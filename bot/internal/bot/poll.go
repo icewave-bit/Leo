@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	telegram "github.com/go-telegram/bot"
 
 	"github.com/fedortarasov/leo-bot/internal/tutorapi"
 )
@@ -80,14 +80,14 @@ func (b *Bot) pollUser(ctx context.Context, telegramUserID, chatID int64, now ti
 	}
 
 	for _, lesson := range schedule.Lessons {
-		if err := b.maybeRemind(chatID, lesson, schedule.Timezone, now, tutor.TelegramNotify); err != nil {
+		if err := b.maybeRemind(ctx, chatID, lesson, schedule.Timezone, now, tutor.TelegramNotify); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (b *Bot) maybeRemind(chatID int64, lesson tutorapi.Lesson, timezone string, now time.Time, notify tutorapi.TelegramNotify) error {
+func (b *Bot) maybeRemind(ctx context.Context, chatID int64, lesson tutorapi.Lesson, timezone string, now time.Time, notify tutorapi.TelegramNotify) error {
 	if lesson.Status != "planned" {
 		return nil
 	}
@@ -113,9 +113,12 @@ func (b *Bot) maybeRemind(chatID int64, lesson tutorapi.Lesson, timezone string,
 	}
 
 	text := b.formatReminder(lesson, timezone, lead)
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.DisableNotification = notify.Silent
-	if _, err := b.api.Send(msg); err != nil {
+	msg := &telegram.SendMessageParams{
+		ChatID:              chatID,
+		Text:                text,
+		DisableNotification: notify.Silent,
+	}
+	if _, err := b.api.SendMessage(ctx, msg); err != nil {
 		return fmt.Errorf("send reminder: %w", err)
 	}
 	return nil

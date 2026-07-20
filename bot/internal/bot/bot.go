@@ -8,7 +8,8 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	telegram "github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 
 	"github.com/fedortarasov/leo-bot/internal/tutorapi"
 )
@@ -22,13 +23,13 @@ type Monitor interface {
 	Debt(ctx context.Context, telegramUserID int64) ([]tutorapi.Student, error)
 }
 
-type Messenger interface {
-	Send(c tgbotapi.Chattable) (tgbotapi.Message, error)
-	GetUpdatesChan(config tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel
+type TelegramClient interface {
+	SendMessage(ctx context.Context, params *telegram.SendMessageParams) (*models.Message, error)
+	Start(ctx context.Context)
 }
 
 type Bot struct {
-	api          Messenger
+	api          TelegramClient
 	monitor      Monitor
 	logger       *slog.Logger
 	pollInterval time.Duration
@@ -37,21 +38,49 @@ type Bot struct {
 }
 
 type Config struct {
-	API          Messenger
-	Monitor      Monitor
-	Logger       *slog.Logger
-	PollInterval time.Duration
+	TelegramClient TelegramClient
+	TelegramToken  string
+	Monitor        Monitor
+	Logger         *slog.Logger
+	PollInterval   time.Duration
 }
 
-func New(cfg Config) *Bot {
-	return &Bot{
-		api:          cfg.API,
+func New(cfg Config) (*Bot, error) {
+	if cfg.Logger == nil {
+		cfg.Logger = slog.Default()
+	}
+
+	b := &Bot{
 		monitor:      cfg.Monitor,
 		logger:       cfg.Logger,
 		pollInterval: cfg.PollInterval,
 		chats:        newChatRegistry(),
 		sent:         newSentReminders(),
 	}
+
+	switch {
+	case cfg.TelegramClient != nil:
+		b.api = cfg.TelegramClient
+	case cfg.TelegramToken != "":
+		tg, err := telegram.New(cfg.TelegramToken, telegram.WithDefaultHandler(func(ctx context.Context, _ *telegram.Bot, update *models.Update) {
+			if err := b.handleUpdate(ctx, update); err != nil {
+				b.logger.Error("handle update", "err", err)
+			}
+		}))
+		if err != nil {
+			return nil, fmt.Errorf("create telegram bot: %w", err)
+		}
+		me, err := tg.GetMe(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("get telegram bot user: %w", err)
+		}
+		b.logger.Info("telegram authorized", "username", me.Username)
+		b.api = tg
+	default:
+		return nil, errors.New("TelegramClient or TelegramToken is required")
+	}
+
+	return b, nil
 }
 
 func (b *Bot) Run(ctx context.Context) error {
@@ -68,27 +97,11 @@ func (b *Bot) Run(ctx context.Context) error {
 }
 
 func (b *Bot) runUpdates(ctx context.Context) error {
-	cfg := tgbotapi.NewUpdate(0)
-	cfg.Timeout = 60
-
-	updates := b.api.GetUpdatesChan(cfg)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case update, ok := <-updates:
-			if !ok {
-				return fmt.Errorf("updates channel closed")
-			}
-			if err := b.handleUpdate(ctx, update); err != nil {
-				b.logger.Error("handle update", "err", err)
-			}
-		}
-	}
+	b.api.Start(ctx)
+	return ctx.Err()
 }
 
-func (b *Bot) handleUpdate(ctx context.Context, update tgbotapi.Update) error {
+func (b *Bot) handleUpdate(ctx context.Context, update *models.Update) error {
 	if update.Message == nil || update.Message.Text == "" || update.Message.From == nil {
 		return nil
 	}
@@ -104,14 +117,17 @@ func (b *Bot) handleUpdate(ctx context.Context, update tgbotapi.Update) error {
 		cmd:            cmd,
 		arg:            arg,
 		telegramUserID: update.Message.From.ID,
-		username:       update.Message.From.UserName,
+		username:       update.Message.From.Username,
 	})
 	if err != nil {
 		text = userFacingError(err)
 	}
 
-	reply := tgbotapi.NewMessage(update.Message.Chat.ID, text)
-	if _, err := b.api.Send(reply); err != nil {
+	reply := &telegram.SendMessageParams{
+		ChatID: update.Message.Chat.ID,
+		Text:   text,
+	}
+	if _, err := b.api.SendMessage(ctx, reply); err != nil {
 		return fmt.Errorf("send message: %w", err)
 	}
 	return nil
