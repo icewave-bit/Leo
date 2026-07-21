@@ -14,6 +14,8 @@ import (
 	"github.com/fedortarasov/leo-bot/internal/tutorapi"
 )
 
+const telegramPollTimeout = time.Minute
+
 type Monitor interface {
 	Link(ctx context.Context, in tutorapi.LinkInput) (tutorapi.Tutor, error)
 	Me(ctx context.Context, telegramUserID int64) (tutorapi.Tutor, error)
@@ -49,9 +51,12 @@ type Bot struct {
 type Config struct {
 	TelegramClient TelegramClient
 	TelegramToken  string
-	Monitor        Monitor
-	Logger         *slog.Logger
-	PollInterval   time.Duration
+	// TelegramProxy is an optional proxy URL for Telegram API traffic only
+	// (e.g. socks5h://100.115.21.125:1080). LeO API calls are never proxied.
+	TelegramProxy string
+	Monitor       Monitor
+	Logger        *slog.Logger
+	PollInterval  time.Duration
 }
 
 func New(cfg Config) (*Bot, error) {
@@ -71,11 +76,19 @@ func New(cfg Config) (*Bot, error) {
 	case cfg.TelegramClient != nil:
 		b.api = cfg.TelegramClient
 	case cfg.TelegramToken != "":
-		tg, err := telegram.New(cfg.TelegramToken, telegram.WithDefaultHandler(func(ctx context.Context, _ *telegram.Bot, update *models.Update) {
-			if err := b.handleUpdate(ctx, update); err != nil {
-				b.logger.Error("handle update", "err", err)
-			}
-		}))
+		httpClient, err := newTelegramHTTPClient(cfg.TelegramProxy, telegramPollTimeout)
+		if err != nil {
+			return nil, err
+		}
+		opts := []telegram.Option{
+			telegram.WithHTTPClient(telegramPollTimeout, httpClient),
+			telegram.WithDefaultHandler(func(ctx context.Context, _ *telegram.Bot, update *models.Update) {
+				if err := b.handleUpdate(ctx, update); err != nil {
+					b.logger.Error("handle update", "err", err)
+				}
+			}),
+		}
+		tg, err := telegram.New(cfg.TelegramToken, opts...)
 		if err != nil {
 			return nil, fmt.Errorf("create telegram bot: %w", err)
 		}
@@ -83,7 +96,11 @@ func New(cfg Config) (*Bot, error) {
 		if err != nil {
 			return nil, fmt.Errorf("get telegram bot user: %w", err)
 		}
-		b.logger.Info("telegram authorized", "username", me.Username)
+		if cfg.TelegramProxy != "" {
+			b.logger.Info("telegram authorized", "username", me.Username, "proxy", cfg.TelegramProxy)
+		} else {
+			b.logger.Info("telegram authorized", "username", me.Username)
+		}
 		// Clear BotFather/API command menu — we use the reply keyboard instead.
 		if _, err := tg.DeleteMyCommands(context.Background(), &telegram.DeleteMyCommandsParams{}); err != nil {
 			return nil, fmt.Errorf("clear telegram commands: %w", err)

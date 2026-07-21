@@ -11,6 +11,7 @@ import (
 
 type options struct {
 	telegramToken string
+	telegramProxy string
 	apiURL        string
 	botAPIToken   string
 	pollInterval  time.Duration
@@ -23,6 +24,7 @@ func loadOptions() (options, error) {
 
 	opts := options{
 		telegramToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
+		telegramProxy: strings.TrimSpace(os.Getenv("TELEGRAM_PROXY")),
 		apiURL:        strings.TrimSpace(os.Getenv("TUTOR_MONITOR_API_URL")),
 		botAPIToken:   os.Getenv("BOT_API_TOKEN"),
 	}

@@ -66,6 +66,7 @@ services:
       dockerfile: Dockerfile
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_PROXY: ${TELEGRAM_PROXY:-}
       TUTOR_MONITOR_API_URL: http://server:${API_PORT:-3001}
       BOT_API_TOKEN: ${BOT_API_TOKEN:-change-me-to-a-long-random-bot-token}
       POLL_INTERVAL: ${POLL_INTERVAL:-1m}

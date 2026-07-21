@@ -33,6 +33,7 @@ func run() error {
 
 	leoBot, err := bot.New(bot.Config{
 		TelegramToken: opts.telegramToken,
+		TelegramProxy: opts.telegramProxy,
 		Monitor:       monitor,
 		Logger:        logger,
 		PollInterval:  opts.pollInterval,
