@@ -102,8 +102,9 @@ func New(cfg Config) (*Bot, error) {
 			b.logger.Info("telegram authorized", "username", me.Username)
 		}
 		// Clear BotFather/API command menu — we use the reply keyboard instead.
+		// Non-fatal: proxies sometimes return truncated bodies for this call.
 		if _, err := tg.DeleteMyCommands(context.Background(), &telegram.DeleteMyCommandsParams{}); err != nil {
-			return nil, fmt.Errorf("clear telegram commands: %w", err)
+			b.logger.Warn("clear telegram commands", "err", err)
 		}
 		b.api = tg
 	default:
