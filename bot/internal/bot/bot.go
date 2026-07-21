@@ -128,34 +128,37 @@ func (b *Bot) handleUpdate(ctx context.Context, update *models.Update) error {
 		username:       update.Message.From.Username,
 	}
 
-	var text string
+	var respText string
 	var err error
 
 	if b.chats.pending(userID) == pendingLink {
 		if cmd, _ := resolveInput(update.Message.Text); cmd == "" {
-			text, err = b.linkWithCode(ctx, req, strings.TrimSpace(update.Message.Text))
+			respText, err = b.linkWithCode(ctx, req, strings.TrimSpace(update.Message.Text))
 		} else {
 			b.chats.clearPending(userID)
 		}
 	}
 
-	if text == "" {
+	if respText == "" && err == nil {
 		cmd, arg := resolveInput(update.Message.Text)
 		if cmd == "" {
 			return nil
 		}
 		req.cmd = cmd
 		req.arg = arg
-		text, err = b.dispatch(ctx, req)
+		respText, err = b.dispatch(ctx, req)
 	}
 	if err != nil {
-		text = userFacingError(err)
+		respText = userFacingError(err)
+	}
+	if respText == "" {
+		return nil
 	}
 
 	role := b.chats.role(userID)
 	reply := &telegram.SendMessageParams{
 		ChatID:      chatID,
-		Text:        text,
+		Text:        respText,
 		ReplyMarkup: keyboardForRole(role),
 	}
 	if _, err := b.api.SendMessage(ctx, reply); err != nil {
@@ -474,11 +477,11 @@ func userFacingError(err error) string {
 		if apiErr.NotLinked() {
 			return "Telegram не привязан. Ученикам: /start. Репетиторам: нажмите «Привязать»"
 		}
-		if apiErr.NotFound() {
-			return "Ученик не найден. Попросите репетитора указать ваш Telegram @username в LeO."
-		}
 		if apiErr.Message != "" {
 			return apiErr.Message
+		}
+		if apiErr.NotFound() {
+			return "Ученик не найден. Попросите репетитора указать ваш Telegram @username в LeO."
 		}
 	}
 	return "Не удалось выполнить запрос. Попробуйте позже."

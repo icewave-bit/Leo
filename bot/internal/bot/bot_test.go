@@ -454,6 +454,34 @@ func TestHandleUpdate_linkTwoStep(t *testing.T) {
 	assert.Contains(t, out.Text, "Anna")
 }
 
+func TestHandleUpdate_linkTwoStep_failureStillReplies(t *testing.T) {
+	msg := &mockMessenger{}
+	b := newTestBot(msg, &mockMonitor{
+		linkErr: &tutorapi.Error{Code: "NOT_FOUND", Message: "Link code not found", Status: 404},
+	})
+
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		Message: &models.Message{
+			Text: btnLink,
+			Chat: models.Chat{ID: 7},
+			From: &models.User{ID: 99, Username: "fedor"},
+		},
+	}))
+
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		Message: &models.Message{
+			Text: "bad99",
+			Chat: models.Chat{ID: 7},
+			From: &models.User{ID: 99, Username: "fedor"},
+		},
+	}))
+
+	require.Len(t, msg.messages(), 2)
+	out := msg.messages()[1]
+	assert.NotEmpty(t, out.Text)
+	assert.Equal(t, pendingLink, b.chats.pending(99))
+}
+
 func TestHandleUpdate_remembersChat(t *testing.T) {
 	msg := &mockMessenger{}
 	b := newTestBot(msg, &mockMonitor{})
