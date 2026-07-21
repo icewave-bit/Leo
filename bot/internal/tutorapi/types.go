@@ -33,11 +33,12 @@ type StudentRegisterInput struct {
 }
 
 type TelegramNotify struct {
-	Enabled     bool `json:"enabled"`
-	LeadMinutes int  `json:"leadMinutes"` // 5 | 10 | 15 | 30 | 60
-	Silent      bool `json:"silent"`
-	Lessons     bool `json:"lessons"`
-	Personal    bool `json:"personal"`
+	Enabled          bool     `json:"enabled"`
+	LeadMinutes      int      `json:"leadMinutes"` // 5 | 10 | 15 | 30 | 60
+	Silent           bool     `json:"silent"`
+	Lessons          bool     `json:"lessons"`
+	Personal         bool     `json:"personal"`
+	PersonalGroupIds []string `json:"personalGroupIds"`
 }
 
 type Tutor struct {
@@ -59,12 +60,22 @@ type Lesson struct {
 	AcademicUnits int    `json:"academicUnits"`
 }
 
+type PersonalEvent struct {
+	ID          string `json:"id"`
+	GroupID     string `json:"groupId"`
+	GroupName   string `json:"groupName"`
+	Title       string `json:"title"`
+	StartUTC    string `json:"startUtc"`
+	DurationMin int    `json:"durationMin"`
+}
+
 type Schedule struct {
-	Timezone     string   `json:"timezone"`
-	WeekStartsOn string   `json:"weekStartsOn"`
-	From         string   `json:"from"`
-	To           string   `json:"to"`
-	Lessons      []Lesson `json:"lessons"`
+	Timezone     string          `json:"timezone"`
+	WeekStartsOn string          `json:"weekStartsOn"`
+	From         string          `json:"from"`
+	To           string          `json:"to"`
+	Lessons      []Lesson        `json:"lessons"`
+	Events       []PersonalEvent `json:"events"`
 }
 
 type Student struct {

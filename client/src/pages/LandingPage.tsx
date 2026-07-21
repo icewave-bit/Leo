@@ -188,8 +188,8 @@ export function LandingPage() {
         <div className="wrap">
           <div className="shead reveal">
             <span className="kicker">Возможности</span>
-            <h2>Шесть рабочих экранов — и ничего лишнего</h2>
-            <p>Всё, что нужно репетитору каждый день, в одном спокойном интерфейсе.</p>
+            <h2>В браузере и в Telegram — без лишнего</h2>
+            <p>Всё, что нужно репетитору каждый день: веб-приложение и бот в мессенджере.</p>
           </div>
           <div className="fgrid">
             {landingFeatures.map((feature) => (

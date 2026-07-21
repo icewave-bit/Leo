@@ -91,7 +91,7 @@ func (b *Bot) pollTutor(ctx context.Context, telegramUserID, chatID int64, now t
 	if !tutor.TelegramNotify.Enabled {
 		return nil
 	}
-	if !tutor.TelegramNotify.Lessons {
+	if !tutor.TelegramNotify.Lessons && !tutor.TelegramNotify.Personal {
 		return nil
 	}
 
@@ -104,9 +104,18 @@ func (b *Bot) pollTutor(ctx context.Context, telegramUserID, chatID int64, now t
 		return err
 	}
 
-	for _, lesson := range schedule.Lessons {
-		if err := b.maybeRemind(ctx, chatID, lesson, schedule.Timezone, now, tutor.TelegramNotify, false); err != nil {
-			return err
+	if tutor.TelegramNotify.Lessons {
+		for _, lesson := range schedule.Lessons {
+			if err := b.maybeRemindLesson(ctx, chatID, lesson, schedule.Timezone, now, tutor.TelegramNotify, false); err != nil {
+				return err
+			}
+		}
+	}
+	if tutor.TelegramNotify.Personal {
+		for _, event := range schedule.Events {
+			if err := b.maybeRemindPersonal(ctx, chatID, event, schedule.Timezone, now, tutor.TelegramNotify); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -129,14 +138,14 @@ func (b *Bot) pollStudent(ctx context.Context, telegramUserID, chatID int64, now
 		Lessons:     true,
 	}
 	for _, lesson := range schedule.Lessons {
-		if err := b.maybeRemind(ctx, chatID, lesson, schedule.Timezone, now, notify, true); err != nil {
+		if err := b.maybeRemindLesson(ctx, chatID, lesson, schedule.Timezone, now, notify, true); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (b *Bot) maybeRemind(
+func (b *Bot) maybeRemindLesson(
 	ctx context.Context,
 	chatID int64,
 	lesson tutorapi.Lesson,
@@ -155,25 +164,59 @@ func (b *Bot) maybeRemind(
 	}
 
 	lead := time.Duration(notify.LeadMinutes) * time.Minute
-	if lead <= 0 {
+	if !inReminderWindow(now, start, lead) {
 		return nil
 	}
 
-	windowStart := start.Add(-lead)
-	if now.Before(windowStart) || !now.Before(start) {
-		return nil
-	}
-
-	key := b.reminderKey(chatID, lesson)
+	key := b.lessonReminderKey(chatID, lesson)
 	if b.sent.seenOrMark(key) {
 		return nil
 	}
 
-	text := b.formatReminder(lesson, timezone, lead, forStudent)
+	text := b.formatLessonReminder(lesson, timezone, lead, forStudent)
+	return b.sendReminder(ctx, chatID, text, notify.Silent)
+}
+
+func (b *Bot) maybeRemindPersonal(
+	ctx context.Context,
+	chatID int64,
+	event tutorapi.PersonalEvent,
+	timezone string,
+	now time.Time,
+	notify tutorapi.TelegramNotify,
+) error {
+	start, err := time.Parse(time.RFC3339, event.StartUTC)
+	if err != nil {
+		return fmt.Errorf("parse personal event start: %w", err)
+	}
+
+	lead := time.Duration(notify.LeadMinutes) * time.Minute
+	if !inReminderWindow(now, start, lead) {
+		return nil
+	}
+
+	key := b.personalReminderKey(chatID, event)
+	if b.sent.seenOrMark(key) {
+		return nil
+	}
+
+	text := b.formatPersonalReminder(event, timezone, lead)
+	return b.sendReminder(ctx, chatID, text, notify.Silent)
+}
+
+func inReminderWindow(now, start time.Time, lead time.Duration) bool {
+	if lead <= 0 {
+		return false
+	}
+	windowStart := start.Add(-lead)
+	return !now.Before(windowStart) && now.Before(start)
+}
+
+func (b *Bot) sendReminder(ctx context.Context, chatID int64, text string, silent bool) error {
 	msg := &telegram.SendMessageParams{
 		ChatID:              chatID,
 		Text:                text,
-		DisableNotification: notify.Silent,
+		DisableNotification: silent,
 	}
 	if _, err := b.api.SendMessage(ctx, msg); err != nil {
 		return fmt.Errorf("send reminder: %w", err)
@@ -181,14 +224,21 @@ func (b *Bot) maybeRemind(
 	return nil
 }
 
-func (b *Bot) reminderKey(chatID int64, lesson tutorapi.Lesson) string {
+func (b *Bot) lessonReminderKey(chatID int64, lesson tutorapi.Lesson) string {
 	if lesson.ID != "" {
-		return fmt.Sprintf("%d:%s", chatID, lesson.ID)
+		return fmt.Sprintf("%d:lesson:%s", chatID, lesson.ID)
 	}
-	return fmt.Sprintf("%d:%s:%s", chatID, lesson.StartUTC, lesson.StudentName)
+	return fmt.Sprintf("%d:lesson:%s:%s", chatID, lesson.StartUTC, lesson.StudentName)
 }
 
-func (b *Bot) formatReminder(lesson tutorapi.Lesson, timezone string, lead time.Duration, forStudent bool) string {
+func (b *Bot) personalReminderKey(chatID int64, event tutorapi.PersonalEvent) string {
+	if event.ID != "" {
+		return fmt.Sprintf("%d:personal:%s", chatID, event.ID)
+	}
+	return fmt.Sprintf("%d:personal:%s:%s", chatID, event.StartUTC, event.Title)
+}
+
+func (b *Bot) formatLessonReminder(lesson tutorapi.Lesson, timezone string, lead time.Duration, forStudent bool) string {
 	when := formatInZone(lesson.StartUTC, timezone, "15:04")
 	if forStudent {
 		return fmt.Sprintf("Напоминание: через %s урок (%s)", formatLead(lead), when)
@@ -198,6 +248,11 @@ func (b *Bot) formatReminder(lesson tutorapi.Lesson, timezone string, lead time.
 		lesson.StudentName,
 		when,
 	)
+}
+
+func (b *Bot) formatPersonalReminder(event tutorapi.PersonalEvent, timezone string, lead time.Duration) string {
+	when := formatInZone(event.StartUTC, timezone, "15:04")
+	return fmt.Sprintf("Напоминание: через %s — %s (%s)", formatLead(lead), event.Title, when)
 }
 
 func formatLead(lead time.Duration) string {

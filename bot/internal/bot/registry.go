@@ -12,9 +12,17 @@ const (
 	roleStudent botRole = "student"
 )
 
+type pendingAction string
+
+const (
+	pendingNone pendingAction = ""
+	pendingLink pendingAction = "link"
+)
+
 type chatEntry struct {
-	chatID int64
-	role   botRole
+	chatID  int64
+	role    botRole
+	pending pendingAction
 }
 
 type chatRegistry struct {
@@ -46,6 +54,24 @@ func (r *chatRegistry) role(telegramUserID int64) botRole {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.chats[telegramUserID].role
+}
+
+func (r *chatRegistry) pending(telegramUserID int64) pendingAction {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.chats[telegramUserID].pending
+}
+
+func (r *chatRegistry) setPending(telegramUserID int64, action pendingAction) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	entry := r.chats[telegramUserID]
+	entry.pending = action
+	r.chats[telegramUserID] = entry
+}
+
+func (r *chatRegistry) clearPending(telegramUserID int64) {
+	r.setPending(telegramUserID, pendingNone)
 }
 
 func (r *chatRegistry) snapshot() map[int64]int64 {

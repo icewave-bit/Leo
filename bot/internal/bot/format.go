@@ -2,6 +2,7 @@ package bot
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	_ "time/tzdata" // IANA zones for Alpine/scratch images without OS tzdata
@@ -28,15 +29,36 @@ func formatNotifySummary(n tutorapi.TelegramNotify) string {
 }
 
 func (b *Bot) formatSchedule(title string, schedule tutorapi.Schedule) string {
-	if len(schedule.Lessons) == 0 {
-		return title + "\nНет уроков"
+	type item struct {
+		start string
+		line  string
 	}
+	items := make([]item, 0, len(schedule.Lessons)+len(schedule.Events))
+	for _, lesson := range schedule.Lessons {
+		items = append(items, item{
+			start: lesson.StartUTC,
+			line:  b.formatLessonLine(lesson, schedule.Timezone),
+		})
+	}
+	for _, event := range schedule.Events {
+		items = append(items, item{
+			start: event.StartUTC,
+			line:  b.formatPersonalEventLine(event, schedule.Timezone),
+		})
+	}
+	if len(items) == 0 {
+		return title + "\nНет записей"
+	}
+
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].start < items[j].start
+	})
 
 	var buf strings.Builder
 	buf.WriteString(title)
-	for _, lesson := range schedule.Lessons {
+	for _, it := range items {
 		buf.WriteByte('\n')
-		buf.WriteString(b.formatLessonLine(lesson, schedule.Timezone))
+		buf.WriteString(it.line)
 	}
 	return buf.String()
 }
@@ -54,6 +76,15 @@ func (b *Bot) formatLessonLine(lesson tutorapi.Lesson, timezone string) string {
 		lesson.DurationMin,
 		paid,
 	)
+}
+
+func (b *Bot) formatPersonalEventLine(event tutorapi.PersonalEvent, timezone string) string {
+	when := formatInZone(event.StartUTC, timezone, "Mon 02.01 15:04")
+	group := strings.TrimSpace(event.GroupName)
+	if group == "" {
+		return fmt.Sprintf("• %s — %s (личное, %d мин)", when, event.Title, event.DurationMin)
+	}
+	return fmt.Sprintf("• %s — %s (%s, %d мин)", when, event.Title, group, event.DurationMin)
 }
 
 func (b *Bot) formatStudents(title string, students []tutorapi.Student) string {

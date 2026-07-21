@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { buildOpenSlotsForTutor } from '../botOpenSlots.js';
 import { loadOpenLessonDebts } from '../billingDebt.js';
 import { query } from '../db.js';
 import { AppError } from '../errors.js';
@@ -8,7 +9,7 @@ import { toBotPersonalEvent, toLesson, toStudent, toTutor, type LessonRow, type 
 import { requireBotAuth, requireBotBearer } from '../middleware/requireBotAuth.js';
 import { topUpRecurringPersonalSchedules } from '../personalRecurringSchedule.js';
 import { topUpRecurringSchedules } from '../recurringSchedule.js';
-import { zonedDayRangeUtc, zonedWeekRangeUtc } from '../scheduleSlots.js';
+import { zonedDayOffsetRangeUtc, zonedDayRangeUtc, zonedWeekRangeUtc } from '../scheduleSlots.js';
 import type { WeekStartsOn } from '../types.js';
 import { validate } from '../validate.js';
 
@@ -105,16 +106,35 @@ botRouter.get('/me', async (req, res, next) => {
   }
 });
 
-async function loadTutorPrefs(tutorId: string): Promise<{ timezone: string; weekStartsOn: WeekStartsOn }> {
-  const result = await query<{ timezone: string; week_starts_on: WeekStartsOn }>(
-    'SELECT timezone, week_starts_on FROM tutors WHERE id = $1',
+type TutorSchedulePrefs = {
+  timezone: string;
+  weekStartsOn: WeekStartsOn;
+  notifyPersonal: boolean;
+  personalGroupIds: string[];
+};
+
+async function loadTutorPrefs(tutorId: string): Promise<TutorSchedulePrefs> {
+  const result = await query<{
+    timezone: string;
+    week_starts_on: WeekStartsOn;
+    telegram_notify_personal: boolean;
+    telegram_notify_personal_group_ids: string[] | null;
+  }>(
+    `SELECT timezone, week_starts_on,
+            telegram_notify_personal, telegram_notify_personal_group_ids
+     FROM tutors WHERE id = $1`,
     [tutorId],
   );
   const row = result.rows[0];
   if (!row) {
     throw new AppError('UNAUTHORIZED', 401, 'Authentication required');
   }
-  return { timezone: row.timezone, weekStartsOn: row.week_starts_on };
+  return {
+    timezone: row.timezone,
+    weekStartsOn: row.week_starts_on,
+    notifyPersonal: row.telegram_notify_personal,
+    personalGroupIds: row.telegram_notify_personal_group_ids ?? [],
+  };
 }
 
 async function listLessonsInRange(tutorId: string, from: Date, to: Date) {
@@ -138,16 +158,83 @@ async function listLessonsInRange(tutorId: string, from: Date, to: Date) {
   }));
 }
 
+async function listPersonalEventsInRange(
+  tutorId: string,
+  from: Date,
+  to: Date,
+  groupIds: string[],
+) {
+  await topUpRecurringPersonalSchedules(tutorId);
+
+  const params: unknown[] = [tutorId, from.toISOString(), to.toISOString()];
+  let groupFilter = '';
+  if (groupIds.length > 0) {
+    groupFilter = 'AND pe.group_id = ANY($4::uuid[])';
+    params.push(groupIds);
+  }
+
+  const result = await query<PersonalEventRow & { group_name: string }>(
+    `SELECT pe.id, pe.tutor_id, pe.group_id, pe.title, pe.start_utc, pe.duration_min, pe.notes,
+            pe.recurring_personal_schedule_id, pe.created_at, pe.updated_at,
+            peg.name AS group_name
+     FROM personal_events pe
+     JOIN personal_event_groups peg ON peg.id = pe.group_id
+     WHERE pe.tutor_id = $1
+       AND pe.start_utc >= $2 AND pe.start_utc < $3
+       ${groupFilter}
+     ORDER BY pe.start_utc`,
+    params,
+  );
+
+  return result.rows.map(toBotPersonalEvent);
+}
+
+async function listOptedInPersonalEvents(
+  prefs: TutorSchedulePrefs,
+  tutorId: string,
+  from: Date,
+  to: Date,
+) {
+  if (!prefs.notifyPersonal) {
+    return [];
+  }
+  return listPersonalEventsInRange(tutorId, from, to, prefs.personalGroupIds);
+}
+
 botRouter.get('/today', async (req, res, next) => {
   try {
     const prefs = await loadTutorPrefs(req.tutorId!);
     const { from, to } = zonedDayRangeUtc(new Date(), prefs.timezone);
-    const lessons = await listLessonsInRange(req.tutorId!, from, to);
+    const [lessons, events] = await Promise.all([
+      listLessonsInRange(req.tutorId!, from, to),
+      listOptedInPersonalEvents(prefs, req.tutorId!, from, to),
+    ]);
     res.json({
       timezone: prefs.timezone,
       from: from.toISOString(),
       to: to.toISOString(),
       lessons,
+      events,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+botRouter.get('/tomorrow', async (req, res, next) => {
+  try {
+    const prefs = await loadTutorPrefs(req.tutorId!);
+    const { from, to } = zonedDayOffsetRangeUtc(new Date(), prefs.timezone, 1);
+    const [lessons, events] = await Promise.all([
+      listLessonsInRange(req.tutorId!, from, to),
+      listOptedInPersonalEvents(prefs, req.tutorId!, from, to),
+    ]);
+    res.json({
+      timezone: prefs.timezone,
+      from: from.toISOString(),
+      to: to.toISOString(),
+      lessons,
+      events,
     });
   } catch (err) {
     next(err);
@@ -158,26 +245,13 @@ botRouter.get('/personal-events/today', async (req, res, next) => {
   try {
     const prefs = await loadTutorPrefs(req.tutorId!);
     const { from, to } = zonedDayRangeUtc(new Date(), prefs.timezone);
-
-    await topUpRecurringPersonalSchedules(req.tutorId!);
-
-    const result = await query<PersonalEventRow & { group_name: string }>(
-      `SELECT pe.id, pe.tutor_id, pe.group_id, pe.title, pe.start_utc, pe.duration_min, pe.notes,
-              pe.recurring_personal_schedule_id, pe.created_at, pe.updated_at,
-              peg.name AS group_name
-       FROM personal_events pe
-       JOIN personal_event_groups peg ON peg.id = pe.group_id
-       WHERE pe.tutor_id = $1
-         AND pe.start_utc >= $2 AND pe.start_utc < $3
-       ORDER BY pe.start_utc`,
-      [req.tutorId, from.toISOString(), to.toISOString()],
-    );
+    const events = await listOptedInPersonalEvents(prefs, req.tutorId!, from, to);
 
     res.json({
       timezone: prefs.timezone,
       from: from.toISOString(),
       to: to.toISOString(),
-      events: result.rows.map(toBotPersonalEvent),
+      events,
     });
   } catch (err) {
     next(err);
@@ -188,14 +262,26 @@ botRouter.get('/week', async (req, res, next) => {
   try {
     const prefs = await loadTutorPrefs(req.tutorId!);
     const { from, to } = zonedWeekRangeUtc(new Date(), prefs.timezone, prefs.weekStartsOn);
-    const lessons = await listLessonsInRange(req.tutorId!, from, to);
+    const [lessons, events] = await Promise.all([
+      listLessonsInRange(req.tutorId!, from, to),
+      listOptedInPersonalEvents(prefs, req.tutorId!, from, to),
+    ]);
     res.json({
       timezone: prefs.timezone,
       weekStartsOn: prefs.weekStartsOn,
       from: from.toISOString(),
       to: to.toISOString(),
       lessons,
+      events,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+botRouter.get('/open-slots', async (req, res, next) => {
+  try {
+    res.json(await buildOpenSlotsForTutor(req.tutorId!));
   } catch (err) {
     next(err);
   }

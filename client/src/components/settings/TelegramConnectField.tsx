@@ -279,7 +279,7 @@ export function TelegramConnectField({
 
           {notify.personal && groups.length > 0 ? (
             <div className={'telegram-notify__groups' + (prefsDisabled ? ' is-disabled' : '')}>
-              <p className="settings-card__hint">Группы для напоминаний</p>
+              <p className="settings-card__hint">Группы для бота (Сегодня / Неделя и напоминания)</p>
               {groups.map((group) => (
                 <label key={group.id} className="telegram-notify__check">
                   <input
@@ -298,7 +298,7 @@ export function TelegramConnectField({
                   <span>{group.name}</span>
                 </label>
               ))}
-              <p className="settings-card__hint">Пустой выбор — напоминания для всех групп</p>
+              <p className="settings-card__hint">Пустой выбор — все группы</p>
             </div>
           ) : null}
         </div>

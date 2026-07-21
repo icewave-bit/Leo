@@ -84,6 +84,18 @@ func (c *Client) Today(ctx context.Context, telegramUserID int64) (Schedule, err
 	return out, nil
 }
 
+func (c *Client) Tomorrow(ctx context.Context, telegramUserID int64) (Schedule, error) {
+	var out Schedule
+	if err := c.do(ctx, httpRequest{
+		method:         http.MethodGet,
+		path:           "/api/bot/tomorrow",
+		telegramUserID: telegramUserID,
+	}, &out); err != nil {
+		return Schedule{}, err
+	}
+	return out, nil
+}
+
 func (c *Client) Week(ctx context.Context, telegramUserID int64) (Schedule, error) {
 	var out Schedule
 	if err := c.do(ctx, httpRequest{
@@ -92,6 +104,18 @@ func (c *Client) Week(ctx context.Context, telegramUserID int64) (Schedule, erro
 		telegramUserID: telegramUserID,
 	}, &out); err != nil {
 		return Schedule{}, err
+	}
+	return out, nil
+}
+
+func (c *Client) OpenSlots(ctx context.Context, telegramUserID int64) (OpenSlots, error) {
+	var out OpenSlots
+	if err := c.do(ctx, httpRequest{
+		method:         http.MethodGet,
+		path:           "/api/bot/open-slots",
+		telegramUserID: telegramUserID,
+	}, &out); err != nil {
+		return OpenSlots{}, err
 	}
 	return out, nil
 }

@@ -104,15 +104,25 @@ export function wallClockToUtc(
   return new Date(utc);
 }
 
-/** [start, end) of the calendar day containing `now` in `timezone`. */
-export function zonedDayRangeUtc(now: Date, timezone: string): { from: Date; to: Date } {
-  const key = dateKeyInTz(now, timezone);
-  const { year, month, day } = parseDateOnly(key);
+/** [start, end) of the calendar day `dayOffset` days from today in `timezone` (0 = today). */
+export function zonedDayOffsetRangeUtc(
+  now: Date,
+  timezone: string,
+  dayOffset: number,
+): { from: Date; to: Date } {
+  const todayKey = dateKeyInTz(now, timezone);
+  const dayKey = addDaysToDateOnly(todayKey, dayOffset);
+  const { year, month, day } = parseDateOnly(dayKey);
   const from = wallClockToUtc(year, month, day, 0, 0, timezone);
-  const next = addDaysToDateOnly(key, 1);
+  const next = addDaysToDateOnly(dayKey, 1);
   const n = parseDateOnly(next);
   const to = wallClockToUtc(n.year, n.month, n.day, 0, 0, timezone);
   return { from, to };
+}
+
+/** [start, end) of the calendar day containing `now` in `timezone`. */
+export function zonedDayRangeUtc(now: Date, timezone: string): { from: Date; to: Date } {
+  return zonedDayOffsetRangeUtc(now, timezone, 0);
 }
 
 /**

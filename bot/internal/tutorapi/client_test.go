@@ -85,8 +85,9 @@ func TestClient_Me_decodesTelegramNotify(t *testing.T) {
 					"enabled":     true,
 					"leadMinutes": 15,
 					"silent":      true,
-					"lessons":     true,
-					"personal":    false,
+					"lessons":           true,
+					"personal":          false,
+					"personalGroupIds":  []string{},
 				},
 			},
 		})
@@ -106,6 +107,7 @@ func TestClient_Me_decodesTelegramNotify(t *testing.T) {
 	assert.True(t, tutor.TelegramNotify.Silent)
 	assert.True(t, tutor.TelegramNotify.Lessons)
 	assert.False(t, tutor.TelegramNotify.Personal)
+	assert.Empty(t, tutor.TelegramNotify.PersonalGroupIds)
 }
 
 func TestClient_NotLinked(t *testing.T) {

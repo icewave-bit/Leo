@@ -121,6 +121,73 @@ func TestPollOnce_skipsWhenLessonsDisabled(t *testing.T) {
 				Enabled:     true,
 				LeadMinutes: 30,
 				Lessons:     false,
+				Personal:    false,
+			},
+		},
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PollInterval: time.Minute,
+	})
+	require.NoError(t, err)
+	b.chats.remember(1, 99)
+
+	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
+	assert.Empty(t, msg.messages())
+}
+
+func TestPollOnce_sendsPersonalReminderWhenOptedIn(t *testing.T) {
+	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
+	msg := &mockMessenger{}
+	b, err := New(Config{
+		TelegramClient: msg,
+		Monitor: &mockMonitor{
+			today: tutorapi.Schedule{
+				Timezone: "UTC",
+				Events: []tutorapi.PersonalEvent{{
+					ID:          "pe-1",
+					Title:       "Yoga",
+					StartUTC:    start.Format(time.RFC3339),
+					DurationMin: 45,
+					GroupName:   "Здоровье",
+				}},
+			},
+			telegramNotify: &tutorapi.TelegramNotify{
+				Enabled:     true,
+				LeadMinutes: 30,
+				Lessons:     false,
+				Personal:    true,
+			},
+		},
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PollInterval: time.Minute,
+	})
+	require.NoError(t, err)
+	b.chats.remember(1, 99)
+
+	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
+	require.Len(t, msg.messages(), 1)
+	assert.Contains(t, msg.messages()[0].Text, "Yoga")
+	assert.NotContains(t, msg.messages()[0].Text, "урок")
+}
+
+func TestPollOnce_skipsPersonalWhenNotOptedIn(t *testing.T) {
+	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
+	msg := &mockMessenger{}
+	b, err := New(Config{
+		TelegramClient: msg,
+		Monitor: &mockMonitor{
+			today: tutorapi.Schedule{
+				Timezone: "UTC",
+				Events: []tutorapi.PersonalEvent{{
+					ID:       "pe-1",
+					Title:    "Yoga",
+					StartUTC: start.Format(time.RFC3339),
+				}},
+			},
+			telegramNotify: &tutorapi.TelegramNotify{
+				Enabled:     true,
+				LeadMinutes: 30,
+				Lessons:     true,
+				Personal:    false,
 			},
 		},
 		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),

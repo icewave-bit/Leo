@@ -101,8 +101,22 @@ func (m *mockMonitor) Today(_ context.Context, _ int64) (tutorapi.Schedule, erro
 	return m.today, nil
 }
 
+func (m *mockMonitor) Tomorrow(_ context.Context, telegramUserID int64) (tutorapi.Schedule, error) {
+	return m.Today(context.Background(), telegramUserID)
+}
+
 func (m *mockMonitor) Week(_ context.Context, telegramUserID int64) (tutorapi.Schedule, error) {
 	return m.Today(context.Background(), telegramUserID)
+}
+
+func (m *mockMonitor) OpenSlots(_ context.Context, _ int64) (tutorapi.OpenSlots, error) {
+	if m.openSlots != nil {
+		return *m.openSlots, nil
+	}
+	if m.notLink {
+		return tutorapi.OpenSlots{}, &tutorapi.Error{Code: "TELEGRAM_NOT_LINKED", Message: "not linked", Status: 403}
+	}
+	return tutorapi.OpenSlots{Timezone: "UTC", Days: nil}, nil
 }
 
 func (m *mockMonitor) Students(_ context.Context, _ int64) ([]tutorapi.Student, error) {
@@ -203,7 +217,8 @@ func TestHandleUpdate_help(t *testing.T) {
 	}))
 	require.Len(t, msg.messages(), 1)
 	out := msg.messages()[0]
-	assert.Contains(t, out.Text, "/today")
+	assert.Contains(t, out.Text, "Сегодня")
+	assert.Contains(t, out.Text, "Слоты")
 }
 
 func TestHandleUpdate_link(t *testing.T) {
@@ -240,7 +255,7 @@ func TestHandleUpdate_notLinked(t *testing.T) {
 	}))
 
 	out := msg.messages()[0]
-	assert.Contains(t, out.Text, "/link")
+	assert.Contains(t, out.Text, "Привязать")
 }
 
 func TestHandleUpdate_today(t *testing.T) {
@@ -266,9 +281,101 @@ func TestHandleUpdate_today(t *testing.T) {
 	}))
 
 	out := msg.messages()[0]
+	assert.Contains(t, out.Text, "На сегодня")
 	assert.Contains(t, out.Text, "Leo")
 	assert.Contains(t, out.Text, "запланирован")
 	require.IsType(t, &models.ReplyKeyboardMarkup{}, out.ReplyMarkup)
+}
+
+func TestHandleUpdate_todayIncludesPersonalEvents(t *testing.T) {
+	msg := &mockMessenger{}
+	b := newTestBot(msg, &mockMonitor{
+		today: tutorapi.Schedule{
+			Timezone: "UTC",
+			Lessons: []tutorapi.Lesson{{
+				StartUTC:    "2026-07-20T12:00:00Z",
+				DurationMin: 60,
+				Status:      "planned",
+				StudentName: "Leo",
+			}},
+			Events: []tutorapi.PersonalEvent{{
+				StartUTC:    "2026-07-20T09:00:00Z",
+				Title:       "Yoga",
+				GroupName:   "Здоровье",
+				DurationMin: 45,
+			}},
+		},
+	})
+
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		Message: &models.Message{
+			Text: "/today",
+			Chat: models.Chat{ID: 7},
+			From: &models.User{ID: 1},
+		},
+	}))
+
+	out := msg.messages()[0]
+	assert.Contains(t, out.Text, "Yoga")
+	assert.Contains(t, out.Text, "Leo")
+}
+
+func TestHandleUpdate_tomorrow(t *testing.T) {
+	msg := &mockMessenger{}
+	b := newTestBot(msg, &mockMonitor{
+		today: tutorapi.Schedule{
+			Timezone: "UTC",
+			Lessons: []tutorapi.Lesson{{
+				StartUTC:    "2026-07-21T10:00:00Z",
+				DurationMin: 60,
+				Status:      "planned",
+				StudentName: "Leo",
+			}},
+		},
+	})
+
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		Message: &models.Message{
+			Text: btnTomorrow,
+			Chat: models.Chat{ID: 7},
+			From: &models.User{ID: 1},
+		},
+	}))
+
+	out := msg.messages()[0]
+	assert.Contains(t, out.Text, "На завтра")
+	assert.Contains(t, out.Text, "Leo")
+	kb, ok := out.ReplyMarkup.(*models.ReplyKeyboardMarkup)
+	require.True(t, ok)
+	assert.Equal(t, btnTomorrow, kb.Keyboard[0][1].Text)
+	assert.Equal(t, btnSlots, kb.Keyboard[1][1].Text)
+}
+
+func TestHandleUpdate_tutorSlots(t *testing.T) {
+	msg := &mockMessenger{}
+	b := newTestBot(msg, &mockMonitor{
+		openSlots: &tutorapi.OpenSlots{
+			Timezone: "UTC",
+			Days: []tutorapi.OpenSlotsDay{{
+				Date: "2026-07-21",
+				Ranges: []tutorapi.OpenSlotRange{
+					{StartHour: 10, EndHour: 12},
+				},
+			}},
+		},
+	})
+
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		Message: &models.Message{
+			Text: btnSlots,
+			Chat: models.Chat{ID: 7},
+			From: &models.User{ID: 1},
+		},
+	}))
+
+	out := msg.messages()[0]
+	assert.Contains(t, out.Text, "Свободные слоты")
+	assert.Contains(t, out.Text, "10:00")
 }
 
 func TestHandleUpdate_buttonToday(t *testing.T) {
@@ -311,7 +418,40 @@ func TestHandleUpdate_buttonLinkPrompt(t *testing.T) {
 	}))
 
 	out := msg.messages()[0]
-	assert.Contains(t, out.Text, "/link")
+	assert.Contains(t, out.Text, "код")
+	assert.Equal(t, pendingLink, b.chats.pending(1))
+}
+
+func TestHandleUpdate_linkTwoStep(t *testing.T) {
+	msg := &mockMessenger{}
+	mon := &mockMonitor{}
+	b := newTestBot(msg, mon)
+
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		Message: &models.Message{
+			Text: btnLink,
+			Chat: models.Chat{ID: 7},
+			From: &models.User{ID: 99, Username: "fedor"},
+		},
+	}))
+	require.Len(t, msg.messages(), 1)
+
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		Message: &models.Message{
+			Text: "ab12",
+			Chat: models.Chat{ID: 7},
+			From: &models.User{ID: 99, Username: "fedor"},
+		},
+	}))
+
+	assert.Equal(t, "ab12", mon.linkIn.Code)
+	assert.Equal(t, int64(99), mon.linkIn.TelegramUserID)
+	assert.Equal(t, "fedor", mon.linkIn.TelegramUsername)
+	assert.Equal(t, pendingNone, b.chats.pending(99))
+	assert.Equal(t, roleTutor, b.chats.role(99))
+
+	out := msg.messages()[1]
+	assert.Contains(t, out.Text, "Anna")
 }
 
 func TestHandleUpdate_remembersChat(t *testing.T) {
@@ -370,10 +510,11 @@ func TestHandleUpdate_studentStart(t *testing.T) {
 	assert.Equal(t, roleStudent, b.chats.role(55))
 	out := msg.messages()[0]
 	assert.Contains(t, out.Text, "Leo")
-	assert.Contains(t, out.Text, "/balance")
+	assert.Contains(t, out.Text, "Баланс")
 	kb, ok := out.ReplyMarkup.(*models.ReplyKeyboardMarkup)
 	require.True(t, ok)
-	assert.Equal(t, btnBalance, kb.Keyboard[0][1].Text)
+	assert.Equal(t, btnBalance, kb.Keyboard[1][1].Text)
+	assert.Equal(t, btnSlots, kb.Keyboard[1][0].Text)
 }
 
 func TestHandleUpdate_studentStartNotFound(t *testing.T) {
@@ -456,6 +597,12 @@ func TestResolveInput(t *testing.T) {
 	cmd, arg := resolveInput(btnWeek)
 	assert.Equal(t, "/week", cmd)
 	assert.Equal(t, "", arg)
+
+	cmd, arg = resolveInput(btnTomorrow)
+	assert.Equal(t, "/tomorrow", cmd)
+
+	cmd, arg = resolveInput(btnSlots)
+	assert.Equal(t, "/slots", cmd)
 
 	cmd, arg = resolveInput("/link@Bot AB12")
 	assert.Equal(t, "/link", cmd)

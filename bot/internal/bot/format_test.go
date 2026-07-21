@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/fedortarasov/leo-bot/internal/tutorapi"
@@ -36,7 +37,32 @@ func TestFormatTutor_notifyDisabled(t *testing.T) {
 
 func TestFormatSchedule_empty(t *testing.T) {
 	b := &Bot{}
-	assert.Equal(t, "Уроки на сегодня\nНет уроков", b.formatSchedule("Уроки на сегодня", tutorapi.Schedule{}))
+	assert.Equal(t, "На сегодня\nНет записей", b.formatSchedule("На сегодня", tutorapi.Schedule{}))
+}
+
+func TestFormatSchedule_interleavesPersonalEvents(t *testing.T) {
+	b := &Bot{}
+	text := b.formatSchedule("На сегодня", tutorapi.Schedule{
+		Timezone: "UTC",
+		Lessons: []tutorapi.Lesson{{
+			StartUTC:    "2026-07-20T12:00:00Z",
+			StudentName: "Leo",
+			Status:      "planned",
+			DurationMin: 60,
+		}},
+		Events: []tutorapi.PersonalEvent{{
+			StartUTC:    "2026-07-20T10:00:00Z",
+			Title:       "Yoga",
+			GroupName:   "Здоровье",
+			DurationMin: 45,
+		}},
+	})
+	assert.Contains(t, text, "Yoga")
+	assert.Contains(t, text, "Здоровье")
+	assert.Contains(t, text, "Leo")
+	yogaIdx := strings.Index(text, "Yoga")
+	leoIdx := strings.Index(text, "Leo")
+	assert.Greater(t, leoIdx, yogaIdx)
 }
 
 func TestFormatInZone_convertsUTCToTutorTimezone(t *testing.T) {
