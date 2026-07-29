@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	telegram "github.com/go-telegram/bot"
@@ -240,14 +241,27 @@ func (b *Bot) personalReminderKey(chatID int64, event tutorapi.PersonalEvent) st
 
 func (b *Bot) formatLessonReminder(lesson tutorapi.Lesson, timezone string, lead time.Duration, forStudent bool) string {
 	when := formatInZone(lesson.StartUTC, timezone, "15:04")
+	var text string
 	if forStudent {
-		return fmt.Sprintf("Напоминание: через %s урок (%s)", formatLead(lead), when)
+		text = fmt.Sprintf("Напоминание: через %s урок (%s)", formatLead(lead), when)
+	} else {
+		text = fmt.Sprintf("Напоминание: через %s урок с %s (%s)",
+			formatLead(lead),
+			lesson.StudentName,
+			when,
+		)
 	}
-	return fmt.Sprintf("Напоминание: через %s урок с %s (%s)",
-		formatLead(lead),
-		lesson.StudentName,
-		when,
-	)
+	if meet := lessonMeetURL(lesson); meet != "" {
+		text += "\n" + meet
+	}
+	return text
+}
+
+func lessonMeetURL(lesson tutorapi.Lesson) string {
+	if lesson.MeetURL == nil {
+		return ""
+	}
+	return strings.TrimSpace(*lesson.MeetURL)
 }
 
 func (b *Bot) formatPersonalReminder(event tutorapi.PersonalEvent, timezone string, lead time.Duration) string {

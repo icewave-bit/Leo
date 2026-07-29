@@ -3,6 +3,7 @@ package bot
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fedortarasov/leo-bot/internal/tutorapi"
 	"github.com/stretchr/testify/assert"
@@ -65,10 +66,32 @@ func TestFormatSchedule_interleavesPersonalEvents(t *testing.T) {
 	assert.Greater(t, leoIdx, yogaIdx)
 }
 
-func TestFormatInZone_convertsUTCToTutorTimezone(t *testing.T) {
-	// 14:00 UTC is 17:00 in Europe/Moscow (UTC+3).
-	assert.Equal(t, "17:00", formatInZone("2026-07-20T14:00:00Z", "Europe/Moscow", "15:04"))
-	assert.Equal(t, "Mon 20.07 17:00", formatInZone("2026-07-20T14:00:00Z", "Europe/Moscow", "Mon 02.01 15:04"))
+func TestFormatLessonReminder_includesMeetURL(t *testing.T) {
+	b := &Bot{}
+	meet := "https://meet.google.com/abc-defg-hij"
+	lesson := tutorapi.Lesson{
+		StartUTC:    "2026-07-20T14:00:00Z",
+		StudentName: "Leo",
+		MeetURL:     &meet,
+	}
+	tutorText := b.formatLessonReminder(lesson, "Europe/Moscow", 30*time.Minute, false)
+	assert.Contains(t, tutorText, "урок с Leo")
+	assert.Contains(t, tutorText, "17:00")
+	assert.Contains(t, tutorText, meet)
+
+	studentText := b.formatLessonReminder(lesson, "Europe/Moscow", 30*time.Minute, true)
+	assert.Contains(t, studentText, "урок (17:00)")
+	assert.NotContains(t, studentText, "с Leo")
+	assert.Contains(t, studentText, meet)
+}
+
+func TestFormatLessonReminder_omitsEmptyMeetURL(t *testing.T) {
+	b := &Bot{}
+	text := b.formatLessonReminder(tutorapi.Lesson{
+		StartUTC:    "2026-07-20T14:00:00Z",
+		StudentName: "Leo",
+	}, "UTC", 15*time.Minute, false)
+	assert.Equal(t, "Напоминание: через 15 мин урок с Leo (14:00)", text)
 }
 
 func TestFormatLessonLine_usesTimezone(t *testing.T) {

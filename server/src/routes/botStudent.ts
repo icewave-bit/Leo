@@ -231,9 +231,10 @@ async function listStudentLessonsInRange(
   await runAutoCompleteForTutor(tutorId, { from, to });
   await topUpRecurringSchedules(tutorId);
 
-  const result = await query<LessonRow>(
-    `SELECT ${LESSON_COLUMNS}
+  const result = await query<LessonRow & { meet_url: string | null }>(
+    `SELECT ${LESSON_COLUMNS}, s.meet_url
      FROM lessons l
+     JOIN students s ON s.id = l.student_id
      WHERE l.tutor_id = $1
        AND l.student_id = $2
        AND l.start_utc >= $3 AND l.start_utc < $4
@@ -241,7 +242,10 @@ async function listStudentLessonsInRange(
     [tutorId, studentId, from.toISOString(), to.toISOString()],
   );
 
-  return result.rows.map(toLesson);
+  return result.rows.map((row) => ({
+    ...toLesson(row),
+    meetUrl: row.meet_url,
+  }));
 }
 
 botStudentRouter.get('/week', async (req, res, next) => {

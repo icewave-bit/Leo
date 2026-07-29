@@ -20,6 +20,7 @@ import { PersonalEventGroupsField } from '../components/settings/PersonalEventGr
 import { PersonalEventOutlineField } from '../components/settings/PersonalEventOutlineField';
 import { DefaultBlockHoursField } from '../components/settings/DefaultBlockHoursField';
 import { TelegramConnectField } from '../components/settings/TelegramConnectField';
+import { CurrentTimeIndicatorCard } from '../components/settings/CurrentTimeIndicatorCard';
 import { ACADEMIC_HOUR_PRESETS, academicHourHint } from '../utils/academicHour';
 import { TAX_DISPLAY_OPTIONS, TAX_RATE_PRESETS } from '../utils/taxSettings';
 
@@ -244,6 +245,8 @@ export function SettingsPage() {
             </div>
           </section>
 
+          <CurrentTimeIndicatorCard />
+
           <section className="settings-card">
             <SettingsCardHeader icon={SETTINGS_CARD_ICONS.archive} title="Архив учеников" />
           <p className="settings-card__desc">
@@ -419,92 +422,97 @@ export function SettingsPage() {
               белорусские рубли по курсу НБРБ на дату пополнения.
             </p>
 
-            <p className="settings-card__hint">Ставка налога, %</p>
-            <div className="seg settings-presets">
-              {TAX_RATE_PRESETS.map((pct) => (
-                <button
-                  key={pct}
-                  type="button"
-                  className={
-                    'seg__btn' + (!taxRateCustom && taxRate === pct ? ' is-active' : '')
-                  }
-                  disabled={taxSaving || saving || weekSaving || replenishSaving}
-                  onClick={() => {
-                    setTaxRateCustom(false);
-                    void saveTaxRatePercent(pct);
-                  }}
-                >
-                  {pct}%
-                </button>
-              ))}
-              <button
-                type="button"
-                className={
-                  'seg__btn' + (taxRateCustom || !taxRateIsPreset ? ' is-active' : '')
-                }
-                disabled={taxSaving || saving || weekSaving || replenishSaving}
-                onClick={() => {
-                  setTaxRateCustom(true);
-                  setTaxRateDraft(String(taxRate));
-                }}
-              >
-                Другое
-              </button>
-            </div>
+            <details className="drawer-spoiler settings-taxes__spoiler">
+              <summary className="drawer-spoiler__summary">
+                <span className="drawer-spoiler__title">Параметры налогов</span>
+              </summary>
+              <div className="drawer-spoiler__body">
+                <p className="settings-card__hint">Ставка налога, %</p>
+                <div className="seg settings-presets">
+                  {TAX_RATE_PRESETS.map((pct) => (
+                    <button
+                      key={pct}
+                      type="button"
+                      className={
+                        'seg__btn' + (!taxRateCustom && taxRate === pct ? ' is-active' : '')
+                      }
+                      disabled={taxSaving || saving || weekSaving || replenishSaving}
+                      onClick={() => {
+                        setTaxRateCustom(false);
+                        void saveTaxRatePercent(pct);
+                      }}
+                    >
+                      {pct}%
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className={
+                      'seg__btn' + (taxRateCustom || !taxRateIsPreset ? ' is-active' : '')
+                    }
+                    disabled={taxSaving || saving || weekSaving || replenishSaving}
+                    onClick={() => {
+                      setTaxRateCustom(true);
+                      setTaxRateDraft(String(taxRate));
+                    }}
+                  >
+                    Другое
+                  </button>
+                </div>
 
-            {taxRateCustom || !taxRateIsPreset ? (
-              <form
-                className="settings-custom"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void saveTaxRatePercent(Number(taxRateDraft));
-                }}
-              >
-                <label className="field">
-                  <span className="field__label">Процент</span>
-                  <input
-                    className="field__control"
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={0.01}
-                    value={taxRateDraft}
-                    onChange={(e) => setTaxRateDraft(e.target.value)}
-                    required
-                  />
-                </label>
-                <button
-                  type="submit"
-                  className="btn btn--primary btn--sm"
-                  disabled={taxSaving || saving || weekSaving || replenishSaving}
-                >
-                  {taxSaving ? 'Сохранение…' : 'Сохранить'}
-                </button>
-              </form>
-            ) : null}
+                {taxRateCustom || !taxRateIsPreset ? (
+                  <form
+                    className="settings-custom"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void saveTaxRatePercent(Number(taxRateDraft));
+                    }}
+                  >
+                    <label className="field">
+                      <span className="field__label">Процент</span>
+                      <input
+                        className="field__control"
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.01}
+                        value={taxRateDraft}
+                        onChange={(e) => setTaxRateDraft(e.target.value)}
+                        required
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      className="btn btn--primary btn--sm"
+                      disabled={taxSaving || saving || weekSaving || replenishSaving}
+                    >
+                      {taxSaving ? 'Сохранение…' : 'Сохранить'}
+                    </button>
+                  </form>
+                ) : null}
 
-            <p className="settings-card__hint" style={{ marginTop: 16 }}>
-              Валюта для отображения
-            </p>
-            <div className="seg settings-presets">
-              {TAX_DISPLAY_OPTIONS.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  className={
-                    'seg__btn' +
-                    ((tutor.taxDisplayCurrency ?? 'BYN') === opt.id ? ' is-active' : '')
-                  }
-                  disabled={taxSaving || saving || weekSaving || replenishSaving}
-                  onClick={() => {
-                    if ((tutor.taxDisplayCurrency ?? 'BYN') === opt.id) return;
-                    void saveTaxSettings({ taxDisplayCurrency: opt.id });
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+                <p className="settings-card__hint">Валюта для отображения</p>
+                <div className="seg settings-presets">
+                  {TAX_DISPLAY_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className={
+                        'seg__btn' +
+                        ((tutor.taxDisplayCurrency ?? 'BYN') === opt.id ? ' is-active' : '')
+                      }
+                      disabled={taxSaving || saving || weekSaving || replenishSaving}
+                      onClick={() => {
+                        if ((tutor.taxDisplayCurrency ?? 'BYN') === opt.id) return;
+                        void saveTaxSettings({ taxDisplayCurrency: opt.id });
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </details>
           </section>
 
           <section className="settings-card">

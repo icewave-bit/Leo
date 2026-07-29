@@ -14,7 +14,7 @@ function botToken(): string {
 async function createStudentWithTelegram(
   agent: request.Agent,
   username: string,
-  overrides?: Partial<{ name: string; prepaid: number }>,
+  overrides?: Partial<{ name: string; prepaid: number; meetUrl: string }>,
 ) {
   const res = await agent
     .post('/api/students')
@@ -25,9 +25,10 @@ async function createStudentWithTelegram(
       prepaid: overrides?.prepaid ?? 50,
       debt: 0,
       telegramUsername: username,
+      meetUrl: overrides?.meetUrl,
     })
     .expect(201);
-  return res.body as { id: string; telegramUsername: string; telegramLinked: boolean };
+  return res.body as { id: string; telegramUsername: string; telegramLinked: boolean; meetUrl: string | null };
 }
 
 describe('student telegram bot api', () => {
@@ -180,6 +181,42 @@ describe('student telegram bot api', () => {
       .expect(200);
     expect(Array.isArray(slots.body.days)).toBe(true);
     expect(slots.body.timezone).toBe('UTC');
+  });
+
+  it('student today includes meetUrl on lessons', async () => {
+    const { agent } = await registerTutor(app, { timezone: 'UTC' });
+    const meetUrl = 'https://meet.google.com/stu-dent-lnk';
+    const student = await createStudentWithTelegram(agent, 'meet_stu', { meetUrl });
+
+    await request(app)
+      .post('/api/bot/student/register')
+      .set('Authorization', `Bearer ${botToken()}`)
+      .send({ telegramUserId: '8002', telegramUsername: 'meet_stu' })
+      .expect(200);
+
+    const now = new Date();
+    const start = new Date(now);
+    start.setUTCMinutes(start.getUTCMinutes() + 45, 0, 0);
+
+    await agent
+      .post('/api/lessons')
+      .send({
+        studentId: student.id,
+        startUtc: start.toISOString(),
+        durationMin: 60,
+        status: 'planned',
+        type: 'solo',
+      })
+      .expect(201);
+
+    const today = await request(app)
+      .get('/api/bot/student/today')
+      .set('Authorization', `Bearer ${botToken()}`)
+      .set('X-Telegram-User-Id', '8002')
+      .expect(200);
+
+    expect(today.body.lessons).toHaveLength(1);
+    expect(today.body.lessons[0].meetUrl).toBe(meetUrl);
   });
 
   it('patch student telegramUsername and unlinkTelegram', async () => {

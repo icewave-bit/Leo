@@ -141,8 +141,8 @@ async function listLessonsInRange(tutorId: string, from: Date, to: Date) {
   await runAutoCompleteForTutor(tutorId, { from, to });
   await topUpRecurringSchedules(tutorId);
 
-  const result = await query<LessonRow & { student_name: string }>(
-    `SELECT ${LESSON_COLUMNS}, s.name AS student_name
+  const result = await query<LessonRow & { student_name: string; meet_url: string | null }>(
+    `SELECT ${LESSON_COLUMNS}, s.name AS student_name, s.meet_url
      FROM lessons l
      JOIN students s ON s.id = l.student_id
      WHERE l.tutor_id = $1
@@ -155,6 +155,7 @@ async function listLessonsInRange(tutorId: string, from: Date, to: Date) {
   return result.rows.map((row) => ({
     ...toLesson(row),
     studentName: row.student_name,
+    meetUrl: row.meet_url,
   }));
 }
 

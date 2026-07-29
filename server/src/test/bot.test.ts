@@ -238,6 +238,11 @@ describe('telegram bot api', () => {
     const groups = await ensureDefaultPersonalEventGroups(tutorId);
     const workGroup = groups.find((g) => g.name === 'Работа')!;
 
+    await agent
+      .patch('/api/auth/me')
+      .send({ telegramNotify: { personal: true } })
+      .expect(200);
+
     const startUtc = new Date();
     startUtc.setUTCHours(14, 0, 0, 0);
 
@@ -269,6 +274,11 @@ describe('telegram bot api', () => {
     const telegramUserId = await linkTelegram(agent, app, '555003');
     const groups = await ensureDefaultPersonalEventGroups(tutorId);
     const group = groups[0]!;
+
+    await agent
+      .patch('/api/auth/me')
+      .send({ telegramNotify: { personal: true } })
+      .expect(200);
 
     const now = new Date();
     const weekday = (now.getUTCDay() + 6) % 7;
@@ -348,5 +358,48 @@ describe('telegram bot api', () => {
         telegramNotify: { personalGroupIds: ['00000000-0000-4000-8000-000000000001'] },
       })
       .expect(400);
+  });
+
+  it('GET /api/bot/today includes student meetUrl on lessons', async () => {
+    const { agent } = await registerTutor(app, { timezone: 'UTC' });
+    const telegramUserId = await linkTelegram(agent, app, '555010');
+    const meetUrl = 'https://meet.google.com/abc-defg-hij';
+
+    const student = await agent
+      .post('/api/students')
+      .send({
+        name: 'Meet Student',
+        hue: 120,
+        currency: 'EUR',
+        prepaid: 0,
+        debt: 0,
+        meetUrl,
+      })
+      .expect(201);
+
+    const now = new Date();
+    const start = new Date(now);
+    start.setUTCMinutes(start.getUTCMinutes() + 45, 0, 0);
+
+    await agent
+      .post('/api/lessons')
+      .send({
+        studentId: student.body.id,
+        startUtc: start.toISOString(),
+        durationMin: 60,
+        status: 'planned',
+        type: 'solo',
+      })
+      .expect(201);
+
+    const today = await request(app)
+      .get('/api/bot/today')
+      .set('Authorization', `Bearer ${botToken()}`)
+      .set('X-Telegram-User-Id', telegramUserId)
+      .expect(200);
+
+    expect(today.body.lessons).toHaveLength(1);
+    expect(today.body.lessons[0].studentName).toBe('Meet Student');
+    expect(today.body.lessons[0].meetUrl).toBe(meetUrl);
   });
 });

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAtomValue } from 'jotai';
 import { tutorAtom } from '../../atoms/auth';
 import {
@@ -9,6 +9,7 @@ import {
   studentsAtom,
   weekStartAtom,
 } from '../../atoms/schedule';
+import { nowTimeLinePrefsAtom } from '../../atoms/nowTimeIndicator';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { LessonBalanceConfirmOptions } from '../LessonBalanceConfirmOptions';
 import { findBillingPayer } from '../../utils/billingStudent';
@@ -58,6 +59,21 @@ import {
   TypeIcon,
 } from './LessonChrome';
 import { PersonalEventCard } from './PersonalEventChrome';
+
+function hourMinuteInTimeZone(d: Date, timeZone: string): { hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+  }).formatToParts(d);
+
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+
+  let hour = get('hour');
+  if (hour === 24) hour = 0;
+  return { hour, minute: get('minute') };
+}
 
 function LessonEvent({
   lesson,
@@ -159,6 +175,7 @@ export function WeekGrid({
   const students = useAtomValue(studentsAtom);
   const weekStart = useAtomValue(weekStartAtom);
   const tutor = useAtomValue(tutorAtom);
+  const nowTimePrefs = useAtomValue(nowTimeLinePrefsAtom);
   const studentMap = useStudentMap();
   const tz = tutor?.timezone ?? 'UTC';
   const weekStartsOn = tutor?.weekStartsOn ?? 'monday';
@@ -184,6 +201,25 @@ export function WeekGrid({
   const { short: dayNames, full: dayNamesFull } = weekDayNames(weekStartsOn);
   const dates = weekDates(weekStart, tz);
   const todayIdx = todayDayIndex(weekStart, tz);
+  const [nowTs, setNowTs] = useState(() => Date.now());
+
+  // Refresh “now” every 5 minutes (aligned to device clock).
+  useEffect(() => {
+    const intervalMs = 5 * 60 * 1000;
+    const now = Date.now();
+    const delay = intervalMs - (now % intervalMs);
+
+    let intervalId: number | undefined;
+    const timeoutId = window.setTimeout(() => {
+      setNowTs(Date.now());
+      intervalId = window.setInterval(() => setNowTs(Date.now()), intervalMs);
+    }, delay);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (intervalId != null) window.clearInterval(intervalId);
+    };
+  }, []);
   const hiddenWeekdays = tutor?.hiddenWeekdays ?? [];
   const visibleDays = useMemo(
     () => visibleGridDays(weekStartsOn, hiddenWeekdays),
@@ -251,6 +287,11 @@ export function WeekGrid({
 
   const hours = Array.from({ length: WG_DAY_HOURS }, (_, h) => h);
   const colH = WG_DAY_HOURS * pxPerHour;
+
+  const nowDate = useMemo(() => new Date(nowTs), [nowTs]);
+  const { hour, minute } = hourMinuteInTimeZone(nowDate, tz);
+  const nowHours = hour + minute / 60;
+  const nowLineTopPx = nowHours * pxPerHour;
 
   const layoutByDay = useMemo(() => {
     const byDay = new Map<number, Map<string, WeekGridLessonLayout>>();
@@ -373,6 +414,21 @@ export function WeekGrid({
           </div>
           {visibleDays.map((di) => (
             <div key={di} className={'wg__col' + (di === todayIdx ? ' is-today' : '')}>
+              {nowTimePrefs.enabled ? (
+                <div
+                  className={'wg__now-time' + (di === todayIdx ? ' is-today' : '')}
+                  style={{
+                    top: nowLineTopPx,
+                    height:
+                      di === todayIdx
+                        ? nowTimePrefs.thicknessPx * nowTimePrefs.todayThicknessMultiplier
+                        : nowTimePrefs.thicknessPx,
+                    background: nowTimePrefs.color,
+                    opacity: nowTimePrefs.opacity,
+                  }}
+                  aria-hidden="true"
+                />
+              ) : null}
               {(blockedByDay.get(di) ?? []).map((range, i) => (
                 <div
                   key={`off-${i}`}

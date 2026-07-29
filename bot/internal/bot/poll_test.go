@@ -25,11 +25,18 @@ func plannedLesson(start time.Time) tutorapi.Lesson {
 
 func TestPollOnce_sendsReminderOnce(t *testing.T) {
 	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
+	meet := "https://meet.google.com/abc-defg-hij"
 	msg := &mockMessenger{}
 	mon := &mockMonitor{
 		today: tutorapi.Schedule{
 			Timezone: "UTC",
-			Lessons:  []tutorapi.Lesson{plannedLesson(start)},
+			Lessons: []tutorapi.Lesson{
+				func() tutorapi.Lesson {
+					l := plannedLesson(start)
+					l.MeetURL = &meet
+					return l
+				}(),
+			},
 		},
 		telegramNotify: &tutorapi.TelegramNotify{
 			Enabled:     true,
@@ -55,6 +62,7 @@ func TestPollOnce_sendsReminderOnce(t *testing.T) {
 	assert.Equal(t, int64(99), out.ChatID)
 	assert.True(t, out.DisableNotification)
 	assert.Contains(t, out.Text, "Leo")
+	assert.Contains(t, out.Text, meet)
 
 	require.NoError(t, b.pollOnce(context.Background(), now))
 	assert.Len(t, msg.messages(), 1)
@@ -287,6 +295,9 @@ func TestRunPoll_disabledWaitsForCancel(t *testing.T) {
 
 func TestPollOnce_studentReminder(t *testing.T) {
 	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
+	meet := "https://meet.google.com/stu-dent-link"
+	lesson := plannedLesson(start)
+	lesson.MeetURL = &meet
 	msg := &mockMessenger{}
 	b, err := New(Config{
 		TelegramClient: msg,
@@ -295,7 +306,7 @@ func TestPollOnce_studentReminder(t *testing.T) {
 			student: &tutorapi.BotStudent{Name: "Leo", TutorName: "Anna", Timezone: "UTC"},
 			studentToday: tutorapi.Schedule{
 				Timezone: "UTC",
-				Lessons:  []tutorapi.Lesson{plannedLesson(start)},
+				Lessons:  []tutorapi.Lesson{lesson},
 			},
 		},
 		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -310,4 +321,5 @@ func TestPollOnce_studentReminder(t *testing.T) {
 	out := msg.messages()[0]
 	assert.Contains(t, out.Text, "Напоминание")
 	assert.NotContains(t, out.Text, "с Leo")
+	assert.Contains(t, out.Text, meet)
 }

@@ -51,13 +51,14 @@ type Tutor struct {
 }
 
 type Lesson struct {
-	ID            string `json:"id"`
-	StartUTC      string `json:"startUtc"`
-	DurationMin   int    `json:"durationMin"`
-	Status        string `json:"status"`
-	Paid          bool   `json:"paid"`
-	StudentName   string `json:"studentName"`
-	AcademicUnits int    `json:"academicUnits"`
+	ID            string  `json:"id"`
+	StartUTC      string  `json:"startUtc"`
+	DurationMin   int     `json:"durationMin"`
+	Status        string  `json:"status"`
+	Paid          bool    `json:"paid"`
+	StudentName   string  `json:"studentName"`
+	AcademicUnits int     `json:"academicUnits"`
+	MeetURL       *string `json:"meetUrl"`
 }
 
 type PersonalEvent struct {
