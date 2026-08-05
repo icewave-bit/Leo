@@ -3,6 +3,7 @@ import { useSetAtom } from 'jotai';
 import { api } from '../../api/client';
 import type { PersonalEventGroup, TelegramNotifyLeadMinutes, Tutor } from '../../api/types';
 import { tutorAtom } from '../../atoms/auth';
+import { DrawerSpoiler } from '../DrawerSpoiler';
 
 const NOTIFY_LEAD_MINUTES: TelegramNotifyLeadMinutes[] = [5, 10, 15, 30, 60];
 
@@ -207,101 +208,101 @@ export function TelegramConnectField({
           </button>
         </div>
 
-        <div className="telegram-notify">
-          <h3 className="telegram-notify__title">Уведомления</h3>
-
-          <div className="telegram-notify__row">
-            <span className="telegram-notify__label">Включить уведомления</span>
-            <button
-              type="button"
-              className={'toggle' + (notify.enabled ? ' is-on' : '')}
-              disabled={controlsDisabled}
-              aria-pressed={notify.enabled}
-              onClick={() => void saveNotify({ enabled: !notify.enabled })}
-            >
-              <span className="toggle__knob" />
-              <span className="toggle__label">{notify.enabled ? 'Вкл' : 'Выкл'}</span>
-            </button>
-          </div>
-
-          <p className="settings-card__hint">Напоминать за</p>
-          <div className={'seg settings-presets telegram-notify__lead' + (prefsDisabled ? ' is-disabled' : '')}>
-            {NOTIFY_LEAD_MINUTES.map((min) => (
+        <DrawerSpoiler title="Уведомления" className="settings-telegram__spoiler">
+          <div className="telegram-notify">
+            <div className="telegram-notify__row">
+              <span className="telegram-notify__label">Включить уведомления</span>
               <button
-                key={min}
                 type="button"
-                className={'seg__btn' + (notify.leadMinutes === min ? ' is-active' : '')}
-                disabled={prefsDisabled}
-                onClick={() => {
-                  if (notify.leadMinutes === min) return;
-                  void saveNotify({ leadMinutes: min });
-                }}
+                className={'toggle' + (notify.enabled ? ' is-on' : '')}
+                disabled={controlsDisabled}
+                aria-pressed={notify.enabled}
+                onClick={() => void saveNotify({ enabled: !notify.enabled })}
               >
-                {min} мин
+                <span className="toggle__knob" />
+                <span className="toggle__label">{notify.enabled ? 'Вкл' : 'Выкл'}</span>
               </button>
-            ))}
-          </div>
-
-          <div className="telegram-notify__row">
-            <span className="telegram-notify__label">Без звука</span>
-            <button
-              type="button"
-              className={'toggle' + (notify.silent ? ' is-on' : '')}
-              disabled={prefsDisabled}
-              aria-pressed={notify.silent}
-              onClick={() => void saveNotify({ silent: !notify.silent })}
-            >
-              <span className="toggle__knob" />
-              <span className="toggle__label">{notify.silent ? 'Да' : 'Нет'}</span>
-            </button>
-          </div>
-
-          <div className={'telegram-notify__checks' + (prefsDisabled ? ' is-disabled' : '')}>
-            <label className="telegram-notify__check">
-              <input
-                type="checkbox"
-                checked={notify.lessons}
-                disabled={prefsDisabled}
-                onChange={(e) => void saveNotify({ lessons: e.target.checked })}
-              />
-              <span>Уроки</span>
-            </label>
-            <label className="telegram-notify__check">
-              <input
-                type="checkbox"
-                checked={notify.personal}
-                disabled={prefsDisabled}
-                onChange={(e) => void saveNotify({ personal: e.target.checked })}
-              />
-              <span>Личное время</span>
-            </label>
-          </div>
-
-          {notify.personal && groups.length > 0 ? (
-            <div className={'telegram-notify__groups' + (prefsDisabled ? ' is-disabled' : '')}>
-              <p className="settings-card__hint">Группы для бота (Сегодня / Неделя и напоминания)</p>
-              {groups.map((group) => (
-                <label key={group.id} className="telegram-notify__check">
-                  <input
-                    type="checkbox"
-                    checked={isGroupChecked(group.id, notify.personalGroupIds)}
-                    disabled={prefsDisabled}
-                    onChange={() => {
-                      const personalGroupIds = togglePersonalGroupId(
-                        group.id,
-                        groups,
-                        notify.personalGroupIds,
-                      );
-                      void saveNotify({ personalGroupIds });
-                    }}
-                  />
-                  <span>{group.name}</span>
-                </label>
-              ))}
-              <p className="settings-card__hint">Пустой выбор — все группы</p>
             </div>
-          ) : null}
-        </div>
+
+            <p className="settings-card__hint">Напоминать за</p>
+            <div className={'seg settings-presets telegram-notify__lead' + (prefsDisabled ? ' is-disabled' : '')}>
+              {NOTIFY_LEAD_MINUTES.map((min) => (
+                <button
+                  key={min}
+                  type="button"
+                  className={'seg__btn' + (notify.leadMinutes === min ? ' is-active' : '')}
+                  disabled={prefsDisabled}
+                  onClick={() => {
+                    if (notify.leadMinutes === min) return;
+                    void saveNotify({ leadMinutes: min });
+                  }}
+                >
+                  {min} мин
+                </button>
+              ))}
+            </div>
+
+            <div className="telegram-notify__row">
+              <span className="telegram-notify__label">Без звука</span>
+              <button
+                type="button"
+                className={'toggle' + (notify.silent ? ' is-on' : '')}
+                disabled={prefsDisabled}
+                aria-pressed={notify.silent}
+                onClick={() => void saveNotify({ silent: !notify.silent })}
+              >
+                <span className="toggle__knob" />
+                <span className="toggle__label">{notify.silent ? 'Да' : 'Нет'}</span>
+              </button>
+            </div>
+
+            <div className={'telegram-notify__checks' + (prefsDisabled ? ' is-disabled' : '')}>
+              <label className="telegram-notify__check">
+                <input
+                  type="checkbox"
+                  checked={notify.lessons}
+                  disabled={prefsDisabled}
+                  onChange={(e) => void saveNotify({ lessons: e.target.checked })}
+                />
+                <span>Уроки</span>
+              </label>
+              <label className="telegram-notify__check">
+                <input
+                  type="checkbox"
+                  checked={notify.personal}
+                  disabled={prefsDisabled}
+                  onChange={(e) => void saveNotify({ personal: e.target.checked })}
+                />
+                <span>Личное время</span>
+              </label>
+            </div>
+
+            {notify.personal && groups.length > 0 ? (
+              <div className={'telegram-notify__groups' + (prefsDisabled ? ' is-disabled' : '')}>
+                <p className="settings-card__hint">Группы для бота (Сегодня / Неделя и напоминания)</p>
+                {groups.map((group) => (
+                  <label key={group.id} className="telegram-notify__check">
+                    <input
+                      type="checkbox"
+                      checked={isGroupChecked(group.id, notify.personalGroupIds)}
+                      disabled={prefsDisabled}
+                      onChange={() => {
+                        const personalGroupIds = togglePersonalGroupId(
+                          group.id,
+                          groups,
+                          notify.personalGroupIds,
+                        );
+                        void saveNotify({ personalGroupIds });
+                      }}
+                    />
+                    <span>{group.name}</span>
+                  </label>
+                ))}
+                <p className="settings-card__hint">Пустой выбор — все группы</p>
+              </div>
+            ) : null}
+          </div>
+        </DrawerSpoiler>
 
         {error ? <p className="settings-card__error">{error}</p> : null}
       </div>

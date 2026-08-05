@@ -21,6 +21,7 @@ import { PersonalEventOutlineField } from '../components/settings/PersonalEventO
 import { DefaultBlockHoursField } from '../components/settings/DefaultBlockHoursField';
 import { TelegramConnectField } from '../components/settings/TelegramConnectField';
 import { CurrentTimeIndicatorCard } from '../components/settings/CurrentTimeIndicatorCard';
+import { DrawerSpoiler } from '../components/DrawerSpoiler';
 import { ACADEMIC_HOUR_PRESETS, academicHourHint } from '../utils/academicHour';
 import { TAX_DISPLAY_OPTIONS, TAX_RATE_PRESETS } from '../utils/taxSettings';
 
@@ -422,11 +423,7 @@ export function SettingsPage() {
               белорусские рубли по курсу НБРБ на дату пополнения.
             </p>
 
-            <details className="drawer-spoiler settings-taxes__spoiler">
-              <summary className="drawer-spoiler__summary">
-                <span className="drawer-spoiler__title">Параметры налогов</span>
-              </summary>
-              <div className="drawer-spoiler__body">
+            <DrawerSpoiler title="Параметры налогов" className="settings-taxes__spoiler">
                 <p className="settings-card__hint">Ставка налога, %</p>
                 <div className="seg settings-presets">
                   {TAX_RATE_PRESETS.map((pct) => (
@@ -511,8 +508,7 @@ export function SettingsPage() {
                     </button>
                   ))}
                 </div>
-              </div>
-            </details>
+            </DrawerSpoiler>
           </section>
 
           <section className="settings-card">

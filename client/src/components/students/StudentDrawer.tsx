@@ -33,6 +33,7 @@ import { avatarHueStyle } from '../../utils/avatarStyle';
 import { hexFromHue, hueFromHex } from '../../utils/colorHue';
 import { studentToView, toUiStatus, type ViewStudent } from '../../utils/schedule';
 import { ColorPalettePicker } from '../ColorPalettePicker';
+import { DrawerSpoiler } from '../DrawerSpoiler';
 import { useAppStore } from '../../hooks/useAppStore';
 import { loadSchedule } from '../../state/loadSchedule';
 import type { BalanceMovement, BillingDebtBreakdown } from '../../api/types';
@@ -234,23 +235,6 @@ function DrawerPanel({
       </header>
       <div className="drawer-panel__body">{children}</div>
     </section>
-  );
-}
-
-function DrawerSpoiler({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <details className="drawer-spoiler">
-      <summary className="drawer-spoiler__summary">
-        <span className="drawer-spoiler__title">{title}</span>
-      </summary>
-      <div className="drawer-spoiler__body">{children}</div>
-    </details>
   );
 }
 
