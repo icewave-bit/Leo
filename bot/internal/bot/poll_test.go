@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-telegram/bot/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -62,7 +63,13 @@ func TestPollOnce_sendsReminderOnce(t *testing.T) {
 	assert.Equal(t, int64(99), out.ChatID)
 	assert.True(t, out.DisableNotification)
 	assert.Contains(t, out.Text, "Leo")
-	assert.Contains(t, out.Text, meet)
+	assert.NotContains(t, out.Text, meet)
+	kb, ok := out.ReplyMarkup.(*models.InlineKeyboardMarkup)
+	require.True(t, ok)
+	require.Len(t, kb.InlineKeyboard, 1)
+	require.Len(t, kb.InlineKeyboard[0], 1)
+	assert.Equal(t, "Подключиться", kb.InlineKeyboard[0][0].Text)
+	assert.Equal(t, meet, kb.InlineKeyboard[0][0].URL)
 
 	require.NoError(t, b.pollOnce(context.Background(), now))
 	assert.Len(t, msg.messages(), 1)
@@ -321,5 +328,10 @@ func TestPollOnce_studentReminder(t *testing.T) {
 	out := msg.messages()[0]
 	assert.Contains(t, out.Text, "Напоминание")
 	assert.NotContains(t, out.Text, "с Leo")
-	assert.Contains(t, out.Text, meet)
+	assert.NotContains(t, out.Text, meet)
+	kb, ok := out.ReplyMarkup.(*models.InlineKeyboardMarkup)
+	require.True(t, ok)
+	require.Len(t, kb.InlineKeyboard, 1)
+	assert.Equal(t, "Подключиться", kb.InlineKeyboard[0][0].Text)
+	assert.Equal(t, meet, kb.InlineKeyboard[0][0].URL)
 }

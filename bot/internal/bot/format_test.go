@@ -7,6 +7,7 @@ import (
 
 	"github.com/fedortarasov/leo-bot/internal/tutorapi"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFormatTutor_notifyEnabled(t *testing.T) {
@@ -77,12 +78,19 @@ func TestFormatLessonReminder_includesMeetURL(t *testing.T) {
 	tutorText := b.formatLessonReminder(lesson, "Europe/Moscow", 30*time.Minute, false)
 	assert.Contains(t, tutorText, "урок с Leo")
 	assert.Contains(t, tutorText, "17:00")
-	assert.Contains(t, tutorText, meet)
+	assert.NotContains(t, tutorText, meet)
 
 	studentText := b.formatLessonReminder(lesson, "Europe/Moscow", 30*time.Minute, true)
 	assert.Contains(t, studentText, "урок (17:00)")
 	assert.NotContains(t, studentText, "с Leo")
-	assert.Contains(t, studentText, meet)
+	assert.NotContains(t, studentText, meet)
+
+	kb := meetJoinKeyboard(meet)
+	require.NotNil(t, kb)
+	require.Len(t, kb.InlineKeyboard, 1)
+	require.Len(t, kb.InlineKeyboard[0], 1)
+	assert.Equal(t, "Подключиться", kb.InlineKeyboard[0][0].Text)
+	assert.Equal(t, meet, kb.InlineKeyboard[0][0].URL)
 }
 
 func TestFormatLessonReminder_omitsEmptyMeetURL(t *testing.T) {
@@ -92,6 +100,7 @@ func TestFormatLessonReminder_omitsEmptyMeetURL(t *testing.T) {
 		StudentName: "Leo",
 	}, "UTC", 15*time.Minute, false)
 	assert.Equal(t, "Напоминание: через 15 мин урок с Leo (14:00)", text)
+	assert.Nil(t, meetJoinKeyboard(""))
 }
 
 func TestFormatLessonLine_usesTimezone(t *testing.T) {

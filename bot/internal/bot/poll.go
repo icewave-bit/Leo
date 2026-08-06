@@ -8,6 +8,7 @@ import (
 	"time"
 
 	telegram "github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 
 	"github.com/fedortarasov/leo-bot/internal/tutorapi"
 )
@@ -175,7 +176,7 @@ func (b *Bot) maybeRemindLesson(
 	}
 
 	text := b.formatLessonReminder(lesson, timezone, lead, forStudent)
-	return b.sendReminder(ctx, chatID, text, notify.Silent)
+	return b.sendReminder(ctx, chatID, text, notify.Silent, meetJoinKeyboard(lessonMeetURL(lesson)))
 }
 
 func (b *Bot) maybeRemindPersonal(
@@ -202,7 +203,7 @@ func (b *Bot) maybeRemindPersonal(
 	}
 
 	text := b.formatPersonalReminder(event, timezone, lead)
-	return b.sendReminder(ctx, chatID, text, notify.Silent)
+	return b.sendReminder(ctx, chatID, text, notify.Silent, nil)
 }
 
 func inReminderWindow(now, start time.Time, lead time.Duration) bool {
@@ -213,16 +214,39 @@ func inReminderWindow(now, start time.Time, lead time.Duration) bool {
 	return !now.Before(windowStart) && now.Before(start)
 }
 
-func (b *Bot) sendReminder(ctx context.Context, chatID int64, text string, silent bool) error {
+func (b *Bot) sendReminder(
+	ctx context.Context,
+	chatID int64,
+	text string,
+	silent bool,
+	markup *models.InlineKeyboardMarkup,
+) error {
 	msg := &telegram.SendMessageParams{
 		ChatID:              chatID,
 		Text:                text,
 		DisableNotification: silent,
 	}
+	if markup != nil {
+		msg.ReplyMarkup = markup
+	}
 	if _, err := b.api.SendMessage(ctx, msg); err != nil {
 		return fmt.Errorf("send reminder: %w", err)
 	}
 	return nil
+}
+
+func meetJoinKeyboard(meetURL string) *models.InlineKeyboardMarkup {
+	if meetURL == "" {
+		return nil
+	}
+	if !strings.HasPrefix(meetURL, "http://") && !strings.HasPrefix(meetURL, "https://") {
+		return nil
+	}
+	return &models.InlineKeyboardMarkup{
+		InlineKeyboard: [][]models.InlineKeyboardButton{{
+			{Text: "Подключиться", URL: meetURL},
+		}},
+	}
 }
 
 func (b *Bot) lessonReminderKey(chatID int64, lesson tutorapi.Lesson) string {
@@ -241,20 +265,14 @@ func (b *Bot) personalReminderKey(chatID int64, event tutorapi.PersonalEvent) st
 
 func (b *Bot) formatLessonReminder(lesson tutorapi.Lesson, timezone string, lead time.Duration, forStudent bool) string {
 	when := formatInZone(lesson.StartUTC, timezone, "15:04")
-	var text string
 	if forStudent {
-		text = fmt.Sprintf("Напоминание: через %s урок (%s)", formatLead(lead), when)
-	} else {
-		text = fmt.Sprintf("Напоминание: через %s урок с %s (%s)",
-			formatLead(lead),
-			lesson.StudentName,
-			when,
-		)
+		return fmt.Sprintf("Напоминание: через %s урок (%s)", formatLead(lead), when)
 	}
-	if meet := lessonMeetURL(lesson); meet != "" {
-		text += "\n" + meet
-	}
-	return text
+	return fmt.Sprintf("Напоминание: через %s урок с %s (%s)",
+		formatLead(lead),
+		lesson.StudentName,
+		when,
+	)
 }
 
 func lessonMeetURL(lesson tutorapi.Lesson) string {
