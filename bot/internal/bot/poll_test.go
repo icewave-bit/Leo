@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -24,28 +25,26 @@ func plannedLesson(start time.Time) tutorapi.Lesson {
 	}
 }
 
+func dueLesson(start time.Time) tutorapi.DueReminder {
+	lesson := plannedLesson(start)
+	return tutorapi.DueReminder{
+		Kind:           "lesson",
+		TelegramUserID: 42,
+		Role:           "tutor",
+		Timezone:       "UTC",
+		LeadMinutes:    30,
+		Silent:         true,
+		Lesson:         &lesson,
+	}
+}
+
 func TestPollOnce_sendsReminderOnce(t *testing.T) {
 	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
 	meet := "https://meet.google.com/abc-defg-hij"
+	reminder := dueLesson(start)
+	reminder.Lesson.MeetURL = &meet
 	msg := &mockMessenger{}
-	mon := &mockMonitor{
-		today: tutorapi.Schedule{
-			Timezone: "UTC",
-			Lessons: []tutorapi.Lesson{
-				func() tutorapi.Lesson {
-					l := plannedLesson(start)
-					l.MeetURL = &meet
-					return l
-				}(),
-			},
-		},
-		telegramNotify: &tutorapi.TelegramNotify{
-			Enabled:     true,
-			LeadMinutes: 30,
-			Silent:      true,
-			Lessons:     true,
-		},
-	}
+	mon := &mockMonitor{due: []tutorapi.DueReminder{reminder}}
 	b, err := New(Config{
 		TelegramClient: msg,
 		Monitor:        mon,
@@ -53,14 +52,12 @@ func TestPollOnce_sendsReminderOnce(t *testing.T) {
 		PollInterval:   time.Minute,
 	})
 	require.NoError(t, err)
-	b.chats.remember(1, 99)
 
-	now := time.Now().UTC()
-	require.NoError(t, b.pollOnce(context.Background(), now))
+	require.NoError(t, b.pollOnce(context.Background()))
 	require.Len(t, msg.messages(), 1)
 
 	out := msg.messages()[0]
-	assert.Equal(t, int64(99), out.ChatID)
+	assert.Equal(t, int64(42), out.ChatID)
 	assert.True(t, out.DisableNotification)
 	assert.Contains(t, out.Text, "Leo")
 	assert.NotContains(t, out.Text, meet)
@@ -70,234 +67,83 @@ func TestPollOnce_sendsReminderOnce(t *testing.T) {
 	require.Len(t, kb.InlineKeyboard[0], 1)
 	assert.Equal(t, "Подключиться", kb.InlineKeyboard[0][0].Text)
 	assert.Equal(t, meet, kb.InlineKeyboard[0][0].URL)
+	require.Len(t, mon.markedSent, 1)
+	assert.Equal(t, "lesson-1", mon.markedSent[0].EntityID)
+	assert.Equal(t, int64(42), mon.markedSent[0].TelegramUserID)
 
-	require.NoError(t, b.pollOnce(context.Background(), now))
+	require.NoError(t, b.pollOnce(context.Background()))
 	assert.Len(t, msg.messages(), 1)
+	assert.Len(t, mon.markedSent, 1)
+	assert.False(t, mon.todayCalled)
 }
 
-func TestPollOnce_skipsOutsideWindow(t *testing.T) {
-	start := time.Now().UTC().Add(2 * time.Hour).Truncate(time.Second)
+func TestPollOnce_emptyDueDoesNotSend(t *testing.T) {
 	msg := &mockMessenger{}
+	mon := &mockMonitor{}
 	b, err := New(Config{
 		TelegramClient: msg,
-		Monitor: &mockMonitor{
-			today: tutorapi.Schedule{
-				Timezone: "UTC",
-				Lessons:  []tutorapi.Lesson{plannedLesson(start)},
-			},
-		},
-		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
-		PollInterval: time.Minute,
+		Monitor:        mon,
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PollInterval:   time.Minute,
 	})
 	require.NoError(t, err)
-	b.chats.remember(1, 99)
 
-	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
+	require.NoError(t, b.pollOnce(context.Background()))
 	assert.Empty(t, msg.messages())
+	assert.Empty(t, mon.markedSent)
+	assert.False(t, mon.todayCalled)
 }
 
-func TestPollOnce_skipsWhenNotificationsDisabled(t *testing.T) {
+func TestPollOnce_sendsPersonalReminder(t *testing.T) {
 	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
 	msg := &mockMessenger{}
 	b, err := New(Config{
 		TelegramClient: msg,
 		Monitor: &mockMonitor{
-			today: tutorapi.Schedule{
-				Timezone: "UTC",
-				Lessons:  []tutorapi.Lesson{plannedLesson(start)},
-			},
-			telegramNotify: &tutorapi.TelegramNotify{
-				Enabled:     false,
-				LeadMinutes: 30,
-				Lessons:     true,
-			},
-		},
-		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
-		PollInterval: time.Minute,
-	})
-	require.NoError(t, err)
-	b.chats.remember(1, 99)
-
-	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
-	assert.Empty(t, msg.messages())
-}
-
-func TestPollOnce_skipsWhenLessonsDisabled(t *testing.T) {
-	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
-	msg := &mockMessenger{}
-	b, err := New(Config{
-		TelegramClient: msg,
-		Monitor: &mockMonitor{
-			today: tutorapi.Schedule{
-				Timezone: "UTC",
-				Lessons:  []tutorapi.Lesson{plannedLesson(start)},
-			},
-			telegramNotify: &tutorapi.TelegramNotify{
-				Enabled:     true,
-				LeadMinutes: 30,
-				Lessons:     false,
-				Personal:    false,
-			},
-		},
-		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
-		PollInterval: time.Minute,
-	})
-	require.NoError(t, err)
-	b.chats.remember(1, 99)
-
-	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
-	assert.Empty(t, msg.messages())
-}
-
-func TestPollOnce_sendsPersonalReminderWhenOptedIn(t *testing.T) {
-	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
-	msg := &mockMessenger{}
-	b, err := New(Config{
-		TelegramClient: msg,
-		Monitor: &mockMonitor{
-			today: tutorapi.Schedule{
-				Timezone: "UTC",
-				Events: []tutorapi.PersonalEvent{{
+			due: []tutorapi.DueReminder{{
+				Kind:           "personal",
+				TelegramUserID: 7,
+				Role:           "tutor",
+				Timezone:       "UTC",
+				LeadMinutes:    30,
+				Event: &tutorapi.PersonalEvent{
 					ID:          "pe-1",
 					Title:       "Yoga",
 					StartUTC:    start.Format(time.RFC3339),
 					DurationMin: 45,
 					GroupName:   "Здоровье",
-				}},
-			},
-			telegramNotify: &tutorapi.TelegramNotify{
-				Enabled:     true,
-				LeadMinutes: 30,
-				Lessons:     false,
-				Personal:    true,
-			},
+				},
+			}},
 		},
 		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 		PollInterval: time.Minute,
 	})
 	require.NoError(t, err)
-	b.chats.remember(1, 99)
 
-	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
+	require.NoError(t, b.pollOnce(context.Background()))
 	require.Len(t, msg.messages(), 1)
+	assert.Equal(t, int64(7), msg.messages()[0].ChatID)
 	assert.Contains(t, msg.messages()[0].Text, "Yoga")
 	assert.NotContains(t, msg.messages()[0].Text, "урок")
 }
 
-func TestPollOnce_skipsPersonalWhenNotOptedIn(t *testing.T) {
-	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
-	msg := &mockMessenger{}
-	b, err := New(Config{
-		TelegramClient: msg,
-		Monitor: &mockMonitor{
-			today: tutorapi.Schedule{
-				Timezone: "UTC",
-				Events: []tutorapi.PersonalEvent{{
-					ID:       "pe-1",
-					Title:    "Yoga",
-					StartUTC: start.Format(time.RFC3339),
-				}},
-			},
-			telegramNotify: &tutorapi.TelegramNotify{
-				Enabled:     true,
-				LeadMinutes: 30,
-				Lessons:     true,
-				Personal:    false,
-			},
-		},
-		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
-		PollInterval: time.Minute,
-	})
-	require.NoError(t, err)
-	b.chats.remember(1, 99)
-
-	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
-	assert.Empty(t, msg.messages())
-}
-
-func TestPollOnce_usesLeadMinutesFromPrefs(t *testing.T) {
+func TestPollOnce_usesLeadMinutesFromPayload(t *testing.T) {
 	start := time.Now().UTC().Add(12 * time.Minute).Truncate(time.Second)
+	reminder := dueLesson(start)
+	reminder.LeadMinutes = 15
+	reminder.Silent = false
 	msg := &mockMessenger{}
 	b, err := New(Config{
 		TelegramClient: msg,
-		Monitor: &mockMonitor{
-			today: tutorapi.Schedule{
-				Timezone: "UTC",
-				Lessons:  []tutorapi.Lesson{plannedLesson(start)},
-			},
-			telegramNotify: &tutorapi.TelegramNotify{
-				Enabled:     true,
-				LeadMinutes: 15,
-				Lessons:     true,
-			},
-		},
-		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
-		PollInterval: time.Minute,
+		Monitor:        &mockMonitor{due: []tutorapi.DueReminder{reminder}},
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PollInterval:   time.Minute,
 	})
 	require.NoError(t, err)
-	b.chats.remember(1, 99)
 
-	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
+	require.NoError(t, b.pollOnce(context.Background()))
 	require.Len(t, msg.messages(), 1)
 	assert.Contains(t, msg.messages()[0].Text, "15 мин")
-}
-
-func TestPollOnce_skipsOutsideCustomLeadWindow(t *testing.T) {
-	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
-	msg := &mockMessenger{}
-	b, err := New(Config{
-		TelegramClient: msg,
-		Monitor: &mockMonitor{
-			today: tutorapi.Schedule{
-				Timezone: "UTC",
-				Lessons:  []tutorapi.Lesson{plannedLesson(start)},
-			},
-			telegramNotify: &tutorapi.TelegramNotify{
-				Enabled:     true,
-				LeadMinutes: 15,
-				Lessons:     true,
-			},
-		},
-		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
-		PollInterval: time.Minute,
-	})
-	require.NoError(t, err)
-	b.chats.remember(1, 99)
-
-	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
-	assert.Empty(t, msg.messages())
-}
-
-func TestPollOnce_skipsNotLinked(t *testing.T) {
-	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
-	msg := &mockMessenger{}
-	b, err := New(Config{
-		TelegramClient: msg,
-		Monitor: &mockMonitor{
-			notLink: true,
-			today: tutorapi.Schedule{
-				Timezone: "UTC",
-				Lessons:  []tutorapi.Lesson{plannedLesson(start)},
-			},
-		},
-		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
-		PollInterval: time.Minute,
-	})
-	require.NoError(t, err)
-	b.chats.remember(1, 99)
-
-	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
-	assert.Empty(t, msg.messages())
-}
-
-func TestRunPoll_disabledWaitsForCancel(t *testing.T) {
-	b := newTestBot(&mockMessenger{}, &mockMonitor{})
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- b.runPoll(ctx) }()
-	time.Sleep(10 * time.Millisecond)
-	cancel()
-	assert.ErrorIs(t, <-done, context.Canceled)
 }
 
 func TestPollOnce_studentReminder(t *testing.T) {
@@ -309,23 +155,24 @@ func TestPollOnce_studentReminder(t *testing.T) {
 	b, err := New(Config{
 		TelegramClient: msg,
 		Monitor: &mockMonitor{
-			notLink: true,
-			student: &tutorapi.BotStudent{Name: "Leo", TutorName: "Anna", Timezone: "UTC"},
-			studentToday: tutorapi.Schedule{
-				Timezone: "UTC",
-				Lessons:  []tutorapi.Lesson{lesson},
-			},
+			due: []tutorapi.DueReminder{{
+				Kind:           "lesson",
+				TelegramUserID: 99,
+				Role:           "student",
+				Timezone:       "UTC",
+				LeadMinutes:    30,
+				Lesson:         &lesson,
+			}},
 		},
 		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 		PollInterval: time.Minute,
 	})
 	require.NoError(t, err)
-	b.chats.remember(1, 99)
-	b.chats.setRole(1, roleStudent)
 
-	require.NoError(t, b.pollOnce(context.Background(), time.Now().UTC()))
+	require.NoError(t, b.pollOnce(context.Background()))
 	require.Len(t, msg.messages(), 1)
 	out := msg.messages()[0]
+	assert.Equal(t, int64(99), out.ChatID)
 	assert.Contains(t, out.Text, "Напоминание")
 	assert.NotContains(t, out.Text, "с Leo")
 	assert.NotContains(t, out.Text, meet)
@@ -334,4 +181,30 @@ func TestPollOnce_studentReminder(t *testing.T) {
 	require.Len(t, kb.InlineKeyboard, 1)
 	assert.Equal(t, "Подключиться", kb.InlineKeyboard[0][0].Text)
 	assert.Equal(t, meet, kb.InlineKeyboard[0][0].URL)
+}
+
+func TestPollOnce_sendFailureDoesNotMarkSent(t *testing.T) {
+	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
+	msg := &mockMessenger{sendErr: errors.New("telegram down")}
+	mon := &mockMonitor{due: []tutorapi.DueReminder{dueLesson(start)}}
+	b, err := New(Config{
+		TelegramClient: msg,
+		Monitor:        mon,
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PollInterval:   time.Minute,
+	})
+	require.NoError(t, err)
+
+	require.Error(t, b.pollOnce(context.Background()))
+	assert.Empty(t, mon.markedSent)
+}
+
+func TestRunPoll_disabledWaitsForCancel(t *testing.T) {
+	b := newTestBot(&mockMessenger{}, &mockMonitor{})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- b.runPoll(ctx) }()
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+	assert.ErrorIs(t, <-done, context.Canceled)
 }

@@ -48,6 +48,10 @@ type mockMonitor struct {
 	linkIn         tutorapi.LinkInput
 	today          tutorapi.Schedule
 	studentToday   tutorapi.Schedule
+	due            []tutorapi.DueReminder
+	dueErr         error
+	markedSent     []tutorapi.SentReminder
+	todayCalled    bool
 	notLink        bool
 	linkErr        error
 	registerErr    error
@@ -95,6 +99,7 @@ func (m *mockMonitor) Me(_ context.Context, _ int64) (tutorapi.Tutor, error) {
 }
 
 func (m *mockMonitor) Today(_ context.Context, _ int64) (tutorapi.Schedule, error) {
+	m.todayCalled = true
 	if m.notLink {
 		return tutorapi.Schedule{}, &tutorapi.Error{Code: "TELEGRAM_NOT_LINKED", Message: "not linked", Status: 403}
 	}
@@ -125,6 +130,18 @@ func (m *mockMonitor) Students(_ context.Context, _ int64) ([]tutorapi.Student, 
 
 func (m *mockMonitor) Debt(_ context.Context, _ int64) ([]tutorapi.Student, error) {
 	return nil, nil
+}
+
+func (m *mockMonitor) DueReminders(_ context.Context) ([]tutorapi.DueReminder, error) {
+	if m.dueErr != nil {
+		return nil, m.dueErr
+	}
+	return m.due, nil
+}
+
+func (m *mockMonitor) MarkRemindersSent(_ context.Context, items []tutorapi.SentReminder) error {
+	m.markedSent = append(m.markedSent, items...)
+	return nil
 }
 
 func (m *mockMonitor) RegisterStudent(_ context.Context, in tutorapi.StudentRegisterInput) (tutorapi.BotStudent, error) {

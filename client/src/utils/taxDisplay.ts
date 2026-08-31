@@ -21,3 +21,16 @@ export function fmtTaxDue(
   if (displayCurrency === 'BYN') return fmtByn(tax);
   return fmtMoney(tax, row.currency);
 }
+
+function fmtNbrbRateValue(n: number): string {
+  return n.toLocaleString('ru-RU', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  });
+}
+
+export function fmtBynNbrbTitle(row: TaxReplenishment, dateLabel: string): string {
+  if (row.conversionError) return row.conversionError;
+  if (row.nbrbRate == null) return dateLabel;
+  return `${dateLabel}: ${fmtNbrbRateValue(row.nbrbRate)}`;
+}

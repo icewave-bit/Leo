@@ -1557,6 +1557,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   padding: 12px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--surf-2);
@@ -2839,6 +2840,16 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   color: var(--muted);
   max-width: 28rem;
 }
+.pay-summary__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.drawer-panel__head .pay-summary__actions {
+  margin-left: 0;
+}
 
 .pay-journal-error { color: var(--c-debt); font-size: 14px; margin: 0; padding: 0 4px; }
 .pay-journal-empty { color: var(--muted); font-size: 15px; margin: 0; padding: 48px 20px; text-align: center; }
@@ -2899,7 +2910,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 }
 .pay-entry__amounts {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin: 0;
 }
@@ -4267,10 +4278,11 @@ col.tax-col-actions { width: 36px; }
   }
   .pay-summary__stats {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
   }
   .pay-summary__stat { min-width: 0; }
+  .pay-summary__actions { margin-left: 0; }
 
   .pay-journal-list {
     display: flex;

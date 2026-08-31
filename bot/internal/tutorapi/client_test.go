@@ -12,6 +12,78 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestClient_DueReminders_noTelegramUserHeader(t *testing.T) {
+	var gotAuth, gotTelegramID string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotTelegramID = r.Header.Get("X-Telegram-User-Id")
+		assert.Equal(t, "/api/bot/reminders/due", r.URL.Path)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"reminders": []any{
+				map[string]any{
+					"kind":           "lesson",
+					"telegramUserId": 42,
+					"role":           "tutor",
+					"timezone":       "UTC",
+					"leadMinutes":    30,
+					"silent":         false,
+					"lesson": map[string]any{
+						"id":          "lesson-1",
+						"startUtc":    "2026-08-15T18:00:00.000Z",
+						"status":      "planned",
+						"studentName": "Leo",
+					},
+				},
+			},
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	c := tutorapi.NewClient(tutorapi.ClientConfig{
+		BaseURL:  srv.URL,
+		BotToken: "test-bot-token-16",
+	})
+
+	reminders, err := c.DueReminders(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer test-bot-token-16", gotAuth)
+	assert.Empty(t, gotTelegramID)
+	require.Len(t, reminders, 1)
+	assert.Equal(t, int64(42), reminders[0].TelegramUserID)
+	require.NotNil(t, reminders[0].Lesson)
+	assert.Equal(t, "Leo", reminders[0].Lesson.StudentName)
+}
+
+func TestClient_MarkRemindersSent_postsBody(t *testing.T) {
+	var gotPath string
+	var body map[string]any
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		assert.Equal(t, http.MethodPost, r.Method)
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := tutorapi.NewClient(tutorapi.ClientConfig{
+		BaseURL:  srv.URL,
+		BotToken: "test-bot-token-16",
+	})
+
+	err := c.MarkRemindersSent(context.Background(), []tutorapi.SentReminder{{
+		TelegramUserID: 42,
+		Kind:           "lesson",
+		EntityID:       "11111111-1111-4111-8111-111111111111",
+	}})
+	require.NoError(t, err)
+	assert.Equal(t, "/api/bot/reminders/sent", gotPath)
+	reminders, ok := body["reminders"].([]any)
+	require.True(t, ok)
+	require.Len(t, reminders, 1)
+}
+
 func TestClient_Today_sendsAuthHeaders(t *testing.T) {
 	var gotAuth, gotTelegramID string
 

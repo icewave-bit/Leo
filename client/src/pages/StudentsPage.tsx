@@ -2,12 +2,14 @@ import { useAtom, useAtomValue } from 'jotai';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
+  balanceCorrectionStudentIdAtom,
   balanceReplenishStudentIdAtom,
   selectedStudentIdAtom,
   studentDrawerModeAtom,
   studentsAtom,
   studentsBalanceDisplayAtom,
 } from '../atoms/schedule';
+import { BalanceCorrectionDialog } from '../components/students/BalanceCorrectionDialog';
 import { BalanceReplenishDialog } from '../components/students/BalanceReplenishDialog';
 import { StudentCard } from '../components/students/StudentCard';
 import { BalanceKindSeg } from '../components/BalanceKindSeg';
@@ -20,6 +22,7 @@ export function StudentsPage() {
   const [drawerMode, setDrawerMode] = useAtom(studentDrawerModeAtom);
   const [selectedId, setSelectedId] = useAtom(selectedStudentIdAtom);
   const [replenishId, setReplenishId] = useAtom(balanceReplenishStudentIdAtom);
+  const [correctionId, setCorrectionId] = useAtom(balanceCorrectionStudentIdAtom);
   const [balanceDisplay, setBalanceDisplay] = useAtom(studentsBalanceDisplayAtom);
   const [query, setQuery] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
@@ -29,6 +32,9 @@ export function StudentsPage() {
   const openId = routeId ?? searchParams.get('id') ?? selectedId;
   const replenishStudent = replenishId
     ? students.find((s) => s.id === replenishId)
+    : undefined;
+  const correctionStudent = correctionId
+    ? students.find((s) => s.id === correctionId)
     : undefined;
 
   useEffect(() => {
@@ -181,6 +187,15 @@ export function StudentsPage() {
           student={replenishStudent}
           open={Boolean(replenishId)}
           onClose={() => setReplenishId(null)}
+          onOpenStudent={openEdit}
+        />
+      ) : null}
+
+      {correctionStudent ? (
+        <BalanceCorrectionDialog
+          student={correctionStudent}
+          open={Boolean(correctionId)}
+          onClose={() => setCorrectionId(null)}
           onOpenStudent={openEdit}
         />
       ) : null}

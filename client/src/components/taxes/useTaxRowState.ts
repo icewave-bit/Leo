@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { TaxDisplayCurrency, TaxReplenishment, WeekStartsOn } from '../../api/types';
 import { fmtDateKey, parseDateKey } from '../../utils/dateKey';
 import { fmtByn } from '../../utils/format';
-import { fmtTaxAmount, fmtTaxDue } from '../../utils/taxDisplay';
+import { fmtBynNbrbTitle, fmtTaxAmount, fmtTaxDue } from '../../utils/taxDisplay';
 
 export function useTaxRowState(
   row: TaxReplenishment,
@@ -31,6 +31,7 @@ export function useTaxRowState(
   const amountLabel = fmtTaxAmount(row);
   const bynLabel =
     row.amountByn != null ? fmtByn(row.amountByn) : (row.conversionError ?? '—');
+  const bynTitle = fmtBynNbrbTitle(row, dateLabel);
   const taxLabel =
     taxRatePercent > 0
       ? (fmtTaxDue(row, taxRatePercent, displayCurrency) ?? '—')
@@ -64,6 +65,7 @@ export function useTaxRowState(
     setDateDraft,
     amountLabel,
     bynLabel,
+    bynTitle,
     taxLabel,
     dateLabel,
     startDateEdit,

@@ -57,7 +57,7 @@ export function TaxTableRow({
             'tnum tax-journal-table__num tax-journal-table__col-byn' +
             (row.conversionError ? ' tax-journal-table__num--err' : '')
           }
-          title={row.conversionError ?? `Курс на ${row.replenishmentDate}`}
+          title={state.bynTitle}
         >
           {state.bynLabel}
         </td>

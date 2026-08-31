@@ -195,8 +195,7 @@ export interface JournalRow extends BalanceMovement {
   balanceKind: ViewStudent['balanceKind'];
   currency: string;
   title: string;
-  prepaidLabel: string;
-  debtLabel: string;
+  amountLabel: string;
   netLabel: string;
   whenLabel: string;
   tone: 'credit' | 'debt' | 'neutral' | 'manual';
@@ -223,6 +222,7 @@ export function enrichMovements(
     const baseTitle = MOVEMENT_LABELS[m.kind];
     const title =
       chargedFor != null ? `${baseTitle} · ${chargedFor.name}` : baseTitle;
+    const amount = m.prepaidDelta - m.debtDelta;
     return {
       ...m,
       studentName: st?.name ?? 'Ученик',
@@ -230,8 +230,7 @@ export function enrichMovements(
       balanceKind: unitKind,
       currency,
       title,
-      prepaidLabel: fmtDelta(m.prepaidDelta, unitKind, currency),
-      debtLabel: fmtDelta(m.debtDelta, unitKind, currency),
+      amountLabel: fmtDelta(amount, unitKind, currency),
       netLabel: fmtBalanceNet(m.prepaidAfter, m.debtAfter, unitKind, currency),
       whenLabel: fmtLessonWhen(m.occurredAt, timezone),
       tone: MOVEMENT_TONE[m.kind],
@@ -252,19 +251,18 @@ export function attachRunningBalance(
 export function periodDeltaSummary(
   movements: BalanceMovement[],
   student: ViewStudent | undefined,
-): { prepaid: string; debt: string; net: string } | null {
+): { net: string } | null {
   if (!student || movements.length === 0) return null;
   if (movementsHaveMixedUnits(movements, student)) return null;
 
   const unitKind = movementUnitKind(movements[0]!, student);
   const currency = student.currency;
-  const prepaid = movements.reduce((a, m) => a + m.prepaidDelta, 0);
-  const debt = movements.reduce((a, m) => a + m.debtDelta, 0);
-  const netChange = prepaid - debt;
-  const sign = netChange >= 0 ? '+' : '−';
+  const netChange = movements.reduce((a, m) => a + m.prepaidDelta - m.debtDelta, 0);
+  if (Math.abs(netChange) < 1e-9) {
+    return { net: fmtBalanceAmount(0, unitKind, currency) };
+  }
+  const sign = netChange > 0 ? '+' : '−';
   return {
-    prepaid: fmtDelta(prepaid, unitKind, currency),
-    debt: fmtDelta(debt, unitKind, currency),
     net: sign + fmtBalanceAmount(Math.abs(netChange), unitKind, currency),
   };
 }

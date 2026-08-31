@@ -76,6 +76,9 @@ export interface TaxReplenishmentDto {
   amount: number;
   currency: string;
   amountByn: number | null;
+  /** Official NBRB rate (BYN per `nbrbScale` units of currency). */
+  nbrbRate: number | null;
+  nbrbScale: number | null;
   conversionError: string | null;
   taxPaid: boolean;
   comment: string;
@@ -128,17 +131,24 @@ async function toTaxReplenishmentDto(
     timezone,
   );
   let amountByn: number | null = null;
+  let nbrbRate: number | null = null;
+  let nbrbScale: number | null = null;
   let conversionError: string | null = null;
 
   if (moneyAmount == null) {
     conversionError = 'Не задана ставка для пересчёта уроков в деньги';
   } else if (convertToBynEnabled) {
     try {
-      const nbrbRate =
-        currency === 'BYN'
-          ? null
-          : await fetchNbrbRate(currency, replenishmentDate, apiBase);
-      amountByn = convertToByn(moneyAmount, currency, nbrbRate);
+      if (currency === 'BYN') {
+        nbrbRate = 1;
+        nbrbScale = 1;
+        amountByn = convertToByn(moneyAmount, currency, null);
+      } else {
+        const fetched = await fetchNbrbRate(currency, replenishmentDate, apiBase);
+        nbrbRate = fetched.Cur_OfficialRate;
+        nbrbScale = fetched.Cur_Scale;
+        amountByn = convertToByn(moneyAmount, currency, fetched);
+      }
     } catch (err) {
       conversionError =
         err instanceof Error ? err.message : 'Не удалось конвертировать в BYN';
@@ -156,6 +166,8 @@ async function toTaxReplenishmentDto(
     amount: moneyAmount ?? 0,
     currency,
     amountByn,
+    nbrbRate,
+    nbrbScale,
     conversionError,
     taxPaid: row.tax_paid ?? false,
     comment: row.comment ?? '',

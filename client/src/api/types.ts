@@ -251,6 +251,9 @@ export interface TaxReplenishment {
   amount: number;
   currency: string;
   amountByn: number | null;
+  /** Official NBRB rate (BYN per `nbrbScale` units of currency). */
+  nbrbRate: number | null;
+  nbrbScale: number | null;
   conversionError: string | null;
   taxPaid: boolean;
   comment: string;

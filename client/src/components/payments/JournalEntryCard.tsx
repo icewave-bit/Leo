@@ -29,12 +29,8 @@ export function JournalEntryCard({
 
       <dl className="pay-entry__amounts">
         <div className="pay-entry__amount">
-          <dt>Предоплата</dt>
-          <dd className="tnum">{row.prepaidLabel}</dd>
-        </div>
-        <div className="pay-entry__amount">
-          <dt>Долг</dt>
-          <dd className="tnum">{row.debtLabel}</dd>
+          <dt>Сумма</dt>
+          <dd className="tnum">{row.amountLabel}</dd>
         </div>
         <div className="pay-entry__amount pay-entry__amount--net">
           <dt>Баланс</dt>

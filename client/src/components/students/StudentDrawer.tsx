@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { BalanceKind, CreateStudentBody, Lesson, UpdateStudentBody } from '../../api/types';
 import { api } from '../../api/client';
 import { tutorAtom } from '../../atoms/auth';
@@ -32,13 +32,19 @@ import {
 import { avatarHueStyle } from '../../utils/avatarStyle';
 import { hexFromHue, hueFromHex } from '../../utils/colorHue';
 import { studentToView, toUiStatus, type ViewStudent } from '../../utils/schedule';
+import { patchForBalanceKind } from '../../utils/studentBalanceKind';
 import { ColorPalettePicker } from '../ColorPalettePicker';
 import { DrawerSpoiler } from '../DrawerSpoiler';
 import { useAppStore } from '../../hooks/useAppStore';
 import { loadSchedule } from '../../state/loadSchedule';
 import type { BalanceMovement, BillingDebtBreakdown } from '../../api/types';
 import { JournalEntryCard } from '../payments/JournalEntryCard';
-import { balanceReplenishStudentIdAtom, studentLessonsBumpAtom, studentsAtom } from '../../atoms/schedule';
+import {
+  balanceCorrectionStudentIdAtom,
+  balanceReplenishStudentIdAtom,
+  studentLessonsBumpAtom,
+  studentsAtom,
+} from '../../atoms/schedule';
 import { BalanceKindSeg } from '../BalanceKindSeg';
 import { BillingFamilyDebt } from './BillingFamilyDebt';
 import { BillingPayerLink } from './BillingPayerLink';
@@ -163,10 +169,6 @@ function toPayload(
   return withBilling;
 }
 
-function payloadEquals(a: UpdateStudentBody, b: UpdateStudentBody): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-
 function diffPayload(
   next: UpdateStudentBody,
   baseline: UpdateStudentBody,
@@ -260,6 +262,7 @@ export function StudentDrawer({
   const { createStudent, updateStudent, archiveStudent, restoreStudent, deleteStudent } =
     useStudentActions();
   const setReplenishId = useSetAtom(balanceReplenishStudentIdAtom);
+  const setCorrectionId = useSetAtom(balanceCorrectionStudentIdAtom);
   const store = useAppStore();
   const defaultTz = tutor?.timezone ?? 'UTC';
 
@@ -277,9 +280,7 @@ export function StudentDrawer({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [manualBalanceOpen, setManualBalanceOpen] = useState(mode === 'create');
   const loadedStudentIdRef = useRef<string | null>(null);
-  const balanceManualTouchedRef = useRef(false);
   const userEditedRef = useRef(false);
   const formRef = useRef(form);
   const existingRef = useRef(existing);
@@ -310,9 +311,7 @@ export function StudentDrawer({
   useEffect(() => {
     if (mode === 'create') {
       loadedStudentIdRef.current = null;
-      balanceManualTouchedRef.current = false;
       userEditedRef.current = false;
-      setManualBalanceOpen(true);
       setForm(emptyForm(defaultTz));
       createLockRef.current = false;
       return;
@@ -320,14 +319,12 @@ export function StudentDrawer({
     if (mode === 'edit' && existing && studentId && loadedStudentIdRef.current !== studentId) {
       setForm(fromStudent(existing));
       loadedStudentIdRef.current = studentId;
-      balanceManualTouchedRef.current = false;
       userEditedRef.current = false;
-      setManualBalanceOpen(false);
     }
   }, [mode, studentId, existing, defaultTz]);
 
   useEffect(() => {
-    if (mode !== 'edit' || !existing || balanceManualTouchedRef.current) return;
+    if (mode !== 'edit' || !existing) return;
     if (isBillingDependent(existing)) return;
     const balanceNet = formatBalanceNetInput(
       existing.prepaid,
@@ -528,21 +525,52 @@ export function StudentDrawer({
   const onBalanceKindChange = (next: BalanceKind) => {
     if (readOnly || billingDependent) return;
     if (next === form.balanceKind) return;
-    userEditedRef.current = true;
-    const rateRaw = form.rate.trim() ? Number(form.rate) : null;
-    const rate = rateRaw != null && !Number.isNaN(rateRaw) && rateRaw > 0 ? rateRaw : null;
-    const net = parseBalanceNetInput(form.balanceNet, form.balanceKind);
-    if (rate == null) {
-      setForm((f) => ({ ...f, balanceKind: next }));
+
+    if (mode === 'create') {
+      userEditedRef.current = true;
+      const rateRaw = form.rate.trim() ? Number(form.rate) : null;
+      const rate = rateRaw != null && !Number.isNaN(rateRaw) && rateRaw > 0 ? rateRaw : null;
+      if (rate == null) {
+        setForm((f) => ({ ...f, balanceKind: next }));
+        return;
+      }
+      const net = parseBalanceNetInput(form.balanceNet, form.balanceKind);
+      const newNet = convertBalanceNet(net, form.balanceKind, next, rate);
+      setForm((f) => ({
+        ...f,
+        balanceKind: next,
+        balanceNet: String(newNet),
+      }));
       return;
     }
-    const newNet = convertBalanceNet(net, form.balanceKind, next, rate);
-    balanceManualTouchedRef.current = true;
+
+    if (!studentId || !existing) return;
+    const patch = patchForBalanceKind(existing, next);
+    if (!patch) return;
     setForm((f) => ({
       ...f,
       balanceKind: next,
-      balanceNet: String(newNet),
+      balanceNet:
+        patch.prepaid != null && patch.debt != null
+          ? formatBalanceNetInput(patch.prepaid, patch.debt, next)
+          : f.balanceNet,
     }));
+    setSaving(true);
+    setError(null);
+    void updateStudent(studentId, patch)
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : 'Не удалось сменить учёт');
+        setForm((f) => ({
+          ...f,
+          balanceKind: existing.balanceKind,
+          balanceNet: formatBalanceNetInput(
+            existing.prepaid,
+            existing.debt,
+            existing.balanceKind,
+          ),
+        }));
+      })
+      .finally(() => setSaving(false));
   };
 
   const set = <K extends keyof StudentFormValues>(key: K, value: StudentFormValues[K]) => {
@@ -550,34 +578,6 @@ export function StudentDrawer({
     userEditedRef.current = true;
     setForm((f) => ({ ...f, [key]: value }));
   };
-
-  const flushBalanceCorrection = useCallback(async () => {
-    if (readOnly || mode !== 'edit' || !studentId || billingDependent) return;
-    const current = formRef.current;
-    const server = existingRef.current;
-    if (!server || !balanceManualTouchedRef.current) return;
-
-    const payload = toPayload(current, { includeBalance: true });
-    const baseline = toPayload(fromStudent(server), { includeBalance: true });
-    if (payloadEquals(payload, baseline)) {
-      balanceManualTouchedRef.current = false;
-      return;
-    }
-
-    const { balanceKind, prepaid, debt } = payload;
-    if (prepaid === undefined || debt === undefined) return;
-
-    setSaving(true);
-    setError(null);
-    try {
-      await updateStudent(studentId, { balanceKind, prepaid, debt });
-      balanceManualTouchedRef.current = false;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Не удалось сохранить баланс');
-    } finally {
-      setSaving(false);
-    }
-  }, [readOnly, mode, studentId, updateStudent]);
 
   useEffect(() => {
     if (readOnly) return;
@@ -705,17 +705,29 @@ export function StudentDrawer({
       title="Баланс"
       className="drawer-panel--balance"
       action={
-        mode === 'edit' && studentId && !readOnly ? (
-          <button
-            type="button"
-            className="btn btn--primary btn--sm"
-            disabled={billingDependent}
-            onClick={() => {
-              if (!billingDependent) setReplenishId(studentId);
-            }}
-          >
-            Пополнить
-          </button>
+        mode === 'edit' && studentId && !readOnly && !billingDependent ? (
+          <div className="pay-summary__actions">
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => {
+                setReplenishId(null);
+                setCorrectionId(studentId);
+              }}
+            >
+              Корректировка
+            </button>
+            <button
+              type="button"
+              className="btn btn--primary btn--sm"
+              onClick={() => {
+                setCorrectionId(null);
+                setReplenishId(studentId);
+              }}
+            >
+              Пополнить
+            </button>
+          </div>
         ) : undefined
       }
     >
@@ -766,57 +778,26 @@ export function StudentDrawer({
             disabled={readOnly || billingDependent}
             onChange={onBalanceKindChange}
           />
-          <details
-            className="balance-manual balance-manual--panel"
-            open={manualBalanceOpen}
-            onToggle={(e) => {
-              if (!billingDependent) setManualBalanceOpen(e.currentTarget.open);
-            }}
-          >
-            <summary
-              className="balance-manual__summary"
-              tabIndex={billingDependent ? -1 : undefined}
-            >
-              {mode === 'create' ? 'Стартовый баланс' : 'Корректировка'}
-            </summary>
-            <div className="balance-manual__body">
-              {mode === 'create' ? (
-                <p className="drawer-panel__hint">Отрицательное значение — долг.</p>
-              ) : null}
+          {mode === 'create' && !billingDependent ? (
+            <>
+              <p className="drawer-panel__hint">Отрицательное значение — долг.</p>
               <label className="field">
                 <span className="field__label">
-                  {(billingPayer?.balanceKind ?? form.balanceKind) === 'lessons'
-                    ? 'Баланс, уроков'
-                    : `Баланс, ${billingPayer?.currency ?? form.currency}`}
+                  {form.balanceKind === 'lessons'
+                    ? 'Стартовый баланс, уроков'
+                    : `Стартовый баланс, ${form.currency}`}
                 </span>
                 <input
                   className="field__control tnum"
                   type="number"
-                  step={(billingPayer?.balanceKind ?? form.balanceKind) === 'lessons' ? 1 : 0.01}
-                  inputMode={
-                    (billingPayer?.balanceKind ?? form.balanceKind) === 'lessons'
-                      ? 'numeric'
-                      : 'decimal'
-                  }
+                  step={form.balanceKind === 'lessons' ? 1 : 0.01}
+                  inputMode={form.balanceKind === 'lessons' ? 'numeric' : 'decimal'}
                   value={form.balanceNet}
-                  disabled={readOnly || billingDependent}
-                  readOnly={billingDependent}
-                  tabIndex={billingDependent ? -1 : undefined}
-                  onChange={(e) => {
-                    balanceManualTouchedRef.current = true;
-                    set('balanceNet', e.target.value);
-                  }}
-                  onBlur={() => void flushBalanceCorrection()}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      (e.target as HTMLInputElement).blur();
-                    }
-                  }}
+                  onChange={(e) => set('balanceNet', e.target.value)}
                 />
               </label>
-            </div>
-          </details>
+            </>
+          ) : null}
         </div>
       ) : null}
 

@@ -25,6 +25,8 @@ type Monitor interface {
 	OpenSlots(ctx context.Context, telegramUserID int64) (tutorapi.OpenSlots, error)
 	Students(ctx context.Context, telegramUserID int64) ([]tutorapi.Student, error)
 	Debt(ctx context.Context, telegramUserID int64) ([]tutorapi.Student, error)
+	DueReminders(ctx context.Context) ([]tutorapi.DueReminder, error)
+	MarkRemindersSent(ctx context.Context, items []tutorapi.SentReminder) error
 
 	RegisterStudent(ctx context.Context, in tutorapi.StudentRegisterInput) (tutorapi.BotStudent, error)
 	StudentMe(ctx context.Context, telegramUserID int64) (tutorapi.BotStudent, error)

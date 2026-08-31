@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
 import { useNavigate } from 'react-router-dom';
 import {
+  balanceCorrectionStudentIdAtom,
   balanceReplenishStudentIdAtom,
   studentLessonsBumpAtom,
   studentsAtom,
@@ -12,6 +13,7 @@ import {
   paymentsPeriodAtom,
   paymentsStudentIdAtom,
 } from '../atoms/payments';
+import { BalanceCorrectionDialog } from '../components/students/BalanceCorrectionDialog';
 import { BalanceReplenishDialog } from '../components/students/BalanceReplenishDialog';
 import { PaymentsJournal } from '../components/payments/PaymentsJournal';
 import { loadBalanceMovements } from '../state/loadBalanceMovements';
@@ -22,6 +24,7 @@ export function PaymentsPage() {
   const navigate = useNavigate();
   const students = useAtomValue(studentsAtom);
   const [replenishId, setReplenishId] = useAtom(balanceReplenishStudentIdAtom);
+  const [correctionId, setCorrectionId] = useAtom(balanceCorrectionStudentIdAtom);
   const period = useAtomValue(paymentsPeriodAtom);
   const studentId = useAtomValue(paymentsStudentIdAtom);
   const customFrom = useAtomValue(paymentsCustomFromAtom);
@@ -31,6 +34,9 @@ export function PaymentsPage() {
 
   const replenishStudent = replenishId
     ? students.find((s) => s.id === replenishId)
+    : undefined;
+  const correctionStudent = correctionId
+    ? students.find((s) => s.id === correctionId)
     : undefined;
 
   useEffect(() => {
@@ -60,6 +66,16 @@ export function PaymentsPage() {
           open={Boolean(replenishId)}
           onClose={() => setReplenishId(null)}
           onReplenished={onReplenished}
+          onOpenStudent={(id) => navigate(`/students/${id}`)}
+        />
+      ) : null}
+
+      {correctionStudent ? (
+        <BalanceCorrectionDialog
+          student={correctionStudent}
+          open={Boolean(correctionId)}
+          onClose={() => setCorrectionId(null)}
+          onCorrected={onReplenished}
           onOpenStudent={(id) => navigate(`/students/${id}`)}
         />
       ) : null}

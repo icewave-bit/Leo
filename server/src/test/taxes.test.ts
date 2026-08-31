@@ -73,6 +73,8 @@ describe('taxes', () => {
     expect(entry.amount).toBe(100);
     expect(entry.replenishmentDate).toBe('2026-01-15');
     expect(entry.amountByn).toBe(325);
+    expect(entry.nbrbRate).toBe(3.25);
+    expect(entry.nbrbScale).toBe(1);
     expect(entry.taxPaid).toBe(false);
 
     const movementId = entry.movementId as string;

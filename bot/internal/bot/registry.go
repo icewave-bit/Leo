@@ -103,12 +103,15 @@ func newSentReminders() *sentReminders {
 	return &sentReminders{keys: make(map[string]struct{})}
 }
 
-func (s *sentReminders) seenOrMark(key string) bool {
+func (s *sentReminders) seen(key string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.keys[key]; ok {
-		return true
-	}
+	_, ok := s.keys[key]
+	return ok
+}
+
+func (s *sentReminders) mark(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.keys[key] = struct{}{}
-	return false
 }

@@ -99,7 +99,7 @@ export function TaxJournalEntryCard({
           <TaxEntryCell
             label="BYN (НБРБ)"
             err={Boolean(row.conversionError)}
-            title={row.conversionError ?? `Курс на ${row.replenishmentDate}`}
+            title={state.bynTitle}
           >
             <span className="tnum">{state.bynLabel}</span>
           </TaxEntryCell>

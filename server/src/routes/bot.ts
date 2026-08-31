@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { listDueReminders, markRemindersSent } from '../botReminders.js';
 import { buildOpenSlotsForTutor } from '../botOpenSlots.js';
 import { loadOpenLessonDebts } from '../billingDebt.js';
 import { query } from '../db.js';
@@ -83,6 +84,37 @@ botRouter.post('/link', requireBotBearer, async (req, res, next) => {
     await query('DELETE FROM telegram_link_codes WHERE tutor_id = $1', [link.tutor_id]);
 
     res.json({ tutor: toTutor(tutor) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const markSentSchema = z.object({
+  reminders: z.array(
+    z.object({
+      telegramUserId: z
+        .union([z.number().int().positive(), z.string().regex(/^\d+$/)])
+        .transform(Number),
+      kind: z.enum(['lesson', 'personal']),
+      entityId: z.string().uuid(),
+    }),
+  ),
+});
+
+botRouter.get('/reminders/due', requireBotBearer, async (_req, res, next) => {
+  try {
+    const reminders = await listDueReminders(new Date());
+    res.json({ reminders });
+  } catch (err) {
+    next(err);
+  }
+});
+
+botRouter.post('/reminders/sent', requireBotBearer, async (req, res, next) => {
+  try {
+    const body = validate(markSentSchema, req.body);
+    await markRemindersSent(body.reminders);
+    res.status(204).send();
   } catch (err) {
     next(err);
   }

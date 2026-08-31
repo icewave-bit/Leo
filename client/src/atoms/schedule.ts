@@ -24,6 +24,8 @@ export const selectedStudentIdAtom = atom<string | null>(null);
 export const studentDrawerModeAtom = atom<'create' | 'edit' | null>(null);
 /** Student id when the balance replenish dialog is open. */
 export const balanceReplenishStudentIdAtom = atom<string | null>(null);
+/** Student id when the balance correction dialog is open. */
+export const balanceCorrectionStudentIdAtom = atom<string | null>(null);
 /** Increment to refetch lesson lists after balance top-up. */
 export const studentLessonsBumpAtom = atom(0);
 /** Как показывать баланс в списке: деньги (основа) или уроки (из денег). */

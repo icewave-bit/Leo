@@ -5,6 +5,7 @@ import { archivedStudentsAtom } from '../atoms/archivedStudents';
 import { studentLessonsBumpAtom, studentsAtom } from '../atoms/schedule';
 import { reloadStudents } from '../state/reloadStudents';
 import { studentToView } from '../utils/schedule';
+import { partsFromBalanceNet } from '../utils/balanceConvert';
 import { useAppStore } from './useAppStore';
 
 export function useStudentActions() {
@@ -59,6 +60,14 @@ export function useStudentActions() {
     bumpLessons((n) => n + 1);
   };
 
+  const correctBalance = async (id: string, net: number): Promise<void> => {
+    const current = store.get(studentsAtom).find((s) => s.id === id);
+    if (!current) throw new Error('Ученик не найден');
+    const { prepaid, debt } = partsFromBalanceNet(net, current.balanceKind);
+    await updateStudent(id, { prepaid, debt });
+    bumpLessons((n) => n + 1);
+  };
+
   const archiveStudent = async (id: string): Promise<void> => {
     const student = await api.archiveStudent(id);
     setStudents((prev) => prev.filter((s) => s.id !== id));
@@ -88,6 +97,7 @@ export function useStudentActions() {
     restoreStudent,
     deleteStudent,
     replenishBalance,
+    correctBalance,
     refresh,
   };
 }

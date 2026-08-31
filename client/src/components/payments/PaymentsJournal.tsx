@@ -11,7 +11,11 @@ import {
   paymentsPeriodAtom,
   paymentsStudentIdAtom,
 } from '../../atoms/payments';
-import { studentsAtom, balanceReplenishStudentIdAtom } from '../../atoms/schedule';
+import {
+  studentsAtom,
+  balanceReplenishStudentIdAtom,
+  balanceCorrectionStudentIdAtom,
+} from '../../atoms/schedule';
 import { findBillingPayer, isBillingDependent } from '../../utils/billingStudent';
 import { fmtBalanceAmount } from '../../utils/format';
 import {
@@ -40,6 +44,7 @@ export function PaymentsJournal() {
   const customFrom = useAtomValue(paymentsCustomFromAtom);
   const customTo = useAtomValue(paymentsCustomToAtom);
   const setReplenishId = useSetAtom(balanceReplenishStudentIdAtom);
+  const setCorrectionId = useSetAtom(balanceCorrectionStudentIdAtom);
 
   const tz = tutor?.timezone ?? 'UTC';
   const weekStartsOn = tutor?.weekStartsOn ?? 'monday';
@@ -55,6 +60,10 @@ export function PaymentsJournal() {
     ? findBillingPayer(students, selectedStudent) ?? selectedStudent
     : undefined;
   const selectedDependent = selectedStudent ? isBillingDependent(selectedStudent) : false;
+  const canActOnWallet =
+    Boolean(selectedStudent) &&
+    !selectedStudent?.group &&
+    !selectedDependent;
 
   const rows = useMemo(() => {
     const enriched = enrichMovements(movements, studentMap, tz);
@@ -89,15 +98,6 @@ export function PaymentsJournal() {
 
         <div className="pay-toolbar__bar">
           <p className="pay-toolbar__range">{periodLabel}</p>
-          {selectedStudent && !selectedStudent.group ? (
-            <button
-              type="button"
-              className="btn btn--primary btn--sm pay-toolbar__replenish"
-              onClick={() => setReplenishId(selectedStudent.id)}
-            >
-              Пополнить
-            </button>
-          ) : null}
         </div>
       </section>
 
@@ -131,24 +131,10 @@ export function PaymentsJournal() {
               <StudentBalance student={balanceStudent} compact />
               <div className="pay-summary__stats">
                 {summary ? (
-                  <>
-                    <div className="pay-summary__stat">
-                      <span className="pay-summary__stat-lbl">Предоплата</span>
-                      <span className="pay-summary__stat-val tnum pay-summary__stat-val--muted">
-                        {summary.prepaid}
-                      </span>
-                    </div>
-                    <div className="pay-summary__stat">
-                      <span className="pay-summary__stat-lbl">Долг</span>
-                      <span className="pay-summary__stat-val tnum pay-summary__stat-val--muted">
-                        {summary.debt}
-                      </span>
-                    </div>
-                    <div className="pay-summary__stat">
-                      <span className="pay-summary__stat-lbl">За период</span>
-                      <span className="pay-summary__stat-val tnum">{summary.net}</span>
-                    </div>
-                  </>
+                  <div className="pay-summary__stat">
+                    <span className="pay-summary__stat-lbl">За период</span>
+                    <span className="pay-summary__stat-val tnum">{summary.net}</span>
+                  </div>
                 ) : summaryMixedUnits ? (
                   <p className="pay-summary__mixed-hint">
                     За период есть операции в рублях и в уроках — итог по строкам смотрите в
@@ -156,6 +142,30 @@ export function PaymentsJournal() {
                   </p>
                 ) : null}
               </div>
+              {canActOnWallet ? (
+                <div className="pay-summary__actions">
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => {
+                      setReplenishId(null);
+                      setCorrectionId(selectedStudent.id);
+                    }}
+                  >
+                    Корректировка
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--primary btn--sm"
+                    onClick={() => {
+                      setCorrectionId(null);
+                      setReplenishId(selectedStudent.id);
+                    }}
+                  >
+                    Пополнить
+                  </button>
+                </div>
+              ) : null}
             </>
           )}
         </section>
@@ -197,8 +207,7 @@ export function PaymentsJournal() {
                     <th>Когда</th>
                     {showStudentColumn ? <th>Ученик</th> : null}
                     <th>Операция</th>
-                    <th className="pay-journal-table__num">Предоплата</th>
-                    <th className="pay-journal-table__num">Долг</th>
+                    <th className="pay-journal-table__num">Сумма</th>
                     <th className="pay-journal-table__num">Баланс</th>
                   </tr>
                 </thead>
@@ -220,10 +229,7 @@ export function PaymentsJournal() {
                         <span className={'pay-op pay-op--' + r.tone}>{r.title}</span>
                       </td>
                       <td className="tnum pay-journal-table__num pay-journal-table__delta">
-                        {r.prepaidLabel}
-                      </td>
-                      <td className="tnum pay-journal-table__num pay-journal-table__delta">
-                        {r.debtLabel}
+                        {r.amountLabel}
                       </td>
                       <td className="tnum pay-journal-table__num pay-journal-table__net">
                         {r.runningNet}

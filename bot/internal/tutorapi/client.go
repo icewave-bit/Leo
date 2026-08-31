@@ -148,6 +148,33 @@ func (c *Client) Debt(ctx context.Context, telegramUserID int64) ([]Student, err
 	return out.Students, nil
 }
 
+func (c *Client) DueReminders(ctx context.Context) ([]DueReminder, error) {
+	var out struct {
+		Reminders []DueReminder `json:"reminders"`
+	}
+	if err := c.do(ctx, httpRequest{
+		method: http.MethodGet,
+		path:   "/api/bot/reminders/due",
+	}, &out); err != nil {
+		return nil, err
+	}
+	if out.Reminders == nil {
+		return []DueReminder{}, nil
+	}
+	return out.Reminders, nil
+}
+
+func (c *Client) MarkRemindersSent(ctx context.Context, items []SentReminder) error {
+	if len(items) == 0 {
+		return nil
+	}
+	return c.do(ctx, httpRequest{
+		method: http.MethodPost,
+		path:   "/api/bot/reminders/sent",
+		body:   map[string]any{"reminders": items},
+	}, nil)
+}
+
 func (c *Client) RegisterStudent(ctx context.Context, in StudentRegisterInput) (BotStudent, error) {
 	body := map[string]any{
 		"telegramUserId":   strconv.FormatInt(in.TelegramUserID, 10),

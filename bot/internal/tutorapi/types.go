@@ -70,6 +70,23 @@ type PersonalEvent struct {
 	DurationMin int    `json:"durationMin"`
 }
 
+type DueReminder struct {
+	Kind           string         `json:"kind"`
+	TelegramUserID int64          `json:"telegramUserId"`
+	Role           string         `json:"role"`
+	Timezone       string         `json:"timezone"`
+	LeadMinutes    int            `json:"leadMinutes"`
+	Silent         bool           `json:"silent"`
+	Lesson         *Lesson        `json:"lesson,omitempty"`
+	Event          *PersonalEvent `json:"event,omitempty"`
+}
+
+type SentReminder struct {
+	TelegramUserID int64  `json:"telegramUserId"`
+	Kind           string `json:"kind"`
+	EntityID       string `json:"entityId"`
+}
+
 type Schedule struct {
 	Timezone     string          `json:"timezone"`
 	WeekStartsOn string          `json:"weekStartsOn"`
