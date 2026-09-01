@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { attachCascadeEffects } from '../activityLog.js';
 import { getPool, query } from '../db.js';
 import { AppError } from '../errors.js';
 import { toRecurringPersonalSchedule, type RecurringPersonalScheduleRow } from '../mappers.js';
@@ -193,11 +194,19 @@ recurringPersonalSchedulesRouter.patch('/:id', async (req, res, next) => {
       await materializeRecurringPersonalSchedule(client, updated, prefs, horizonEndDate);
     }
 
+    let deletedEvents: Awaited<ReturnType<typeof deleteFuturePersonalEventsForSchedule>> = [];
     if (body.active === false) {
-      await deleteFuturePersonalEventsForSchedule(client, existing.id, req.tutorId!);
+      deletedEvents = await deleteFuturePersonalEventsForSchedule(client, existing.id, req.tutorId!);
     }
 
     await client.query('COMMIT');
+    await attachCascadeEffects(
+      res,
+      req.tutorId!,
+      'event_delete',
+      'Удалено событие из серии',
+      deletedEvents,
+    );
     res.json(toRecurringPersonalSchedule(updated));
   } catch (err) {
     await client.query('ROLLBACK');
@@ -233,7 +242,7 @@ recurringPersonalSchedulesRouter.delete('/:id', async (req, res, next) => {
       });
     }
 
-    await deletePersonalEventsFromScheduleAnchor(
+    const deletedEvents = await deletePersonalEventsFromScheduleAnchor(
       client,
       req.params.id,
       req.tutorId!,
@@ -246,6 +255,13 @@ recurringPersonalSchedulesRouter.delete('/:id', async (req, res, next) => {
     );
 
     await client.query('COMMIT');
+    await attachCascadeEffects(
+      res,
+      req.tutorId!,
+      'event_delete',
+      'Удалено событие из серии',
+      deletedEvents,
+    );
     res.status(204).send();
   } catch (err) {
     await client.query('ROLLBACK');

@@ -1,4 +1,5 @@
 import 'express-session';
+import type { ActivitySnapshot } from '../activityLog.js';
 
 declare global {
   namespace Express {
@@ -6,6 +7,7 @@ declare global {
       tutorId?: string;
       studentId?: string;
       botRole?: 'tutor' | 'student';
+      activitySnapshot?: ActivitySnapshot;
     }
   }
 }

@@ -16,8 +16,11 @@ import { recurringPersonalSchedulesRouter } from './routes/recurringPersonalSche
 import { scheduleSlotOverridesRouter } from './routes/scheduleSlotOverrides.js';
 import { balanceMovementsRouter } from './routes/balanceMovements.js';
 import { taxesRouter } from './routes/taxes.js';
+import { activityLogRouter } from './routes/activityLog.js';
 import { botRouter } from './routes/bot.js';
 import { botStudentRouter } from './routes/botStudent.js';
+import { activityLogMiddleware } from './middleware/activityLog.js';
+import { rememberActivityError } from './activityLog.js';
 
 const PgSession = connectPgSimple(session);
 
@@ -55,8 +58,11 @@ export async function createApp(): Promise<express.Express> {
     }),
   );
 
+  app.use(activityLogMiddleware);
+
   app.use('/health', healthRouter);
   app.use('/api/auth', authRouter);
+  app.use('/api/activity-log', activityLogRouter);
   app.use('/api/bot/student', botStudentRouter);
   app.use('/api/bot', botRouter);
   app.use('/api/students', studentsRouter);
@@ -76,6 +82,7 @@ export async function createApp(): Promise<express.Express> {
       res: express.Response,
       _next: express.NextFunction, // eslint-disable-line @typescript-eslint/no-unused-vars
     ) => {
+      rememberActivityError(res, err);
       if (err instanceof AppError) {
         res.status(err.status).json({
           error: {

@@ -3,11 +3,22 @@ import { countBillingDependents } from './billingStudent.js';
 import { getPool } from './db.js';
 import { AppError } from './errors.js';
 
+export type ArchivedLesson = {
+  id: string;
+  student_id: string;
+  start_utc: Date;
+  duration_min: number;
+  academic_units: number;
+  paid: boolean;
+};
+
 export async function archiveStudent(
   tutorId: string,
   studentId: string,
-): Promise<void> {
+): Promise<{ cancelledLessons: ArchivedLesson[]; pausedScheduleCount: number }> {
   const client = await getPool().connect();
+  let cancelledLessons: ArchivedLesson[] = [];
+  let pausedScheduleCount = 0;
   try {
     await client.query('BEGIN');
 
@@ -36,25 +47,31 @@ export async function archiveStudent(
       [studentId, tutorId],
     );
 
-    await client.query(
+    const paused = await client.query(
       `UPDATE recurring_schedules SET active = false, updated_at = now()
-       WHERE student_id = $1 AND tutor_id = $2`,
+       WHERE student_id = $1 AND tutor_id = $2 AND active = true
+       RETURNING id`,
       [studentId, tutorId],
     );
 
-    await client.query(
+    const cancelled = await client.query<ArchivedLesson>(
       `UPDATE lessons SET status = 'cancelled', updated_at = now()
-       WHERE student_id = $1 AND tutor_id = $2 AND status = 'planned'`,
+       WHERE student_id = $1 AND tutor_id = $2 AND status = 'planned'
+       RETURNING id, student_id, start_utc, duration_min, academic_units, paid`,
       [studentId, tutorId],
     );
 
     await client.query('COMMIT');
+    cancelledLessons = cancelled.rows;
+    pausedScheduleCount = paused.rowCount ?? 0;
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+
+  return { cancelledLessons, pausedScheduleCount };
 }
 
 export async function restoreStudent(tutorId: string, studentId: string): Promise<void> {

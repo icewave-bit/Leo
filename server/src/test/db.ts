@@ -8,6 +8,9 @@ export async function setupTestDb(): Promise<pg.Pool> {
   const url = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
   if (!url) throw new Error('TEST_DATABASE_URL is required');
 
+  const { waitForActivityLog } = await import('../middleware/activityLog.js');
+  await waitForActivityLog();
+
   if (!migrationsApplied) {
     await runMigrations(url);
     migrationsApplied = true;

@@ -9,15 +9,15 @@ import { getPool, query } from '../db.js';
 import { AppError } from '../errors.js';
 import {
   reverseLessonBalanceCharge,
-  runAutoCompleteForTutor,
   syncLessonBalanceForPaid,
   syncLessonBalanceForStatus,
+  syncTutorLessonState,
 } from '../lessonBalance.js';
 import { toLesson, type LessonRow } from '../mappers.js';
 import type { AcademicUnits } from '../types.js';
 import { validate } from '../validate.js';
 import { requireAuth } from '../middleware/requireAuth.js';
-import { skipRecurringOccurrence, topUpRecurringSchedules } from '../recurringSchedule.js';
+import { skipRecurringOccurrence } from '../recurringSchedule.js';
 import { assertActiveStudentOwned, assertStudentOwned } from '../studentAccess.js';
 
 const lessonStatusEnum = z.enum(['planned', 'completed', 'cancelled', 'no_show']);
@@ -102,8 +102,12 @@ lessonsRouter.get('/', async (req, res, next) => {
       });
     }
 
-    await runAutoCompleteForTutor(req.tutorId!, { from, to });
-    await topUpRecurringSchedules(req.tutorId!);
+    await syncTutorLessonState(req.tutorId!, {
+      from,
+      to,
+      studentId: q.studentId,
+      autoComplete: !q.studentId,
+    });
 
     const params: unknown[] = [req.tutorId, from.toISOString(), to.toISOString()];
     let studentFilter = '';

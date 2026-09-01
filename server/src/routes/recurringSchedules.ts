@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { attachCascadeEffects } from '../activityLog.js';
 import {
   durationMinFromUnits,
   getTutorAcademicHourMin,
@@ -218,11 +219,19 @@ recurringSchedulesRouter.patch('/:id', async (req, res, next) => {
       await materializeRecurringSchedule(client, updated, prefs, horizonEndDate);
     }
 
+    let deletedLessons: Awaited<ReturnType<typeof deleteFutureLessonsForSchedule>> = [];
     if (body.active === false) {
-      await deleteFutureLessonsForSchedule(client, existing.id, req.tutorId!);
+      deletedLessons = await deleteFutureLessonsForSchedule(client, existing.id, req.tutorId!);
     }
 
     await client.query('COMMIT');
+    await attachCascadeEffects(
+      res,
+      req.tutorId!,
+      'lesson_delete',
+      'Удалён урок из серии',
+      deletedLessons,
+    );
     res.json(toRecurringSchedule(updated));
   } catch (err) {
     await client.query('ROLLBACK');
@@ -255,7 +264,7 @@ recurringSchedulesRouter.delete('/:id', async (req, res, next) => {
       });
     }
 
-    await deleteLessonsFromScheduleAnchor(
+    const deletedLessons = await deleteLessonsFromScheduleAnchor(
       client,
       req.params.id,
       req.tutorId!,
@@ -268,6 +277,13 @@ recurringSchedulesRouter.delete('/:id', async (req, res, next) => {
     );
 
     await client.query('COMMIT');
+    await attachCascadeEffects(
+      res,
+      req.tutorId!,
+      'lesson_delete',
+      'Удалён урок из серии',
+      deletedLessons,
+    );
     res.status(204).send();
   } catch (err) {
     await client.query('ROLLBACK');

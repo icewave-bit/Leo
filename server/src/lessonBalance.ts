@@ -1,7 +1,9 @@
 import type { PoolClient } from 'pg';
+import { recordLessonStatusActivity } from './activityLog.js';
 import { resolveBillingStudentId, listBillingDependentIds } from './billingStudent.js';
 import { recordBalanceMovement } from './balanceMovements.js';
-import { getPool, query } from './db.js';
+import { getPool } from './db.js';
+import { topUpRecurringSchedules } from './recurringSchedule.js';
 import type { AcademicUnits, BalanceKind, LessonStatus } from './types.js';
 import type { LessonRow, StudentRow } from './mappers.js';
 
@@ -340,10 +342,11 @@ export async function settleFamilyDebtsFromPrepaid(
   client: PoolClient,
   payerId: string,
   maxCredit?: number,
-): Promise<void> {
+): Promise<LessonBalanceRow[]> {
+  const settled: LessonBalanceRow[] = [];
   const payer = await loadStudent(client, payerId);
   let credit = maxCredit ?? Number(payer.prepaid);
-  if (credit <= 0) return;
+  if (credit <= 0) return settled;
 
   const dependentIds = await listBillingDependentIds(client, payerId);
   const familyIds = [payerId, ...dependentIds];
@@ -370,19 +373,21 @@ export async function settleFamilyDebtsFromPrepaid(
       [need, payerId],
     );
     credit -= need;
+    settled.push(row);
   }
 
-  if (credit <= 0) return;
+  if (credit <= 0) return settled;
 
   const payerReload = await loadStudent(client, payerId);
   const walletDebt = Number(payerReload.debt);
   const paydown = Math.min(credit, walletDebt);
-  if (paydown <= 0) return;
+  if (paydown <= 0) return settled;
 
   await client.query(
     `UPDATE students SET debt = debt - $1, prepaid = prepaid - $1 WHERE id = $2`,
     [paydown, payerId],
   );
+  return settled;
 }
 
 /** After balance top-up, mark oldest completed lessons with open debt as paid. */
@@ -393,56 +398,47 @@ export async function settleLessonsFromBalanceTopUp(
   debtBefore: number,
   prepaidAfter: number,
   debtAfter: number,
-): Promise<void> {
+): Promise<LessonBalanceRow[]> {
   const netBefore = prepaidBefore - debtBefore;
   const netAfter = prepaidAfter - debtAfter;
   const credit = netAfter - netBefore;
-  if (credit <= 0) return;
-  await settleFamilyDebtsFromPrepaid(client, studentId, credit);
+  if (credit <= 0) return [];
+  return settleFamilyDebtsFromPrepaid(client, studentId, credit);
 }
 
 export async function runAutoCompleteForTutor(
   tutorId: string,
-  opts?: { from?: Date; to?: Date },
+  opts?: { from?: Date; to?: Date; studentId?: string },
 ): Promise<void> {
   const params: unknown[] = [tutorId];
-  let rangeFilter = '';
+  let extra = '';
   if (opts?.from && opts?.to) {
-    rangeFilter = ` AND start_utc >= $2 AND start_utc < $3`;
+    extra += ` AND start_utc >= $${params.length + 1} AND start_utc < $${params.length + 2}`;
     params.push(opts.from.toISOString(), opts.to.toISOString());
   }
-
-  const due = await query<LessonBalanceRow>(
-    `SELECT ${LESSON_BALANCE_SELECT}
-     FROM lessons
-     WHERE tutor_id = $1
-       AND status = 'planned'
-       AND start_utc + (duration_min * interval '1 minute') <= now()${rangeFilter}`,
-    params,
-  );
-
-  if (due.rows.length === 0) return;
+  if (opts?.studentId) {
+    extra += ` AND student_id = $${params.length + 1}`;
+    params.push(opts.studentId);
+  }
 
   const client = await getPool().connect();
+  let completed: LessonBalanceRow[] = [];
   try {
     await client.query('BEGIN');
-    for (const lesson of due.rows) {
-      const locked = await client.query<LessonBalanceRow>(
-        `SELECT ${LESSON_BALANCE_SELECT}
-         FROM lessons WHERE id = $1 FOR UPDATE`,
-        [lesson.id],
-      );
-      const row = locked.rows[0];
-      if (!row || row.status !== 'planned') continue;
-      if (!isLessonEnded(row.start_utc, row.duration_min)) continue;
-
-      await client.query(
-        `UPDATE lessons SET status = 'completed', updated_at = now() WHERE id = $1`,
-        [row.id],
-      );
-      const updated = { ...row, status: 'completed' as LessonStatus };
+    const claimed = await client.query<LessonBalanceRow>(
+      `UPDATE lessons
+       SET status = 'completed', updated_at = now()
+       WHERE tutor_id = $1
+         AND status = 'planned'
+         AND start_utc < now()
+         AND start_utc + (duration_min * interval '1 minute') <= now()${extra}
+       RETURNING ${LESSON_BALANCE_SELECT}`,
+      params,
+    );
+    completed = claimed.rows;
+    for (const row of completed) {
       const student = await loadStudent(client, row.student_id);
-      await applyLessonBalanceCharge(client, updated, student);
+      await applyLessonBalanceCharge(client, { ...row, status: 'completed' }, student);
       await syncPaidAfterCompletedCharge(client, row.id, false);
     }
     await client.query('COMMIT');
@@ -452,4 +448,35 @@ export async function runAutoCompleteForTutor(
   } finally {
     client.release();
   }
+
+  for (const row of completed) {
+    try {
+      await recordLessonStatusActivity({
+        tutorId,
+        actor: 'system',
+        lessonId: row.id,
+        studentId: row.student_id,
+        before: {
+          status: 'planned',
+          paid: row.paid,
+          startUtc: row.start_utc.toISOString(),
+          durationMin: row.duration_min,
+          academicUnits: row.academic_units,
+        },
+        toStatus: 'completed',
+      });
+    } catch {
+      // Activity log must never break auto-complete.
+    }
+  }
+}
+
+/** Materialize recurring lessons, then auto-complete anything that has already ended. */
+export async function syncTutorLessonState(
+  tutorId: string,
+  opts?: { from?: Date; to?: Date; studentId?: string; autoComplete?: boolean },
+): Promise<void> {
+  await topUpRecurringSchedules(tutorId);
+  if (opts?.autoComplete === false) return;
+  await runAutoCompleteForTutor(tutorId, opts);
 }

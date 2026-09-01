@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { attachActivityEffects, attachCascadeEffects } from '../activityLog.js';
 import { getPool, query } from '../db.js';
 import { recordStudentBalancePatch } from '../balanceMovements.js';
 import { settleLessonsFromBalanceTopUp, settleFamilyDebtsFromPrepaid } from '../lessonBalance.js';
@@ -248,6 +249,7 @@ studentsRouter.post('/', async (req, res, next) => {
     );
 
     const row = inserted.rows[0]!;
+    let settledLessons: Awaited<ReturnType<typeof settleFamilyDebtsFromPrepaid>> = [];
     if (billingStudentId) {
       await validateBillingStudentAssignment(
         client,
@@ -267,11 +269,18 @@ studentsRouter.post('/', async (req, res, next) => {
         billingStudentId,
       );
       if (initialPrepaid > 0 || initialDebt > 0) {
-        await settleFamilyDebtsFromPrepaid(client, billingStudentId);
+        settledLessons = await settleFamilyDebtsFromPrepaid(client, billingStudentId);
       }
     }
 
     await client.query('COMMIT');
+    await attachCascadeEffects(
+      res,
+      req.tutorId!,
+      'lesson_paid',
+      'Урок отмечен оплаченным',
+      settledLessons,
+    );
     res.status(201).json(toStudent(row));
   } catch (err) {
     await client.query('ROLLBACK');
@@ -499,8 +508,11 @@ studentsRouter.patch('/:id', async (req, res, next) => {
       throw new AppError('NOT_FOUND', 404, 'Student not found');
     }
 
+    const settledLessons: Awaited<ReturnType<typeof settleFamilyDebtsFromPrepaid>> = [];
     if (isNewBillingLink && dependentHadWallet) {
-      await settleFamilyDebtsFromPrepaid(client, body.billingStudentId!);
+      settledLessons.push(
+        ...(await settleFamilyDebtsFromPrepaid(client, body.billingStudentId!)),
+      );
     }
 
     if (body.prepaid !== undefined || body.debt !== undefined) {
@@ -531,18 +543,27 @@ studentsRouter.patch('/:id', async (req, res, next) => {
         },
       );
       if (!balanceKindChanged) {
-        await settleLessonsFromBalanceTopUp(
-          client,
-          row.id,
-          Number(beforeRow.prepaid),
-          Number(beforeRow.debt),
-          Number(row.prepaid),
-          Number(row.debt),
+        settledLessons.push(
+          ...(await settleLessonsFromBalanceTopUp(
+            client,
+            row.id,
+            Number(beforeRow.prepaid),
+            Number(beforeRow.debt),
+            Number(row.prepaid),
+            Number(row.debt),
+          )),
         );
       }
     }
 
     await client.query('COMMIT');
+    await attachCascadeEffects(
+      res,
+      req.tutorId!,
+      'lesson_paid',
+      'Урок отмечен оплаченным',
+      settledLessons,
+    );
     const openDebts = await loadOpenLessonDebts(req.tutorId!, [row.id]);
     res.json(toStudent(row, openDebts.get(row.id) ?? 0));
   } catch (err) {
@@ -555,7 +576,29 @@ studentsRouter.patch('/:id', async (req, res, next) => {
 
 studentsRouter.post('/:id/archive', async (req, res, next) => {
   try {
-    await archiveStudent(req.tutorId!, req.params.id);
+    const { cancelledLessons, pausedScheduleCount } = await archiveStudent(
+      req.tutorId!,
+      req.params.id,
+    );
+    if (pausedScheduleCount === 1) {
+      attachActivityEffects(res, [
+        { type: 'schedule_pause', summary: 'Отключено повторяющееся расписание' },
+      ]);
+    } else if (pausedScheduleCount > 1) {
+      attachActivityEffects(res, [
+        {
+          type: 'schedule_pause',
+          summary: `Отключены повторяющиеся расписания · ${pausedScheduleCount}`,
+        },
+      ]);
+    }
+    await attachCascadeEffects(
+      res,
+      req.tutorId!,
+      'lesson_cancel',
+      'Отменён запланированный урок',
+      cancelledLessons,
+    );
     const result = await query<StudentRow>(
       `SELECT ${STUDENT_COLUMNS} FROM students WHERE id = $1 AND tutor_id = $2`,
       [req.params.id, req.tutorId],

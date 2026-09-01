@@ -5,11 +5,10 @@ import { buildOpenSlotsForTutor } from '../botOpenSlots.js';
 import { loadOpenLessonDebts } from '../billingDebt.js';
 import { query } from '../db.js';
 import { AppError } from '../errors.js';
-import { runAutoCompleteForTutor } from '../lessonBalance.js';
+import { syncTutorLessonState } from '../lessonBalance.js';
 import { toBotPersonalEvent, toLesson, toStudent, toTutor, type LessonRow, type PersonalEventRow, type StudentRow, type TutorRow } from '../mappers.js';
 import { requireBotAuth, requireBotBearer } from '../middleware/requireBotAuth.js';
 import { topUpRecurringPersonalSchedules } from '../personalRecurringSchedule.js';
-import { topUpRecurringSchedules } from '../recurringSchedule.js';
 import { zonedDayOffsetRangeUtc, zonedDayRangeUtc, zonedWeekRangeUtc } from '../scheduleSlots.js';
 import type { WeekStartsOn } from '../types.js';
 import { validate } from '../validate.js';
@@ -81,6 +80,7 @@ botRouter.post('/link', requireBotBearer, async (req, res, next) => {
       throw new AppError('NOT_FOUND', 404, 'Tutor not found');
     }
 
+    req.tutorId = tutor.id;
     await query('DELETE FROM telegram_link_codes WHERE tutor_id = $1', [link.tutor_id]);
 
     res.json({ tutor: toTutor(tutor) });
@@ -170,8 +170,7 @@ async function loadTutorPrefs(tutorId: string): Promise<TutorSchedulePrefs> {
 }
 
 async function listLessonsInRange(tutorId: string, from: Date, to: Date) {
-  await runAutoCompleteForTutor(tutorId, { from, to });
-  await topUpRecurringSchedules(tutorId);
+  await syncTutorLessonState(tutorId, { from, to });
 
   const result = await query<LessonRow & { student_name: string; meet_url: string | null }>(
     `SELECT ${LESSON_COLUMNS}, s.name AS student_name, s.meet_url

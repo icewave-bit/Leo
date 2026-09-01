@@ -1,5 +1,7 @@
 import type {
   ApiError,
+  ActivityLogPage,
+  ActivityLogRelated,
   BalanceMovement,
   BillingDebtBreakdown,
   CreateStudentBody,
@@ -251,4 +253,29 @@ export const api = {
       '/api/schedule-slot-overrides/toggle',
       { method: 'PUT', json: body },
     ),
+
+  activityLog: (params: {
+    from: string;
+    to: string;
+    status?: 'ok' | 'error';
+    actor?: 'user' | 'system' | 'bot';
+    entityType?: import('./types').ActivityEntityType;
+    studentId?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const search = new URLSearchParams({ from: params.from, to: params.to });
+    if (params.status) search.set('status', params.status);
+    if (params.actor) search.set('actor', params.actor);
+    if (params.entityType) search.set('entityType', params.entityType);
+    if (params.studentId) search.set('studentId', params.studentId);
+    if (params.q) search.set('q', params.q);
+    if (params.limit != null) search.set('limit', String(params.limit));
+    if (params.offset != null) search.set('offset', String(params.offset));
+    return request<ActivityLogPage>(`/api/activity-log?${search}`);
+  },
+
+  activityLogRelated: (id: string) =>
+    request<ActivityLogRelated>(`/api/activity-log/${id}/related`),
 };

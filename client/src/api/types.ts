@@ -266,3 +266,53 @@ export interface ApiError {
     details?: Record<string, unknown>;
   };
 }
+
+export type ActivityStatus = 'ok' | 'error';
+export type ActivityActor = 'user' | 'system' | 'bot';
+export type ActivityAction =
+  | 'create'
+  | 'update'
+  | 'delete'
+  | 'move'
+  | 'archive'
+  | 'restore'
+  | 'login'
+  | 'other';
+export type ActivityEntityType =
+  | 'student'
+  | 'lesson'
+  | 'personal_event'
+  | 'settings'
+  | 'balance'
+  | 'tax'
+  | 'schedule'
+  | 'auth'
+  | 'other';
+
+export interface ActivityLogEntry {
+  id: string;
+  occurredAt: string;
+  status: ActivityStatus;
+  actor: ActivityActor;
+  action: ActivityAction;
+  entityType: ActivityEntityType;
+  entityId: string | null;
+  entityLabel: string | null;
+  studentId: string | null;
+  summary: string;
+  details: Record<string, unknown>;
+  errorCode: string | null;
+  errorMessage: string | null;
+  httpMethod: string | null;
+  httpPath: string | null;
+  httpStatus: number | null;
+}
+
+export interface ActivityLogPage {
+  items: ActivityLogEntry[];
+  total: number;
+}
+
+export interface ActivityLogRelated {
+  items: ActivityLogEntry[];
+}

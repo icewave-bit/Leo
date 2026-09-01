@@ -262,6 +262,19 @@ export function SettingsPage() {
           </section>
 
           <section className="settings-card">
+            <SettingsCardHeader icon={SETTINGS_CARD_ICONS.log} title="Журнал действий" />
+          <p className="settings-card__desc">
+            Создание, перенос и удаление уроков и событий, ученики, балансы, настройки и ошибки
+            запросов — с датой и фильтрами.
+          </p>
+          <div className="settings-card__foot">
+            <Link to="/log" className="btn btn--ghost btn--sm">
+              Открыть журнал
+            </Link>
+          </div>
+          </section>
+
+          <section className="settings-card">
             <SettingsCardHeader icon={SETTINGS_CARD_ICONS.replenish} title="Пополнение баланса" />
           <p className="settings-card__desc">
             Какой тип баланса выбирать по умолчанию при открытии окна пополнения: уроки или деньги.

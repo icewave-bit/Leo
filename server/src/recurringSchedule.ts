@@ -144,15 +144,17 @@ export async function deleteFutureLessonsForSchedule(
   client: PoolClient,
   scheduleId: string,
   tutorId: string,
-): Promise<void> {
-  await client.query(
+): Promise<Array<{ id: string; student_id: string; start_utc: Date }>> {
+  const result = await client.query<{ id: string; student_id: string; start_utc: Date }>(
     `DELETE FROM lessons
      WHERE recurring_schedule_id = $1
        AND tutor_id = $2
        AND status = 'planned'
-       AND start_utc + (duration_min * interval '1 minute') > now()`,
+       AND start_utc + (duration_min * interval '1 minute') > now()
+     RETURNING id, student_id, start_utc`,
     [scheduleId, tutorId],
   );
+  return result.rows;
 }
 
 /** Deletes this and following lessons in a series from the anchor occurrence onward. */
@@ -161,15 +163,17 @@ export async function deleteLessonsFromScheduleAnchor(
   scheduleId: string,
   tutorId: string,
   fromStartUtc: Date | string,
-): Promise<void> {
+): Promise<Array<{ id: string; student_id: string; start_utc: Date }>> {
   const iso = typeof fromStartUtc === 'string' ? fromStartUtc : fromStartUtc.toISOString();
-  await client.query(
+  const result = await client.query<{ id: string; student_id: string; start_utc: Date }>(
     `DELETE FROM lessons
      WHERE recurring_schedule_id = $1
        AND tutor_id = $2
-       AND start_utc >= $3`,
+       AND start_utc >= $3
+     RETURNING id, student_id, start_utc`,
     [scheduleId, tutorId, iso],
   );
+  return result.rows;
 }
 
 export async function skipRecurringOccurrence(

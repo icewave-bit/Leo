@@ -1,5 +1,6 @@
 import { addCollection } from '@iconify/react';
 import lineMd from './lineMdSubset.json';
+import mdiLight from './mdiLightSubset.json';
 
 /** Semantic names → line-md icon ids used in this app. */
 export const LINE_MD_ICONS = {
@@ -36,6 +37,7 @@ export function registerLineMdIcons() {
   if (registered) return;
   registered = true;
   addCollection(lineMd);
+  addCollection(mdiLight);
 }
 
 export function lineMdIcon(name: LineMdIconName): string {

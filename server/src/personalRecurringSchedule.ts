@@ -55,14 +55,16 @@ export async function deleteFuturePersonalEventsForSchedule(
   client: PoolClient,
   scheduleId: string,
   tutorId: string,
-): Promise<void> {
-  await client.query(
+): Promise<Array<{ id: string; start_utc: Date; title: string }>> {
+  const result = await client.query<{ id: string; start_utc: Date; title: string }>(
     `DELETE FROM personal_events
      WHERE recurring_personal_schedule_id = $1
        AND tutor_id = $2
-       AND start_utc + (duration_min * interval '1 minute') > now()`,
+       AND start_utc + (duration_min * interval '1 minute') > now()
+     RETURNING id, start_utc, title`,
     [scheduleId, tutorId],
   );
+  return result.rows;
 }
 
 export async function deletePersonalEventsFromScheduleAnchor(
@@ -70,15 +72,17 @@ export async function deletePersonalEventsFromScheduleAnchor(
   scheduleId: string,
   tutorId: string,
   fromStartUtc: Date | string,
-): Promise<void> {
+): Promise<Array<{ id: string; start_utc: Date; title: string }>> {
   const iso = typeof fromStartUtc === 'string' ? fromStartUtc : fromStartUtc.toISOString();
-  await client.query(
+  const result = await client.query<{ id: string; start_utc: Date; title: string }>(
     `DELETE FROM personal_events
      WHERE recurring_personal_schedule_id = $1
        AND tutor_id = $2
-       AND start_utc >= $3`,
+       AND start_utc >= $3
+     RETURNING id, start_utc, title`,
     [scheduleId, tutorId, iso],
   );
+  return result.rows;
 }
 
 export async function skipRecurringPersonalOccurrence(

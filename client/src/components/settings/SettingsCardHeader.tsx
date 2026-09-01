@@ -4,6 +4,7 @@ import type { LineMdIconName } from '../../icons/lineMd';
 export const SETTINGS_CARD_ICONS = {
   theme: 'paint-drop',
   archive: 'folder',
+  log: 'clipboard-list',
   replenish: 'clipboard',
   week: 'calendar',
   workdays: 'grid-3',

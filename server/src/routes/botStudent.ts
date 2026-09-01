@@ -4,14 +4,13 @@ import { loadOpenLessonDebts } from '../billingDebt.js';
 import { buildOpenSlotsForTutor } from '../botOpenSlots.js';
 import { query } from '../db.js';
 import { AppError } from '../errors.js';
-import { runAutoCompleteForTutor } from '../lessonBalance.js';
+import { syncTutorLessonState } from '../lessonBalance.js';
 import {
   toLesson,
   type LessonRow,
   type StudentRow,
 } from '../mappers.js';
 import { requireBotBearer, requireBotStudentAuth } from '../middleware/requireBotAuth.js';
-import { topUpRecurringSchedules } from '../recurringSchedule.js';
 import { zonedDayRangeUtc, zonedWeekRangeUtc } from '../scheduleSlots.js';
 import { normalizeTelegramUsername } from '../telegramUsername.js';
 import type { BalanceKind, WeekStartsOn } from '../types.js';
@@ -191,6 +190,7 @@ botStudentRouter.post('/register', requireBotBearer, async (req, res, next) => {
       [body.telegramUserId, username, student.id],
     );
     const row = updated.rows[0]!;
+    req.tutorId = row.tutor_id;
     const tutor = await loadTutorPrefs(row.tutor_id);
     const balance = await studentBalancePayload(row, row.tutor_id);
     res.json({ student: studentMePayload(row, tutor, balance) });
@@ -228,8 +228,7 @@ async function listStudentLessonsInRange(
   from: Date,
   to: Date,
 ) {
-  await runAutoCompleteForTutor(tutorId, { from, to });
-  await topUpRecurringSchedules(tutorId);
+  await syncTutorLessonState(tutorId, { from, to, studentId });
 
   const result = await query<LessonRow & { meet_url: string | null }>(
     `SELECT ${LESSON_COLUMNS}, s.meet_url

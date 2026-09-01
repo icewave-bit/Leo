@@ -27,6 +27,9 @@ importers:
       '@iconify-json/line-md':
         specifier: ^1.2.16
         version: 1.2.16
+      '@iconify-json/mdi-light':
+        specifier: ^1.2.2
+        version: 1.2.2
       '@types/react':
         specifier: ^19.1.6
         version: 19.2.15
@@ -289,6 +292,9 @@ packages:
 
   '@iconify-json/line-md@1.2.16':
     resolution: {integrity: sha512-esHPUQUp30NyqJWa7MNu6ExdG8z/aEFC5r56rVyRGhtJ7acOme6YtYPnDOgVu6p+kk24rM8602xkFuBC6g6x+w==}
+
+  '@iconify-json/mdi-light@1.2.2':
+    resolution: {integrity: sha512-86UV9uyNve8zRFWiPrOrrDp9GDzsZM7plYV/on4VjgLLqXlyriuy541eHZB7LIOzTUyIPVli7QiUpBbTtBhsFw==}
 
   '@iconify/react@6.0.2':
     resolution: {integrity: sha512-SMmC2sactfpJD427WJEDN6PMyznTFMhByK9yLW0gOTtnjzzbsi/Ke/XqsumsavFPwNiXs8jSiYeZTmLCLwO+Fg==}
@@ -962,6 +968,10 @@ snapshots:
     optional: true
 
   '@iconify-json/line-md@1.2.16':
+    dependencies:
+      '@iconify/types': 2.0.0
+
+  '@iconify-json/mdi-light@1.2.2':
     dependencies:
       '@iconify/types': 2.0.0
 

@@ -13,6 +13,7 @@ import { SchedulePage } from './pages/SchedulePage';
 import { StudentsPage } from './pages/StudentsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ArchivePage } from './pages/ArchivePage';
+import { ActivityLogPage } from './pages/ActivityLogPage';
 import { PaymentsPage } from './pages/PaymentsPage';
 import { TaxesPage } from './pages/TaxesPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
@@ -93,6 +94,7 @@ export function App({ url }: AppProps = {}) {
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="archive" element={<ArchivePage />} />
+            <Route path="log" element={<ActivityLogPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/schedule" replace />} />
