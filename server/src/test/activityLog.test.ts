@@ -353,7 +353,7 @@ describe('activity log', () => {
 
     await agent
       .patch(`/api/students/${student.body.id}`)
-      .send({ prepaid: 20, debt: 0 })
+      .send({ prepaid: 20 })
       .expect(200);
 
     const systemAfter = await listLogs(agent, { actor: 'system' });

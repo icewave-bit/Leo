@@ -212,7 +212,7 @@ describe('billing student', () => {
 
     await agent
       .patch(`/api/students/${payer.body.id}`)
-      .send({ prepaid: 20, debt: 0 })
+      .send({ prepaid: 20 })
       .expect(200);
 
     const updatedLesson = await agent.get('/api/lessons').query(weekQuery()).expect(200);

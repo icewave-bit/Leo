@@ -542,7 +542,7 @@ studentsRouter.patch('/:id', async (req, res, next) => {
           receivedOn: prepaidTopUp ? body.receivedOn : undefined,
         },
       );
-      if (!balanceKindChanged) {
+      if (!balanceKindChanged && prepaidTopUp) {
         settledLessons.push(
           ...(await settleLessonsFromBalanceTopUp(
             client,

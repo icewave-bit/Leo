@@ -154,7 +154,7 @@ describe('lesson balance', () => {
 
     await agent
       .patch(`/api/students/${student.body.id}`)
-      .send({ prepaid: 3 * RATE, debt: 0 })
+      .send({ prepaid: 3 * RATE })
       .expect(200);
 
     lessons = (await agent.get('/api/lessons').query(weekQuery())).body;
@@ -261,5 +261,56 @@ describe('lesson balance', () => {
 
     const students = await agent.get('/api/students').expect(200);
     expect(students.body[0].prepaid).toBe(2 * RATE);
+  });
+
+  it('corrects wallet debt down without driving prepaid negative', async () => {
+    const { agent } = await registerTutor(app);
+    const student = await agent
+      .post('/api/students')
+      .send({
+        name: 'Debtor',
+        prepaid: 0,
+        debt: 20 * RATE,
+        rate: RATE,
+        currency: 'EUR',
+      })
+      .expect(201);
+
+    const updated = await agent
+      .patch(`/api/students/${student.body.id}`)
+      .send({ prepaid: 0, debt: 8 * RATE })
+      .expect(200);
+
+    expect(updated.body.prepaid).toBe(0);
+    expect(updated.body.debt).toBe(8 * RATE);
+
+    const row = (await agent.get('/api/students')).body[0];
+    expect(row.prepaid).toBe(0);
+    expect(row.debt).toBe(8 * RATE);
+  });
+
+  it('writes off lesson-backed debt without prepaid check violation', async () => {
+    const { agent } = await registerTutor(app);
+    const student = await agent
+      .post('/api/students')
+      .send({ name: 'Debtor', prepaid: 0, debt: 0, rate: RATE, currency: 'EUR' })
+      .expect(201);
+
+    const startUtc = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    await agent
+      .post('/api/lessons')
+      .send({ studentId: student.body.id, startUtc, durationMin: 60 })
+      .expect(201);
+    await agent.get('/api/lessons').query(weekQuery()).expect(200);
+
+    expect((await agent.get('/api/students')).body[0].debt).toBe(RATE);
+
+    const updated = await agent
+      .patch(`/api/students/${student.body.id}`)
+      .send({ prepaid: 0, debt: 0 })
+      .expect(200);
+
+    expect(updated.body.prepaid).toBe(0);
+    expect(updated.body.debt).toBe(0);
   });
 });

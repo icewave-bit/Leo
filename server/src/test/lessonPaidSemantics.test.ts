@@ -129,7 +129,7 @@ describe('lesson paid semantics', () => {
 
     await agent
       .patch(`/api/students/${student.body.id}`)
-      .send({ prepaid: 2 * RATE, debt: 0 })
+      .send({ prepaid: 2 * RATE })
       .expect(200);
 
     const lessons = (await agent.get('/api/lessons').query(weekQuery())).body as LessonRow[];

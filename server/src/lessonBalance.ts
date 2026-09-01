@@ -345,7 +345,10 @@ export async function settleFamilyDebtsFromPrepaid(
 ): Promise<LessonBalanceRow[]> {
   const settled: LessonBalanceRow[] = [];
   const payer = await loadStudent(client, payerId);
-  let credit = maxCredit ?? Number(payer.prepaid);
+  const prepaid = Number(payer.prepaid);
+  // maxCredit is a net increase and may come from writing down debt, not from
+  // new prepaid. Only the prepaid column can be spent.
+  let credit = Math.min(maxCredit ?? prepaid, prepaid);
   if (credit <= 0) return settled;
 
   const dependentIds = await listBillingDependentIds(client, payerId);
@@ -380,7 +383,8 @@ export async function settleFamilyDebtsFromPrepaid(
 
   const payerReload = await loadStudent(client, payerId);
   const walletDebt = Number(payerReload.debt);
-  const paydown = Math.min(credit, walletDebt);
+  const remainingPrepaid = Number(payerReload.prepaid);
+  const paydown = Math.min(credit, walletDebt, remainingPrepaid);
   if (paydown <= 0) return settled;
 
   await client.query(
