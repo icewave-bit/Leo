@@ -1,5 +1,5 @@
 import { getPool } from './db.js';
-import { AppError } from './errors.js';
+import { activityErrorFields } from './errors.js';
 import type { Request, Response } from 'express';
 
 export type ActivityStatus = 'ok' | 'error';
@@ -330,6 +330,38 @@ function withStudent(text: string, name: string | null): string {
   return name ? `${text} · ${name}` : text;
 }
 
+function classifyRead(
+  path: string,
+  name: string | null,
+): { action: ActivityAction; entityType: ActivityEntityType; summary: string } {
+  if (path.startsWith('/api/students')) {
+    return { action: 'other', entityType: 'student', summary: withStudent('Загрузка учеников', name) };
+  }
+  if (path.startsWith('/api/lessons') || path.startsWith('/api/recurring-schedules')) {
+    return { action: 'other', entityType: 'lesson', summary: withStudent('Загрузка уроков', name) };
+  }
+  if (
+    path.startsWith('/api/personal-events') ||
+    path.startsWith('/api/personal-event-groups') ||
+    path.startsWith('/api/recurring-personal-schedules')
+  ) {
+    return { action: 'other', entityType: 'personal_event', summary: withStudent('Загрузка событий', name) };
+  }
+  if (path.startsWith('/api/schedule-slot-overrides')) {
+    return { action: 'other', entityType: 'schedule', summary: 'Загрузка расписания' };
+  }
+  if (path.startsWith('/api/taxes')) {
+    return { action: 'other', entityType: 'tax', summary: withStudent('Загрузка налогов', name) };
+  }
+  if (path.startsWith('/api/balance-movements')) {
+    return { action: 'other', entityType: 'balance', summary: withStudent('Загрузка баланса', name) };
+  }
+  if (path.startsWith('/api/auth')) {
+    return { action: 'other', entityType: 'auth', summary: 'Загрузка сессии' };
+  }
+  return { action: 'other', entityType: 'other', summary: `Запрос ${path}` };
+}
+
 function classify(
   method: string,
   path: string,
@@ -340,6 +372,10 @@ function classify(
   const p = path.split('?')[0] ?? path;
   const rec = asRecord(body);
   const name = studentName ?? entityLabel ?? labelFromBody(body);
+
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    return classifyRead(p, name);
+  }
 
   if (p.startsWith('/api/students')) {
     if (p.endsWith('/archive') && method === 'POST') {
@@ -501,16 +537,21 @@ export async function recordActivity(input: {
         input.studentId ?? null,
         input.summary,
         input.details ?? {},
-        input.errorCode ?? null,
-        input.errorMessage ?? null,
+        clipText(input.errorCode, 120),
+        clipText(input.errorMessage, 2000),
         input.httpMethod ?? null,
         input.httpPath ?? null,
         input.httpStatus ?? null,
       ],
     );
-  } catch {
-    // Log must never break the original request.
+  } catch (err) {
+    console.error('activity log insert failed', err);
   }
+}
+
+function clipText(value: string | null | undefined, max: number): string | null {
+  if (value == null || value === '') return null;
+  return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
 async function resolveTutorId(req: Request): Promise<string | null> {
@@ -533,14 +574,28 @@ async function resolveTutorId(req: Request): Promise<string | null> {
   }
 }
 
-function errorFromResponse(res: Response): { code: string; message: string } | null {
+function errorFromResponse(res: Response): {
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+} | null {
   const payload = res.locals.activityError as
-    | { code?: string; message?: string }
+    | { code?: string; message?: string; details?: Record<string, unknown> }
     | undefined;
   if (payload?.code || payload?.message) {
     return {
       code: payload.code ?? 'ERROR',
       message: payload.message ?? 'Request failed',
+      details: payload.details,
+    };
+  }
+  const bodyError = asRecord(asRecord(res.locals.activityResponse).error);
+  if (typeof bodyError.code === 'string' || typeof bodyError.message === 'string') {
+    const fromBody = asRecord(bodyError.details);
+    return {
+      code: typeof bodyError.code === 'string' ? bodyError.code : 'ERROR',
+      message: typeof bodyError.message === 'string' ? bodyError.message : 'Request failed',
+      details: Object.keys(fromBody).length > 0 ? fromBody : undefined,
     };
   }
   return null;
@@ -823,11 +878,13 @@ export async function persistHttpActivity(req: Request, res: Response): Promise<
   const method = req.method.toUpperCase();
   const path = (req.originalUrl ?? req.url).split('?')[0] ?? '';
   const statusCode = res.statusCode;
+  const isError = statusCode >= 400;
+  const isRead = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
 
-  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return;
   if (SKIP_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return;
-  if (statusCode >= 500) return;
-  if (statusCode < 400 && SKIP_AUTH_OK.has(`${method} ${path}`)) return;
+  // Successful reads stay out of the feed; failed requests (including 5xx) are logged.
+  if (!isError && isRead) return;
+  if (!isError && SKIP_AUTH_OK.has(`${method} ${path}`)) return;
 
   const tutorId = await resolveTutorId(req);
   if (!tutorId) return;
@@ -849,7 +906,6 @@ export async function persistHttpActivity(req: Request, res: Response): Promise<
   const entityLabel = snap?.entityLabel ?? labelFromBody(req.body) ?? studentName;
   const classified = classify(method, path, req.body, studentName, entityLabel);
   const appErr = errorFromResponse(res);
-  const isError = statusCode >= 400;
   const summary = isError
     ? `Не удалось: ${classified.summary}${appErr?.message ? ` — ${appErr.message}` : ''}`
     : classified.summary;
@@ -886,6 +942,10 @@ export async function persistHttpActivity(req: Request, res: Response): Promise<
       effects,
       deleted: method === 'DELETE' || undefined,
       query: Object.keys(query).length > 0 ? sanitizeJson(query) : undefined,
+      error:
+        appErr?.details && Object.keys(appErr.details).length > 0
+          ? sanitizeJson(appErr.details)
+          : undefined,
     },
     errorCode: appErr?.code ?? null,
     errorMessage: appErr?.message ?? null,
@@ -896,11 +956,5 @@ export async function persistHttpActivity(req: Request, res: Response): Promise<
 }
 
 export function rememberActivityError(res: Response, err: unknown): void {
-  if (err instanceof AppError) {
-    res.locals.activityError = { code: err.code, message: err.message };
-    return;
-  }
-  if (err instanceof Error) {
-    res.locals.activityError = { code: 'INTERNAL', message: err.message };
-  }
+  res.locals.activityError = activityErrorFields(err);
 }

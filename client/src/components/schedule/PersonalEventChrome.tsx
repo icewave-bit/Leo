@@ -11,6 +11,7 @@ import {
   weekGridLessonPositionStyle,
   type WeekGridLessonLayout,
 } from '../../utils/weekGridLayout';
+import { LessonCardRotatingLabel, lessonNameClass } from './LessonChrome';
 
 export function personalEventCardVars(color: string): React.CSSProperties {
   return {
@@ -59,6 +60,7 @@ export function PersonalEventCard({
   pxPerHour,
   start,
   ghost,
+  compact,
   onPointerDown,
   onClick,
 }: {
@@ -68,6 +70,7 @@ export function PersonalEventCard({
   pxPerHour: number;
   start?: number;
   ghost?: boolean;
+  compact?: boolean;
   onPointerDown?: (e: React.PointerEvent) => void;
   onClick?: () => void;
 }) {
@@ -110,12 +113,23 @@ export function PersonalEventCard({
         <RecurrenceIcon title="Повторяющееся событие" />
       ) : null}
       <PersonalNotesMark notes={event.notes} />
-      <span className="pe__title">{event.title}</span>
-      {!tight ? (
-        <span className="pe__time">
-          {fmtTime(slotStart)} – {fmtTime(slotStart + event.dur)}
-        </span>
-      ) : null}
+      {compact ? (
+        <LessonCardRotatingLabel
+          name={event.title}
+          time={fmtTime(slotStart)}
+        />
+      ) : (
+        <>
+          <span className="ev__head">
+            <span className={lessonNameClass(event.title)}>{event.title}</span>
+          </span>
+          {!tight ? (
+            <span className="ev__time">
+              {fmtTime(slotStart)} – {fmtTime(slotStart + event.dur)}
+            </span>
+          ) : null}
+        </>
+      )}
     </button>
   );
 }

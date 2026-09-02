@@ -465,6 +465,7 @@ export function WeekGrid({
                       group={groupMap.get(e.groupId)}
                       layout={layoutByDay.get(di)?.get(e.id)}
                       pxPerHour={pxPerHour}
+                      compact={compact}
                       onPointerDown={(ev) => onPersonalPointerDown(ev, e)}
                       onClick={() => onEventClick(e.id)}
                     />
@@ -525,6 +526,7 @@ export function WeekGrid({
                       start={pePreview.start}
                       layout={layout}
                       pxPerHour={pxPerHour}
+                      compact={compact}
                       ghost
                     />
                   );

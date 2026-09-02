@@ -16,7 +16,11 @@ export const activityLogMiddleware: RequestHandler = (req, res, next) => {
 
   const done = new Promise<void>((resolve) => {
     res.on('finish', () => {
-      void persistHttpActivity(req, res).catch(() => {}).finally(resolve);
+      void persistHttpActivity(req, res)
+        .catch((err) => {
+          console.error('activity log persist failed', err);
+        })
+        .finally(resolve);
     });
   });
   inflight.add(done);

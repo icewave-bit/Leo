@@ -3,7 +3,7 @@ import cors from 'cors';
 import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
 import { loadConfig } from './config.js';
-import { AppError } from './errors.js';
+import { toPublicError } from './errors.js';
 import { getPool } from './db.js';
 import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
@@ -83,22 +83,23 @@ export async function createApp(): Promise<express.Express> {
       _next: express.NextFunction, // eslint-disable-line @typescript-eslint/no-unused-vars
     ) => {
       rememberActivityError(res, err);
-      if (err instanceof AppError) {
-        res.status(err.status).json({
+      const isProd = config.NODE_ENV === 'production';
+      const pub = toPublicError(err, isProd);
+      if (pub.status < 500) {
+        res.status(pub.status).json({
           error: {
-            code: err.code,
-            message: err.message,
-            ...(err.details ? { details: err.details } : {}),
+            code: pub.code,
+            message: pub.message,
+            ...(pub.details ? { details: pub.details } : {}),
           },
         });
         return;
       }
       console.error(err);
-      const isProd = config.NODE_ENV === 'production';
       res.status(500).json({
         error: {
           code: 'INTERNAL',
-          message: isProd ? 'Internal server error' : String(err),
+          message: pub.message,
         },
       });
     },

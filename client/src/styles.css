@@ -649,8 +649,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   flex: 1;
 }
 /* Hanken Grotesk Cyrillic glyphs fill more of the em-box — optical match to Latin names. */
-.wg .ev .ev__name.ev__name--cy { font-size: 11.1px; }
-.wg .ev--tight .ev__name.ev__name--cy { font-size: 10.15px; }
+.wg :is(.ev, .pe) .ev__name.ev__name--cy { font-size: 11.1px; }
+.wg :is(.ev--tight, .pe--tight) .ev__name.ev__name--cy { font-size: 10.15px; }
 .ev__time { font-size: 10.5px; color: var(--muted); line-height: 1.2; }
 .ev__hint {
   font-size: 10px;
@@ -798,10 +798,6 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 }
 .wg--dragging .pe:not(.pe--ghost) { cursor: grabbing; }
 .wg .pe.pe--tight { padding: 4px 6px 4px 8px; }
-.wg .pe.pe--tight .pe__title { font-size: 11px; }
-.wg .pe.pe--tight .pe__time { font-size: 10px; }
-.pe__title { font-size: 12px; font-weight: 650; line-height: 1.2; }
-.pe__time { font-size: 11px; color: var(--muted); }
 .pe .ev-recur { position: absolute; top: 4px; right: 4px; opacity: 0.75; }
 .pe__mark { position: absolute; bottom: 4px; right: 4px; opacity: 0.7; }
 .pe-swatch {
@@ -1175,8 +1171,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .wg--dragging .wg__slot { pointer-events: none; }
 .wg--dragging .ev:not(.ev--ghost) { cursor: grabbing; }
 .wg .ev--tight { padding: 4px 7px 4px 9px; gap: 0; }
-.wg .ev--tight .ev__name { font-size: 11px; }
-.wg .ev--tight .ev__time { font-size: 10px; }
+.wg :is(.ev--tight, .pe--tight) .ev__name { font-size: 11px; }
+.wg :is(.ev--tight, .pe--tight) .ev__time { font-size: 10px; }
 .wg .ev--tight .ev__head { padding-right: 4px; }
 
 /* ---------- B. focus timeline ---------- */
@@ -4399,7 +4395,7 @@ col.tax-col-actions { width: 36px; }
 .app--mobile .wg__dow { font-size: 9px; letter-spacing: 0; }
 .app--mobile .wg__date { font-size: 13px; font-weight: 700; line-height: 1.1; }
 .app--mobile .wg__gutter--rows .wg__hour { font-size: 10px; padding-right: 3px; font-weight: 600; }
-.app--mobile .wg .ev {
+.app--mobile .wg :is(.ev, .pe) {
   left: 1px;
   right: 1px;
   padding: 4px 3px 3px 5px;
@@ -4411,14 +4407,14 @@ col.tax-col-actions { width: 36px; }
 .app--mobile .wg .ev .ev__hint { display: none; }
 
 /* mobile week-grid: alternate name (5s) and time (2s) */
-.app--mobile .wg .ev .ev__rot {
+.app--mobile .wg :is(.ev, .pe) .ev__rot {
   position: relative;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 1.2em;
   overflow: hidden;
 }
-.app--mobile .wg .ev .ev__rot-slot {
+.app--mobile .wg :is(.ev, .pe) .ev__rot-slot {
   position: absolute;
   inset: 0;
   display: flex;
@@ -4432,9 +4428,9 @@ col.tax-col-actions { width: 36px; }
   animation-iteration-count: infinite;
   will-change: opacity, transform, filter;
 }
-.app--mobile .wg .ev .ev__rot-slot--name { animation-name: ev-rot-name; }
-.app--mobile .wg .ev .ev__rot-slot--time { animation-name: ev-rot-time; }
-.app--mobile .wg .ev .ev__rot-slot--time .ev__time {
+.app--mobile .wg :is(.ev, .pe) .ev__rot-slot--name { animation-name: ev-rot-name; }
+.app--mobile .wg :is(.ev, .pe) .ev__rot-slot--time { animation-name: ev-rot-time; }
+.app--mobile .wg :is(.ev, .pe) .ev__rot-slot--time .ev__time {
   font-size: 9px;
   font-weight: 700;
   color: var(--text);
@@ -4444,7 +4440,7 @@ col.tax-col-actions { width: 36px; }
   text-overflow: ellipsis;
   width: 100%;
 }
-.app--mobile .wg .ev:hover .ev__rot-slot { animation-play-state: paused; }
+.app--mobile .wg :is(.ev, .pe):hover .ev__rot-slot { animation-play-state: paused; }
 @keyframes ev-rot-name {
   0%, 62.5% { opacity: 1; transform: translateY(0); filter: blur(0); }
   66% { opacity: 0; transform: translateY(-4px); filter: blur(2px); }
@@ -4457,18 +4453,18 @@ col.tax-col-actions { width: 36px; }
   95%, 100% { opacity: 0; transform: translateY(-4px); filter: blur(2px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .app--mobile .wg .ev .ev__rot { min-height: 0; }
-  .app--mobile .wg .ev .ev__rot-slot {
+  .app--mobile .wg :is(.ev, .pe) .ev__rot { min-height: 0; }
+  .app--mobile .wg :is(.ev, .pe) .ev__rot-slot {
     position: static;
     opacity: 1;
     transform: none;
     filter: none;
     animation: none;
   }
-  .app--mobile .wg .ev .ev__rot-slot--time { display: none; }
+  .app--mobile .wg :is(.ev, .pe) .ev__rot-slot--time { display: none; }
 }
 
-.app--mobile .wg .ev .ev__head {
+.app--mobile .wg :is(.ev, .pe) .ev__head {
   flex-wrap: nowrap;
   align-items: center;
   gap: 2px;
@@ -4476,7 +4472,7 @@ col.tax-col-actions { width: 36px; }
   justify-content: flex-start;
   width: 100%;
 }
-.app--mobile .wg .ev .ev__name {
+.app--mobile .wg :is(.ev, .pe) .ev__name {
   flex: 1 1 auto;
   min-width: 0;
   font-size: 10px;
@@ -4487,8 +4483,8 @@ col.tax-col-actions { width: 36px; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.app--mobile .wg .ev .ev__name.ev__name--cy { font-size: 9.25px; }
-.app--mobile .wg .ev .ev__head svg,
+.app--mobile .wg :is(.ev, .pe) .ev__name.ev__name--cy { font-size: 9.25px; }
+.app--mobile .wg :is(.ev, .pe) .ev__head svg,
 .app--mobile .wg .ev .ev__head .ev-type {
   flex: none;
   width: 6.5px;
@@ -4511,6 +4507,12 @@ col.tax-col-actions { width: 36px; }
 .app--mobile .wg .ev--completed .ev__rot-slot--name .ev__head,
 .app--mobile .wg .ev--completed .ev__head { padding-right: 8px; }
 .app--mobile .wg .ev--has-notes .ev__rot-slot--time { padding-right: 10px; }
+.app--mobile .wg .pe .ev-recur { top: 2px; right: 2px; }
+.app--mobile .wg .pe .ev-recur svg { width: 6.5px; height: 6.5px; }
+.app--mobile .wg .pe .pe__mark { bottom: 2px; right: 2px; }
+.app--mobile .wg .pe .pe__mark svg { width: 5px; height: 5px; }
+.app--mobile .wg .pe.pe--recur .ev__rot-slot--time { padding-right: 8px; }
+.app--mobile .wg .pe.pe--has-notes .ev__rot-slot--time { padding-right: 10px; }
 
 /* schedule topbar — compact 2-row mobile toolbar */
 .top--schedule {

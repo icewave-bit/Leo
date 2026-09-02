@@ -84,6 +84,50 @@ describe('activity log', () => {
     expect(JSON.stringify(loginFail?.details)).toContain('[redacted]');
   });
 
+  it('records unhandled 500 errors from a failed balance update', async () => {
+    const { agent } = await registerTutor(app);
+    const student = await agent.post('/api/students').send({ name: 'Dana' }).expect(201);
+    await waitForActivityLog();
+
+    const res = await agent
+      .patch(`/api/students/${student.body.id}`)
+      .send({ prepaid: 1e12, debt: 0 });
+    expect(res.status).toBe(500);
+
+    const logs = await listLogs(agent, { status: 'error' });
+    const fail = logs.items.find((row) => row.entityType === 'balance');
+    expect(fail).toMatchObject({
+      status: 'error',
+      actor: 'user',
+      action: 'update',
+      entityType: 'balance',
+      studentId: student.body.id,
+      httpStatus: 500,
+    });
+    expect(String(fail?.summary)).toContain('Изменён баланс');
+    expect(String(fail?.summary)).toContain('Dana');
+    expect(String(fail?.errorMessage ?? '')).toMatch(/overflow|numeric/i);
+    expect((fail?.details as { after?: { prepaid?: number } }).after?.prepaid).toBe(1e12);
+  });
+
+  it('records a failed GET and does not log a successful list', async () => {
+    const { agent } = await registerTutor(app);
+    await agent.get('/api/students').expect(200);
+    const boom = await agent.get('/api/students/not-a-uuid');
+    expect(boom.status).toBeGreaterThanOrEqual(400);
+
+    const logs = await listLogs(agent);
+    expect(logs.items.some((row) => row.httpMethod === 'GET' && row.status === 'ok')).toBe(
+      false,
+    );
+    const fail = logs.items.find((row) => row.httpMethod === 'GET');
+    expect(fail).toMatchObject({
+      status: 'error',
+      entityType: 'student',
+      httpMethod: 'GET',
+    });
+  });
+
   it('filters by entity type and keeps tutors isolated', async () => {
     const a = await registerTutor(app);
     const b = await registerTutor(app);

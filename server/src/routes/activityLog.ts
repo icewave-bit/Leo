@@ -66,7 +66,7 @@ activityLogRouter.get('/', async (req, res, next) => {
     }
     if (q.q) {
       where.push(
-        `(summary ILIKE $${i} OR COALESCE(error_message, '') ILIKE $${i} OR COALESCE(entity_label, '') ILIKE $${i})`,
+        `(summary ILIKE $${i} OR COALESCE(error_message, '') ILIKE $${i} OR COALESCE(error_code, '') ILIKE $${i} OR COALESCE(entity_label, '') ILIKE $${i})`,
       );
       params.push(`%${q.q}%`);
       i += 1;
