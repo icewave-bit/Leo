@@ -8,6 +8,13 @@ import type {
   WeekStartsOn,
 } from '../api/types';
 import { WG_SNAP_MINUTES } from '../constants/weekGrid';
+import {
+  addDaysToDateOnly,
+  dateKeyInTz,
+  diffDateKeys,
+  parseIsoDateOnly,
+  utcDateKey,
+} from './dateKey';
 import { fmtTime } from './format';
 
 export type UiLessonStatus = 'planned' | 'completed' | 'cancelled' | 'no-show';
@@ -145,14 +152,28 @@ export function startOfWeekMondayUTC(d: Date): Date {
   return startOfWeekUTC(d, 'monday');
 }
 
+/**
+ * Week containing `anchor` in `timezone`.
+ * `weekStart` is UTC midnight of the week-start calendar date (date-only).
+ * `from`/`to` are tutor-local midnights as UTC ISO (fetch window).
+ */
 export function weekRangeUtc(
   anchor: Date,
   weekStartsOn: WeekStartsOn,
+  timezone: string,
 ): { from: string; to: string; weekStart: Date } {
-  const weekStart = startOfWeekUTC(anchor, weekStartsOn);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
-  return { from: weekStart.toISOString(), to: weekEnd.toISOString(), weekStart };
+  const dateKey = calendarDateKey(anchor, timezone);
+  const { year, month, day } = parseIsoDateOnly(dateKey);
+  const weekStart = startOfWeekUTC(new Date(Date.UTC(year, month - 1, day)), weekStartsOn);
+  const startKey = utcDateKey(weekStart);
+  const endKey = addDaysToDateOnly(startKey, 7);
+  const s = parseIsoDateOnly(startKey);
+  const e = parseIsoDateOnly(endKey);
+  return {
+    from: wallClockToUtc(s.year, s.month, s.day, 0, 0, timezone).toISOString(),
+    to: wallClockToUtc(e.year, e.month, e.day, 0, 0, timezone).toISOString(),
+    weekStart,
+  };
 }
 
 export function shiftWeek(weekStart: Date, deltaWeeks: number): Date {
@@ -161,35 +182,27 @@ export function shiftWeek(weekStart: Date, deltaWeeks: number): Date {
   return d;
 }
 
-export function weekDates(weekStart: Date, timezone: string): number[] {
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(weekStart);
-    d.setUTCDate(d.getUTCDate() + i);
-    return Number(
-      new Intl.DateTimeFormat('en-US', { timeZone: timezone, day: 'numeric' }).format(d),
-    );
-  });
+export function weekDates(weekStart: Date, _timezone?: string): number[] {
+  const weekKey = utcDateKey(weekStart);
+  return Array.from({ length: 7 }, (_, i) => parseIsoDateOnly(addDaysToDateOnly(weekKey, i)).day);
 }
 
-export function todayDayIndex(weekStart: Date, timezone: string): number | null {
-  const now = new Date();
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(weekStart);
-    d.setUTCDate(d.getUTCDate() + i);
-    const a = dateKey(d, timezone);
-    const b = dateKey(now, timezone);
-    if (a === b) return i;
+export function todayDayIndex(weekStart: Date, timezone: string, now = new Date()): number | null {
+  const idx = diffDateKeys(utcDateKey(weekStart), dateKeyInTz(now, timezone));
+  return idx >= 0 && idx < 7 ? idx : null;
+}
+
+/** Date-only week starts are UTC midnight; other instants use the tutor zone. */
+function calendarDateKey(d: Date, timezone: string): string {
+  if (
+    d.getUTCHours() === 0 &&
+    d.getUTCMinutes() === 0 &&
+    d.getUTCSeconds() === 0 &&
+    d.getUTCMilliseconds() === 0
+  ) {
+    return utcDateKey(d);
   }
-  return null;
-}
-
-function dateKey(d: Date, tz: string): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(d);
+  return dateKeyInTz(d, timezone);
 }
 
 function zonedParts(d: Date, tz: string): {
@@ -215,16 +228,27 @@ function zonedParts(d: Date, tz: string): {
 }
 
 function zonedHourMinute(iso: string, tz: string): { hour: number; minute: number } {
-  const d = new Date(iso);
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz,
-    hour: 'numeric',
-    minute: 'numeric',
-    hour12: false,
-  }).formatToParts(d);
-  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
-  const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
+  const { hour, minute } = zonedParts(new Date(iso), tz);
   return { hour, minute };
+}
+
+/** Local wall-clock Y-M-D H:M in `timezone` → UTC Date. */
+export function wallClockToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  timezone: string,
+): Date {
+  let utc = Date.UTC(year, month - 1, day, hour, minute);
+  for (let i = 0; i < 4; i++) {
+    const p = zonedParts(new Date(utc), timezone);
+    const want = Date.UTC(year, month - 1, day, hour, minute);
+    const got = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute);
+    utc += want - got;
+  }
+  return new Date(utc);
 }
 
 export function toUiStatus(status: LessonStatus): UiLessonStatus {
@@ -244,18 +268,14 @@ export function slotToStartUtc(
 ): string {
   const hour = Math.floor(startHours);
   const minute = Math.round((startHours - hour) * 60);
-  const base = new Date(weekStart);
-  base.setUTCDate(base.getUTCDate() + day);
-  const { year, month, day: dom } = zonedParts(base, timezone);
+  const { year, month, day: dom } = parseIsoDateOnly(
+    addDaysToDateOnly(utcDateKey(weekStart), day),
+  );
+  return wallClockToUtc(year, month, dom, hour, minute, timezone).toISOString();
+}
 
-  let utc = Date.UTC(year, month - 1, dom, hour, minute);
-  for (let i = 0; i < 4; i++) {
-    const p = zonedParts(new Date(utc), timezone);
-    const want = Date.UTC(year, month - 1, dom, hour, minute);
-    const got = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute);
-    utc += want - got;
-  }
-  return new Date(utc).toISOString();
+function gridDayIndex(startUtc: string, weekStart: Date, timezone: string): number {
+  return diffDateKeys(utcDateKey(weekStart), dateKeyInTz(new Date(startUtc), timezone));
 }
 
 export interface ViewPersonalEvent {
@@ -340,8 +360,7 @@ export function lessonToView(
   weekStart: Date,
   timezone: string,
 ): ViewLesson {
-  const start = new Date(lesson.startUtc);
-  const day = Math.floor((start.getTime() - weekStart.getTime()) / 86_400_000);
+  const day = gridDayIndex(lesson.startUtc, weekStart, timezone);
   const { hour, minute } = zonedHourMinute(lesson.startUtc, timezone);
   return {
     id: lesson.id,
@@ -391,8 +410,7 @@ export function personalEventToView(
   weekStart: Date,
   timezone: string,
 ): ViewPersonalEvent {
-  const start = new Date(event.startUtc);
-  const day = Math.floor((start.getTime() - weekStart.getTime()) / 86_400_000);
+  const day = gridDayIndex(event.startUtc, weekStart, timezone);
   const { hour, minute } = zonedHourMinute(event.startUtc, timezone);
   return {
     id: event.id,

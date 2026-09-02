@@ -195,7 +195,7 @@ export function SettingsPage() {
       const { tutor: updated } = await api.patchMe({ weekStartsOn });
       setTutor(updated);
       const anchor = store.get(weekStartAtom);
-      const { weekStart } = weekRangeUtc(anchor, weekStartsOn);
+      const { weekStart } = weekRangeUtc(anchor, weekStartsOn, tutor.timezone);
       await loadSchedule(store.get, store.set, { anchor: weekStart, lessonsOnly: true });
       setSaved(true);
     } catch (e) {

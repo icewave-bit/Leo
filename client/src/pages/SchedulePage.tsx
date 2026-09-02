@@ -274,7 +274,7 @@ export function SchedulePage() {
   const store = useAppStore();
 
   const tz = tutor?.timezone ?? 'UTC';
-  const weekLabel = fmtWeekLabel(weekStart, tz);
+  const weekLabel = fmtWeekLabel(weekStart);
   const selected = selectedId ? lessons.find((l) => l.id === selectedId) : null;
   const selectedPersonal = selectedPersonalId
     ? personalEvents.find((e) => e.id === selectedPersonalId)
@@ -318,7 +318,7 @@ export function SchedulePage() {
   }, [activeDay, weekStartsOn, hiddenWeekdays, setActiveDay]);
 
   const reloadWeek = async (anchor: Date) => {
-    const { weekStart } = weekRangeUtc(anchor, weekStartsOn);
+    const { weekStart } = weekRangeUtc(anchor, weekStartsOn, tz);
     setWeekNavBusy(true);
     try {
       await loadSchedule(store.get, store.set, { anchor: weekStart, lessonsOnly: true });

@@ -36,18 +36,10 @@ export function slotToStartUtc(
 ): string {
   const hour = Math.floor(startHours);
   const minute = Math.round((startHours - hour) * 60);
-  const base = new Date(weekStart);
-  base.setUTCDate(base.getUTCDate() + day);
-  const { year, month, day: dom } = zonedParts(base, timezone);
-
-  let utc = Date.UTC(year, month - 1, dom, hour, minute);
-  for (let i = 0; i < 4; i++) {
-    const p = zonedParts(new Date(utc), timezone);
-    const want = Date.UTC(year, month - 1, dom, hour, minute);
-    const got = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute);
-    utc += want - got;
-  }
-  return new Date(utc).toISOString();
+  const { year, month, day: dom } = parseDateOnly(
+    addDaysToDateOnly(weekStart.toISOString().slice(0, 10), day),
+  );
+  return wallClockToUtc(year, month, dom, hour, minute, timezone).toISOString();
 }
 
 export function dateKeyInTz(d: Date, tz: string): string {
@@ -65,10 +57,9 @@ export function weekdayIndexInWeek(
   timezone: string,
 ): number {
   const target = dateKeyInTz(date, timezone);
+  const weekKey = weekStart.toISOString().slice(0, 10);
   for (let i = 0; i < 7; i++) {
-    const d = new Date(weekStart);
-    d.setUTCDate(d.getUTCDate() + i);
-    if (dateKeyInTz(d, timezone) === target) return i;
+    if (addDaysToDateOnly(weekKey, i) === target) return i;
   }
   return 0;
 }

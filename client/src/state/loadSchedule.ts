@@ -67,7 +67,7 @@ export async function loadSchedule(
   try {
     const weekStartsOn = tutor.weekStartsOn ?? 'monday';
     const anchor = opts?.anchor ?? get(weekStartAtom);
-    const { from, to, weekStart } = weekRangeUtc(anchor, weekStartsOn);
+    const { from, to, weekStart } = weekRangeUtc(anchor, weekStartsOn, tutor.timezone);
 
     const [lessons, personalEvents] = await Promise.all([
       api.lessons(from, to),

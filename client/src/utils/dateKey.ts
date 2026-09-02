@@ -69,3 +69,39 @@ export function parseDateKey(
   if (!isValidDateParts(year, month, day)) return null;
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
+
+/** YYYY-MM-DD of a date-only UTC midnight `Date`. */
+export function utcDateKey(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+export function parseIsoDateOnly(isoDate: string): { year: number; month: number; day: number } {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  return { year: year!, month: month!, day: day! };
+}
+
+export function addDaysToDateOnly(isoDate: string, days: number): string {
+  const { year, month, day } = parseIsoDateOnly(isoDate);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** YYYY-MM-DD of `d` in `tz`. */
+export function dateKeyInTz(d: Date, tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
+
+export function diffDateKeys(fromKey: string, toKey: string): number {
+  const a = parseIsoDateOnly(fromKey);
+  const b = parseIsoDateOnly(toKey);
+  return Math.round(
+    (Date.UTC(b.year, b.month - 1, b.day) - Date.UTC(a.year, a.month - 1, a.day)) /
+      86_400_000,
+  );
+}

@@ -10,7 +10,7 @@ export const personalEventGroupsAtom = atom<PersonalEventGroup[]>([]);
 export const scheduleSlotOverridesAtom = atom<import('../api/types').ScheduleSlotOverride[]>([]);
 export const recurringSchedulesAtom = atom<RecurringSchedule[]>([]);
 export const recurringPersonalSchedulesAtom = atom<RecurringPersonalSchedule[]>([]);
-/** Normalized to tutor week start (Mon or Sun) on each schedule load. */
+/** UTC midnight of the week-start calendar date (date-only). */
 export const weekStartAtom = atom<Date>(new Date());
 export const scheduleLoadingAtom = atom(false);
 export const scheduleLoadErrorAtom = atom<string | null>(null);

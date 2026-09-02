@@ -3,9 +3,9 @@ import { query } from './db.js';
 import {
   addDaysToDateOnly,
   dateKeyInTz,
-  slotToStartUtc,
+  parseDateOnly,
   startOfWeekUTC,
-  weekdayIndexInWeek,
+  wallClockToUtc,
 } from './scheduleSlots.js';
 import type { RecurringScheduleRow } from './mappers.js';
 import type { WeekStartsOn } from './types.js';
@@ -81,12 +81,10 @@ export function startUtcForOccurrence(
   schedule: Pick<RecurringScheduleRow, 'start_minutes'>,
   prefs: TutorSchedulePrefs,
 ): string {
-  const startHours = schedule.start_minutes / 60;
-  const [y, m, d] = occurrenceDate.split('-').map(Number);
-  const anchor = new Date(Date.UTC(y!, m! - 1, d!));
-  const weekStart = startOfWeekUTC(anchor, prefs.week_starts_on);
-  const day = weekdayIndexInWeek(anchor, weekStart, prefs.timezone);
-  return slotToStartUtc(weekStart, day, startHours, prefs.timezone);
+  const hour = Math.floor(schedule.start_minutes / 60);
+  const minute = schedule.start_minutes % 60;
+  const { year, month, day } = parseDateOnly(occurrenceDate);
+  return wallClockToUtc(year, month, day, hour, minute, prefs.timezone).toISOString();
 }
 
 export async function getTutorSchedulePrefs(tutorId: string): Promise<TutorSchedulePrefs> {

@@ -93,30 +93,10 @@ const MONTHS_SHORT_RU = [
   'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
 ];
 
-export function fmtWeekLabel(weekStart: Date, timezone: string): string {
-  const end = addDays(weekStart, 6);
-  const startDay = dayInTz(weekStart, timezone);
-  const endDay = dayInTz(end, timezone);
-  const startMonth = monthInTz(weekStart, timezone);
-  const endMonth = monthInTz(end, timezone);
-  return `${startDay} ${MONTHS_SHORT_RU[startMonth]} – ${endDay} ${MONTHS_SHORT_RU[endMonth]}`;
-}
-
-function addDays(d: Date, n: number): Date {
-  const x = new Date(d);
-  x.setUTCDate(x.getUTCDate() + n);
-  return x;
-}
-
-function dayInTz(iso: Date, tz: string): number {
-  return Number(
-    new Intl.DateTimeFormat('en-US', { timeZone: tz, day: 'numeric' }).format(iso),
-  );
-}
-
-function monthInTz(iso: Date, tz: string): number {
-  return Number(
-    new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'numeric' }).format(iso),
-  ) - 1;
+/** `weekStart` is UTC midnight of the week-start calendar date. */
+export function fmtWeekLabel(weekStart: Date): string {
+  const end = new Date(weekStart);
+  end.setUTCDate(end.getUTCDate() + 6);
+  return `${weekStart.getUTCDate()} ${MONTHS_SHORT_RU[weekStart.getUTCMonth()]} – ${end.getUTCDate()} ${MONTHS_SHORT_RU[end.getUTCMonth()]}`;
 }
 

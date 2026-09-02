@@ -1,4 +1,7 @@
 import type { RecurrenceConfig, WeekStartsOn } from '../api/types';
+import { addDaysToDateOnly, dateKeyInTz, utcDateKey } from './dateKey';
+
+export { addDaysToDateOnly, dateKeyInTz };
 
 export const RECURRENCE_HORIZON_WEEKS = 12;
 
@@ -8,30 +11,8 @@ export function minutesFromHours(hours: number): number {
   return hour * 60 + minute;
 }
 
-export function dateKeyInTz(d: Date, tz: string): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(d);
-}
-
-export function occurrenceDateForSlot(
-  weekStart: Date,
-  day: number,
-  timezone: string,
-): string {
-  const d = new Date(weekStart);
-  d.setUTCDate(d.getUTCDate() + day);
-  return dateKeyInTz(d, timezone);
-}
-
-export function addDaysToDateOnly(isoDate: string, days: number): string {
-  const [year, month, day] = isoDate.split('-').map(Number);
-  const d = new Date(Date.UTC(year!, month! - 1, day!));
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+export function occurrenceDateForSlot(weekStart: Date, day: number): string {
+  return addDaysToDateOnly(utcDateKey(weekStart), day);
 }
 
 export function recurrenceDayLetters(weekStartsOn: WeekStartsOn): readonly string[] {
@@ -47,7 +28,7 @@ export function resolveRecurrenceStartDate(
 ): string {
   const today = dateKeyInTz(new Date(), timezone);
   const candidates = weekdays
-    .map((day) => occurrenceDateForSlot(weekStart, day, timezone))
+    .map((day) => occurrenceDateForSlot(weekStart, day))
     .filter((date) => date >= today)
     .sort();
 
@@ -55,7 +36,7 @@ export function resolveRecurrenceStartDate(
 
   const nextWeekStart = new Date(weekStart);
   nextWeekStart.setUTCDate(nextWeekStart.getUTCDate() + 7);
-  return occurrenceDateForSlot(nextWeekStart, Math.min(...weekdays), timezone);
+  return occurrenceDateForSlot(nextWeekStart, Math.min(...weekdays));
 }
 
 export function formatWeekdaysShort(
