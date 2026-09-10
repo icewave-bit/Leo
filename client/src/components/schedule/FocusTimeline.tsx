@@ -13,6 +13,7 @@ import {
   LessonMetaLine,
   LessonNotesMark,
   LessonPayMark,
+  LessonRecurrenceMark,
   TypeIcon,
 } from './LessonChrome';
 import {
@@ -21,7 +22,6 @@ import {
   PersonalEventGroupSwatch,
   PersonalNotesMark,
 } from './PersonalEventChrome';
-import { RecurrenceIcon } from '../RecurrenceFields';
 
 export function FocusTimeline({
   onSelect,
@@ -172,9 +172,10 @@ export function FocusTimeline({
                   style={personalEventCardVars(color)}
                   onClick={() => onSelectPersonal(event.id)}
                 >
-                  {event.recurringPersonalScheduleId ? (
-                    <RecurrenceIcon title="Повторяющееся событие" />
-                  ) : null}
+                  <LessonRecurrenceMark
+                    recurring={Boolean(event.recurringPersonalScheduleId)}
+                    title="Повторяющееся событие"
+                  />
                   <PersonalNotesMark notes={event.notes} />
                   <PersonalEventGroupSwatch color={color} />
                   <span className="ft__card-main">

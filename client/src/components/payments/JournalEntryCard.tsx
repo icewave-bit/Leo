@@ -11,12 +11,33 @@ export function JournalEntryCard({
   showStudent: boolean;
   students: Map<string, ViewStudent>;
 }) {
+  const allocations = row.allocations;
+  const hasAllocations = Boolean(allocations && allocations.length > 0);
+
+  const head = (
+    <>
+      <time className="pay-entry__when">{row.whenLabel}</time>
+      <span className={'pay-op pay-op--' + row.tone}>{row.title}</span>
+    </>
+  );
+
   return (
     <article className="pay-entry">
-      <header className="pay-entry__head">
-        <time className="pay-entry__when">{row.whenLabel}</time>
-        <span className={'pay-op pay-op--' + row.tone}>{row.title}</span>
-      </header>
+      {hasAllocations ? (
+        <details className="pay-entry__compound">
+          <summary className="pay-entry__compound-summary">{head}</summary>
+          <ul className="pay-entry__allocs">
+            {allocations!.map((a) => (
+              <li key={a.id} className="pay-entry__alloc">
+                <span className="pay-entry__alloc-title">{a.title}</span>
+                <span className="pay-entry__alloc-amount tnum">{a.amountLabel}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : (
+        <header className="pay-entry__head">{head}</header>
+      )}
 
       {showStudent ? (
         <JournalStudentChip

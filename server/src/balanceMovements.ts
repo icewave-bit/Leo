@@ -23,8 +23,9 @@ export async function recordBalanceMovement(
     debtDelta: number;
     /** Override movement kind classification (e.g. balance-kind switch → manual). */
     forceKind?: BalanceMovementKind;
+    parentMovementId?: string | null;
   },
-): Promise<void> {
+): Promise<string | null> {
   const snap = await client.query<{
     prepaid: string;
     debt: string;
@@ -35,13 +36,14 @@ export async function recordBalanceMovement(
     [input.studentId],
   );
   const row = snap.rows[0];
-  if (!row) return;
+  if (!row) return null;
 
-  await client.query(
+  const inserted = await client.query<{ id: string }>(
     `INSERT INTO balance_movements (
        tutor_id, student_id, charged_for_student_id, lesson_id, occurred_at, received_on, kind,
-       prepaid_delta, debt_delta, prepaid_after, debt_after, balance_kind
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+       prepaid_delta, debt_delta, prepaid_after, debt_after, balance_kind, parent_movement_id
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+     RETURNING id`,
     [
       row.tutor_id,
       input.studentId,
@@ -55,8 +57,10 @@ export async function recordBalanceMovement(
       Number(row.prepaid),
       Number(row.debt),
       row.balance_kind,
+      input.parentMovementId ?? null,
     ],
   );
+  return inserted.rows[0]?.id ?? null;
 }
 
 export async function recordStudentBalancePatch(
@@ -71,17 +75,17 @@ export async function recordStudentBalancePatch(
     prepaidTopUp?: boolean;
     receivedOn?: string;
   },
-): Promise<void> {
+): Promise<string | null> {
   // Unit conversion (lessons ↔ money) rewrites stored amounts; not a real balance event.
-  if (opts?.balanceKindChanged) return;
+  if (opts?.balanceKindChanged) return null;
 
   const prepaidDelta = prepaidAfter - prepaidBefore;
   const debtDelta = debtAfter - debtBefore;
-  if (Math.abs(prepaidDelta) < 1e-9 && Math.abs(debtDelta) < 1e-9) return;
+  if (Math.abs(prepaidDelta) < 1e-9 && Math.abs(debtDelta) < 1e-9) return null;
 
   const kind: BalanceMovementKind = opts?.prepaidTopUp ? 'replenish' : 'manual';
 
-  await recordBalanceMovement(client, {
+  return recordBalanceMovement(client, {
     studentId,
     kind,
     prepaidDelta: prepaidAfter - prepaidBefore,

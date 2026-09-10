@@ -3,7 +3,6 @@ import type { PersonalEventGroup, PersonalEventOutline } from '../../api/types';
 import { tutorAtom } from '../../atoms/auth';
 import { fmtTime } from '../../utils/format';
 import type { ViewPersonalEvent } from '../../utils/schedule';
-import { RecurrenceIcon } from '../RecurrenceFields';
 import { Icon } from '../Icon';
 import { hexToOklchHue } from '../../utils/colorHue';
 import {
@@ -11,7 +10,7 @@ import {
   weekGridLessonPositionStyle,
   type WeekGridLessonLayout,
 } from '../../utils/weekGridLayout';
-import { LessonCardRotatingLabel, lessonNameClass } from './LessonChrome';
+import { LessonCardRotatingLabel, LessonRecurrenceMark, lessonNameClass } from './LessonChrome';
 
 export function personalEventCardVars(color: string): React.CSSProperties {
   return {
@@ -109,9 +108,10 @@ export function PersonalEventCard({
       onPointerDown={onPointerDown}
       onClick={onClick}
     >
-      {event.recurringPersonalScheduleId ? (
-        <RecurrenceIcon title="Повторяющееся событие" />
-      ) : null}
+      <LessonRecurrenceMark
+        recurring={Boolean(event.recurringPersonalScheduleId)}
+        title="Повторяющееся событие"
+      />
       <PersonalNotesMark notes={event.notes} />
       {compact ? (
         <LessonCardRotatingLabel

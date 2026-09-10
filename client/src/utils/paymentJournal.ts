@@ -189,6 +189,13 @@ export function movementDeltaAsMoney(
   return balanceDeltaAsMoney(amount, movementUnitKind(m, student), student?.rate ?? null);
 }
 
+export interface JournalAllocation {
+  id: string;
+  title: string;
+  amountLabel: string;
+  chargedForName: string | null;
+}
+
 export interface JournalRow extends BalanceMovement {
   studentName: string;
   chargedForName: string | null;
@@ -199,12 +206,44 @@ export interface JournalRow extends BalanceMovement {
   netLabel: string;
   whenLabel: string;
   tone: 'credit' | 'debt' | 'neutral' | 'manual';
+  allocations?: JournalAllocation[];
+  isCompoundReplenish?: boolean;
+}
+
+/** Top-level journal movements (children of a settle are nested under the parent). */
+export function mainTimelineMovements(movements: BalanceMovement[]): BalanceMovement[] {
+  return movements.filter((m) => m.parentMovementId == null);
 }
 
 function fmtDelta(n: number, kind: ViewStudent['balanceKind'], currency: string): string {
   if (Math.abs(n) < 1e-9) return '—';
   const sign = n > 0 ? '+' : '−';
   return sign + fmtBalanceAmount(Math.abs(n), kind, currency);
+}
+
+function movementTitle(
+  m: BalanceMovement,
+  students: Map<string, ViewStudent>,
+): { title: string; chargedForName: string | null } {
+  const chargedFor = m.chargedForStudentId
+    ? students.get(m.chargedForStudentId)
+    : undefined;
+  const baseTitle = MOVEMENT_LABELS[m.kind];
+  return {
+    title: chargedFor != null ? `${baseTitle} · ${chargedFor.name}` : baseTitle,
+    chargedForName: chargedFor?.name ?? null,
+  };
+}
+
+function allocationAmountLabel(
+  m: BalanceMovement,
+  students: Map<string, ViewStudent>,
+): string {
+  const st = students.get(m.studentId);
+  const unitKind = movementUnitKind(m, st);
+  const currency = st?.currency ?? 'EUR';
+  const amount = Math.abs(m.debtDelta) > 1e-9 ? Math.abs(m.debtDelta) : Math.abs(m.prepaidDelta);
+  return fmtBalanceAmount(amount, unitKind, currency);
 }
 
 export function enrichMovements(
@@ -214,19 +253,14 @@ export function enrichMovements(
 ): JournalRow[] {
   return movements.map((m) => {
     const st = students.get(m.studentId);
-    const chargedFor = m.chargedForStudentId
-      ? students.get(m.chargedForStudentId)
-      : undefined;
     const unitKind = movementUnitKind(m, st);
     const currency = st?.currency ?? 'EUR';
-    const baseTitle = MOVEMENT_LABELS[m.kind];
-    const title =
-      chargedFor != null ? `${baseTitle} · ${chargedFor.name}` : baseTitle;
+    const { title, chargedForName } = movementTitle(m, students);
     const amount = m.prepaidDelta - m.debtDelta;
     return {
       ...m,
       studentName: st?.name ?? 'Ученик',
-      chargedForName: chargedFor?.name ?? null,
+      chargedForName,
       balanceKind: unitKind,
       currency,
       title,
@@ -236,6 +270,73 @@ export function enrichMovements(
       tone: MOVEMENT_TONE[m.kind],
     };
   });
+}
+
+/** Nest settle children under their parent; exclude children from the main timeline. */
+export function groupJournalMovements(
+  rows: JournalRow[],
+  allMovements: BalanceMovement[],
+  students: Map<string, ViewStudent>,
+): JournalRow[] {
+  const childrenByParent = new Map<string, BalanceMovement[]>();
+  for (const m of allMovements) {
+    if (m.parentMovementId == null) continue;
+    const list = childrenByParent.get(m.parentMovementId) ?? [];
+    list.push(m);
+    childrenByParent.set(m.parentMovementId, list);
+  }
+
+  return rows.map((row) => {
+    const children = childrenByParent.get(row.id);
+    if (!children || children.length === 0) return row;
+
+    const allocations: JournalAllocation[] = [...children]
+      .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))
+      .map((child) => {
+        const { title, chargedForName } = movementTitle(child, students);
+        return {
+          id: child.id,
+          title,
+          amountLabel: allocationAmountLabel(child, students),
+          chargedForName,
+        };
+      });
+
+    const isCompoundReplenish = row.kind === 'replenish';
+    if (isCompoundReplenish) {
+      const allocated = children.reduce(
+        (sum, c) => sum + (Math.abs(c.debtDelta) > 1e-9 ? Math.abs(c.debtDelta) : Math.abs(c.prepaidDelta)),
+        0,
+      );
+      const remainder = row.prepaidDelta - allocated;
+      if (remainder > 1e-9) {
+        allocations.push({
+          id: `${row.id}:remainder`,
+          title: 'Остаток на балансе',
+          amountLabel: fmtBalanceAmount(remainder, row.balanceKind, row.currency),
+          chargedForName: null,
+        });
+      }
+    }
+
+    return {
+      ...row,
+      title: isCompoundReplenish ? 'Пополнение — Списание' : row.title,
+      isCompoundReplenish,
+      allocations,
+      tone: isCompoundReplenish ? 'credit' : row.tone,
+    };
+  });
+}
+
+export function buildJournalRows(
+  movements: BalanceMovement[],
+  students: Map<string, ViewStudent>,
+  timezone: string,
+): JournalRow[] {
+  const main = mainTimelineMovements(movements);
+  const enriched = enrichMovements(main, students, timezone);
+  return groupJournalMovements(enriched, movements, students);
 }
 
 /** Balance after the operation (snapshot from DB, in that row’s units). */
@@ -252,12 +353,13 @@ export function periodDeltaSummary(
   movements: BalanceMovement[],
   student: ViewStudent | undefined,
 ): { net: string } | null {
-  if (!student || movements.length === 0) return null;
-  if (movementsHaveMixedUnits(movements, student)) return null;
+  const main = mainTimelineMovements(movements);
+  if (!student || main.length === 0) return null;
+  if (movementsHaveMixedUnits(main, student)) return null;
 
-  const unitKind = movementUnitKind(movements[0]!, student);
+  const unitKind = movementUnitKind(main[0]!, student);
   const currency = student.currency;
-  const netChange = movements.reduce((a, m) => a + m.prepaidDelta - m.debtDelta, 0);
+  const netChange = main.reduce((a, m) => a + m.prepaidDelta - m.debtDelta, 0);
   if (Math.abs(netChange) < 1e-9) {
     return { net: fmtBalanceAmount(0, unitKind, currency) };
   }

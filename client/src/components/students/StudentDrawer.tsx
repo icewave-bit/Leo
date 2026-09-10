@@ -27,7 +27,7 @@ import {
 } from '../../utils/format';
 import {
   attachRunningBalance,
-  enrichMovements,
+  buildJournalRows,
 } from '../../utils/paymentJournal';
 import { avatarHueStyle } from '../../utils/avatarStyle';
 import { hexFromHue, hueFromHex } from '../../utils/colorHue';
@@ -518,7 +518,7 @@ export function StudentDrawer({
     if (!previewStudent) return [];
     const map = new Map(allStudents.map((s) => [s.id, s]));
     map.set(previewStudent.id, previewStudent);
-    const rows = enrichMovements(movements, map, tutor?.timezone ?? 'UTC');
+    const rows = buildJournalRows(movements, map, tutor?.timezone ?? 'UTC');
     return attachRunningBalance(rows);
   }, [allStudents, movements, previewStudent, tutor?.timezone]);
 

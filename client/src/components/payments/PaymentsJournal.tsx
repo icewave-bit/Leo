@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { tutorAtom } from '../../atoms/auth';
@@ -20,7 +20,8 @@ import { findBillingPayer, isBillingDependent } from '../../utils/billingStudent
 import { fmtBalanceAmount } from '../../utils/format';
 import {
   attachRunningBalance,
-  enrichMovements,
+  buildJournalRows,
+  mainTimelineMovements,
   movementsHaveMixedUnits,
   periodDeltaSummary,
   periodRange,
@@ -45,6 +46,7 @@ export function PaymentsJournal() {
   const customTo = useAtomValue(paymentsCustomToAtom);
   const setReplenishId = useSetAtom(balanceReplenishStudentIdAtom);
   const setCorrectionId = useSetAtom(balanceCorrectionStudentIdAtom);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
 
   const tz = tutor?.timezone ?? 'UTC';
   const weekStartsOn = tutor?.weekStartsOn ?? 'monday';
@@ -66,8 +68,8 @@ export function PaymentsJournal() {
     !selectedDependent;
 
   const rows = useMemo(() => {
-    const enriched = enrichMovements(movements, studentMap, tz);
-    return attachRunningBalance(enriched);
+    const grouped = buildJournalRows(movements, studentMap, tz);
+    return attachRunningBalance(grouped);
   }, [movements, studentMap, tz]);
 
   const summary = useMemo(
@@ -76,11 +78,20 @@ export function PaymentsJournal() {
   );
 
   const summaryMixedUnits = useMemo(
-    () => movementsHaveMixedUnits(movements, selectedStudent),
+    () => movementsHaveMixedUnits(mainTimelineMovements(movements), selectedStudent),
     [movements, selectedStudent],
   );
 
   const showStudentColumn = !studentId;
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <div className="pay-journal-page">
@@ -212,30 +223,70 @@ export function PaymentsJournal() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.id}>
-                      <td className="pay-journal-table__when">{r.whenLabel}</td>
-                      {showStudentColumn ? (
-                        <td>
-                          <JournalStudentChip
-                            studentId={r.studentId}
-                            chargedForStudentId={r.chargedForStudentId}
-                            name={r.studentName}
-                            students={studentMap}
-                          />
-                        </td>
-                      ) : null}
-                      <td>
-                        <span className={'pay-op pay-op--' + r.tone}>{r.title}</span>
-                      </td>
-                      <td className="tnum pay-journal-table__num pay-journal-table__delta">
-                        {r.amountLabel}
-                      </td>
-                      <td className="tnum pay-journal-table__num pay-journal-table__net">
-                        {r.runningNet}
-                      </td>
-                    </tr>
-                  ))}
+                  {rows.map((r) => {
+                    const hasAllocations = Boolean(r.allocations && r.allocations.length > 0);
+                    const expanded = hasAllocations && expandedIds.has(r.id);
+                    return (
+                      <Fragment key={r.id}>
+                        <tr className={hasAllocations ? 'pay-journal-table__parent' : undefined}>
+                          <td className="pay-journal-table__when">{r.whenLabel}</td>
+                          {showStudentColumn ? (
+                            <td>
+                              <JournalStudentChip
+                                studentId={r.studentId}
+                                chargedForStudentId={r.chargedForStudentId}
+                                name={r.studentName}
+                                students={studentMap}
+                              />
+                            </td>
+                          ) : null}
+                          <td>
+                            {hasAllocations ? (
+                              <button
+                                type="button"
+                                className="pay-journal-table__toggle"
+                                aria-expanded={expanded}
+                                onClick={() => toggleExpanded(r.id)}
+                              >
+                                <span
+                                  className="pay-journal-table__chevron"
+                                  aria-hidden
+                                >
+                                  {expanded ? '▾' : '▸'}
+                                </span>
+                                <span className={'pay-op pay-op--' + r.tone}>{r.title}</span>
+                              </button>
+                            ) : (
+                              <span className={'pay-op pay-op--' + r.tone}>{r.title}</span>
+                            )}
+                          </td>
+                          <td className="tnum pay-journal-table__num pay-journal-table__delta">
+                            {r.amountLabel}
+                          </td>
+                          <td className="tnum pay-journal-table__num pay-journal-table__net">
+                            {r.runningNet}
+                          </td>
+                        </tr>
+                        {expanded
+                          ? r.allocations!.map((a) => (
+                              <tr key={a.id} className="pay-journal-table__alloc-row">
+                                <td className="pay-journal-table__when" />
+                                {showStudentColumn ? <td /> : null}
+                                <td className="pay-journal-table__alloc-cell">
+                                  <span className="pay-journal-table__alloc-title">{a.title}</span>
+                                </td>
+                                <td className="tnum pay-journal-table__num pay-journal-table__alloc-amount">
+                                  {a.amountLabel}
+                                </td>
+                                <td className="tnum pay-journal-table__num pay-journal-table__alloc-net">
+                                  —
+                                </td>
+                              </tr>
+                            ))
+                          : null}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

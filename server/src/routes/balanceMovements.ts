@@ -23,6 +23,7 @@ export interface BalanceMovementRow {
   prepaid_after: string;
   debt_after: string;
   balance_kind: 'money' | 'lessons';
+  parent_movement_id: string | null;
 }
 
 export interface BalanceMovementDto {
@@ -37,6 +38,7 @@ export interface BalanceMovementDto {
   prepaidAfter: number;
   debtAfter: number;
   balanceKind: 'money' | 'lessons';
+  parentMovementId: string | null;
 }
 
 function toMovement(row: BalanceMovementRow): BalanceMovementDto {
@@ -52,6 +54,7 @@ function toMovement(row: BalanceMovementRow): BalanceMovementDto {
     prepaidAfter: Number(row.prepaid_after),
     debtAfter: Number(row.debt_after),
     balanceKind: row.balance_kind,
+    parentMovementId: row.parent_movement_id,
   };
 }
 
@@ -95,7 +98,7 @@ balanceMovementsRouter.get('/', async (req, res, next) => {
     const result = await query<BalanceMovementRow>(
       `SELECT m.id, m.student_id, m.charged_for_student_id, m.lesson_id, m.occurred_at, m.kind,
               m.prepaid_delta, m.debt_delta, m.prepaid_after, m.debt_after,
-              m.balance_kind
+              m.balance_kind, m.parent_movement_id
        FROM balance_movements m
        WHERE m.tutor_id = $1
          AND m.occurred_at >= $2

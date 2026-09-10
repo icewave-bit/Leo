@@ -12,6 +12,7 @@ import {
   LessonMetaLine,
   LessonNotesMark,
   LessonPayMark,
+  LessonRecurrenceMark,
   TypeIcon,
 } from './LessonChrome';
 import {
@@ -20,7 +21,6 @@ import {
   PersonalEventGroupSwatch,
   PersonalNotesMark,
 } from './PersonalEventChrome';
-import { RecurrenceIcon } from '../RecurrenceFields';
 
 export function AgendaList({
   onSelect,
@@ -110,9 +110,10 @@ export function AgendaList({
                     style={personalEventCardVars(color)}
                     onClick={() => onSelectPersonal(event.id)}
                   >
-                    {event.recurringPersonalScheduleId ? (
-                      <RecurrenceIcon title="Повторяющееся событие" />
-                    ) : null}
+                    <LessonRecurrenceMark
+                      recurring={Boolean(event.recurringPersonalScheduleId)}
+                      title="Повторяющееся событие"
+                    />
                     <PersonalNotesMark notes={event.notes} />
                     <span className="ag__time">
                       <strong>{fmtTime(event.start)}</strong>

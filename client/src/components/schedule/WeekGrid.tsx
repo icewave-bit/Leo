@@ -50,7 +50,6 @@ import {
   lessonCardVars,
   lessonEventLabel,
   hasLessonNotes,
-  lessonGridHint,
   LessonCardRotatingLabel,
   lessonNameClass,
   LessonNotesMark,
@@ -99,7 +98,6 @@ function LessonEvent({
   const top = start * pxPerHour;
   const height = lesson.dur * pxPerHour - 4;
   const tight = height < pxPerHour * 0.72;
-  const hint = lessonGridHint(lesson);
   const colsClass = weekGridLessonLayoutClass(layout);
 
   return (
@@ -146,7 +144,6 @@ function LessonEvent({
           </span>
         </>
       )}
-      {hint && !tight ? <span className="ev__hint">{hint}</span> : null}
     </button>
   );
 }

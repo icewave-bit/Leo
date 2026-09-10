@@ -149,6 +149,7 @@ export interface BalanceMovement {
   prepaidAfter: number;
   debtAfter: number;
   balanceKind: BalanceKind;
+  parentMovementId: string | null;
 }
 
 export interface Lesson {

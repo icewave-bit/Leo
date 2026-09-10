@@ -71,38 +71,23 @@ export function LessonMetaLine({
     'status' | 'paid' | 'balanceCharged' | 'chargeDebtDelta' | 'balancePaidApplied'
   >;
 }) {
-  const status = lesson.status;
-  if (status === 'planned') return null;
-
-  const statusText = STATUS_LABELS[status].ru.toLowerCase();
-  const showPay = status === 'completed';
+  if (lesson.status !== 'completed') return null;
 
   return (
     <p className="ev-meta">
-      <span className="ev-meta__status">{statusText}</span>
-      {showPay ? (
-        <>
-          <span className="ev-meta__sep"> · </span>
-          <span
-            className={
-              lessonDebtClosed(lesson) ? 'ev-meta__ok' : 'ev-meta__warn'
-            }
-          >
-            {lessonDebtClosed(lesson)
-              ? PAY_LABELS.paid.ru.toLowerCase()
-              : PAY_LABELS.unpaid.ru.toLowerCase()}
-          </span>
-        </>
-      ) : null}
+      <span className="ev-meta__status">{STATUS_LABELS.completed.ru.toLowerCase()}</span>
+      <span className="ev-meta__sep"> · </span>
+      <span
+        className={
+          lessonDebtClosed(lesson) ? 'ev-meta__ok' : 'ev-meta__warn'
+        }
+      >
+        {lessonDebtClosed(lesson)
+          ? PAY_LABELS.paid.ru.toLowerCase()
+          : PAY_LABELS.unpaid.ru.toLowerCase()}
+      </span>
     </p>
   );
-}
-
-export function lessonGridHint(
-  lesson: Pick<ViewLesson, 'status'>,
-): string | null {
-  if (lesson.status === 'planned' || lesson.status === 'completed') return null;
-  return STATUS_LABELS[lesson.status].short;
 }
 
 export function lessonEventLabel(
@@ -122,11 +107,17 @@ export function hasLessonNotes(notes: string | null | undefined): boolean {
 }
 
 /** Bottom-right — recurrence takes the corner; notes shift left when both are present. */
-export function LessonRecurrenceMark({ recurring }: { recurring: boolean }) {
+export function LessonRecurrenceMark({
+  recurring,
+  title = 'Повторяющийся урок',
+}: {
+  recurring: boolean;
+  title?: string;
+}) {
   if (!recurring) return null;
   return (
-    <span className="ev__recur" aria-label="Повторяющийся урок" title="Повторяющийся урок">
-      <RecurrenceIcon />
+    <span className="ev__recur" aria-label={title} title={title}>
+      <RecurrenceIcon title={title} />
     </span>
   );
 }

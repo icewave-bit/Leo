@@ -529,7 +529,7 @@ studentsRouter.patch('/:id', async (req, res, next) => {
         body.prepaid !== undefined &&
         body.debt === undefined &&
         Number(row.prepaid) > Number(beforeRow.prepaid);
-      await recordStudentBalancePatch(
+      const replenishId = await recordStudentBalancePatch(
         client,
         row.id,
         Number(beforeRow.prepaid),
@@ -551,6 +551,7 @@ studentsRouter.patch('/:id', async (req, res, next) => {
             Number(beforeRow.debt),
             Number(row.prepaid),
             Number(row.debt),
+            replenishId,
           )),
         );
       }
