@@ -1,18 +1,22 @@
 package bot
 
-import "github.com/go-telegram/bot/models"
+import (
+	"fmt"
+
+	"github.com/go-telegram/bot/models"
+)
 
 const (
-	btnToday     = "Сегодня"
-	btnTomorrow  = "Завтра"
-	btnWeek      = "Неделя"
-	btnSlots     = "Слоты"
-	btnStudents  = "Ученики"
-	btnDebt      = "Долги"
-	btnHelp      = "Справка"
-	btnLink      = "Привязать"
-	btnBalance   = "Баланс"
-	btnMe        = "Профиль"
+	btnToday    = "Сегодня"
+	btnTomorrow = "Завтра"
+	btnWeek     = "Неделя"
+	btnSlots    = "Слоты"
+	btnStudents = "Ученики"
+	btnDebt     = "Долги"
+	btnHelp     = "Справка"
+	btnLink     = "Привязать"
+	btnBalance  = "Баланс"
+	btnMe       = "Профиль"
 )
 
 func tutorKeyboard() *models.ReplyKeyboardMarkup {
@@ -88,5 +92,37 @@ func resolveInput(text string) (cmd, arg string) {
 		return "/slots", ""
 	default:
 		return "", ""
+	}
+}
+
+const (
+	cbSlotsPick     = "slots:pick"
+	cbSlotsPrefix   = "slots:"
+	slotsPickerText = `# Свободные слоты
+
+Какую неделю показать?`
+)
+
+func slotsWeekKeyboard() *models.InlineKeyboardMarkup {
+	return &models.InlineKeyboardMarkup{
+		InlineKeyboard: [][]models.InlineKeyboardButton{{
+			{Text: "Эта неделя", CallbackData: cbSlotsPrefix + "0", Style: "primary"},
+			{Text: "Следующая", CallbackData: cbSlotsPrefix + "1"},
+		}},
+	}
+}
+
+func slotsResultKeyboard(weekOffset int) *models.InlineKeyboardMarkup {
+	other := 1
+	otherLabel := "Следующая неделя"
+	if weekOffset != 0 {
+		other = 0
+		otherLabel = "Эта неделя"
+	}
+	return &models.InlineKeyboardMarkup{
+		InlineKeyboard: [][]models.InlineKeyboardButton{{
+			{Text: "« Недели", CallbackData: cbSlotsPick},
+			{Text: otherLabel, CallbackData: fmt.Sprintf("%s%d", cbSlotsPrefix, other)},
+		}},
 	}
 }

@@ -59,14 +59,15 @@ func TestPollOnce_sendsReminderOnce(t *testing.T) {
 	out := msg.messages()[0]
 	assert.Equal(t, int64(42), out.ChatID)
 	assert.True(t, out.DisableNotification)
-	assert.Contains(t, out.Text, "Leo")
-	assert.NotContains(t, out.Text, meet)
+	assert.Contains(t, out.RichMessage.Markdown, "Leo")
+	assert.NotContains(t, out.RichMessage.Markdown, meet)
 	kb, ok := out.ReplyMarkup.(*models.InlineKeyboardMarkup)
 	require.True(t, ok)
 	require.Len(t, kb.InlineKeyboard, 1)
 	require.Len(t, kb.InlineKeyboard[0], 1)
 	assert.Equal(t, "Подключиться", kb.InlineKeyboard[0][0].Text)
 	assert.Equal(t, meet, kb.InlineKeyboard[0][0].URL)
+	assert.Equal(t, "primary", kb.InlineKeyboard[0][0].Style)
 	require.Len(t, mon.markedSent, 1)
 	assert.Equal(t, "lesson-1", mon.markedSent[0].EntityID)
 	assert.Equal(t, int64(42), mon.markedSent[0].TelegramUserID)
@@ -75,6 +76,85 @@ func TestPollOnce_sendsReminderOnce(t *testing.T) {
 	assert.Len(t, msg.messages(), 1)
 	assert.Len(t, mon.markedSent, 1)
 	assert.False(t, mon.todayCalled)
+}
+
+func TestPollOnce_rescheduledLessonSendsAgain(t *testing.T) {
+	start := time.Now().UTC().Add(25 * time.Minute).Truncate(time.Second)
+	later := start.Add(time.Hour)
+	reminder := dueLesson(start)
+	msg := &mockMessenger{}
+	mon := &mockMonitor{due: []tutorapi.DueReminder{reminder}}
+	b, err := New(Config{
+		TelegramClient: msg,
+		Monitor:        mon,
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PollInterval:   time.Minute,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, b.pollOnce(context.Background()))
+	require.Len(t, msg.messages(), 1)
+	require.Len(t, mon.markedSent, 1)
+	assert.Equal(t, "lesson-1", mon.markedSent[0].EntityID)
+
+	require.NoError(t, b.pollOnce(context.Background()))
+	assert.Len(t, msg.messages(), 1)
+	assert.Len(t, mon.markedSent, 1)
+
+	mon.due = []tutorapi.DueReminder{dueLesson(later)}
+	require.NoError(t, b.pollOnce(context.Background()))
+	require.Len(t, msg.messages(), 2)
+	require.Len(t, mon.markedSent, 2)
+	assert.Equal(t, "lesson-1", mon.markedSent[1].EntityID)
+	assert.Equal(t, int64(42), mon.markedSent[1].TelegramUserID)
+}
+
+func TestPollOnce_sendsRescheduleNotice(t *testing.T) {
+	meet := "https://meet.google.com/abc-defg-hij"
+	msg := &mockMessenger{}
+	mon := &mockMonitor{
+		due: []tutorapi.DueReminder{{
+			Kind:           "reschedule",
+			TelegramUserID: 42,
+			Role:           "tutor",
+			Timezone:       "Europe/Moscow",
+			Silent:         false,
+			Reschedule: &tutorapi.LessonReschedule{
+				ID:           "11111111-1111-4111-8111-111111111111",
+				LessonID:     "lesson-1",
+				FromStartUTC: "2026-09-12T11:00:00Z",
+				ToStartUTC:   "2026-09-15T13:30:00Z",
+				StudentName:  "Leo",
+				Charged:      false,
+				MeetURL:      &meet,
+			},
+		}},
+	}
+	b, err := New(Config{
+		TelegramClient: msg,
+		Monitor:        mon,
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PollInterval:   time.Minute,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, b.pollOnce(context.Background()))
+	require.Len(t, msg.messages(), 1)
+	out := msg.messages()[0]
+	assert.Equal(t, int64(42), out.ChatID)
+	assert.Contains(t, out.RichMessage.Markdown, "**Leo**")
+	assert.Contains(t, out.RichMessage.Markdown, "перенесён")
+	assert.Contains(t, out.RichMessage.Markdown, "без списания")
+	assert.NotContains(t, out.RichMessage.Markdown, meet)
+	kb, ok := out.ReplyMarkup.(*models.InlineKeyboardMarkup)
+	require.True(t, ok)
+	assert.Equal(t, meet, kb.InlineKeyboard[0][0].URL)
+	require.Len(t, mon.markedSent, 1)
+	assert.Equal(t, "reschedule", mon.markedSent[0].Kind)
+	assert.Equal(t, "11111111-1111-4111-8111-111111111111", mon.markedSent[0].EntityID)
+
+	require.NoError(t, b.pollOnce(context.Background()))
+	assert.Len(t, msg.messages(), 1)
 }
 
 func TestPollOnce_emptyDueDoesNotSend(t *testing.T) {
@@ -123,8 +203,8 @@ func TestPollOnce_sendsPersonalReminder(t *testing.T) {
 	require.NoError(t, b.pollOnce(context.Background()))
 	require.Len(t, msg.messages(), 1)
 	assert.Equal(t, int64(7), msg.messages()[0].ChatID)
-	assert.Contains(t, msg.messages()[0].Text, "Yoga")
-	assert.NotContains(t, msg.messages()[0].Text, "урок")
+	assert.Contains(t, msg.messages()[0].RichMessage.Markdown, "Yoga")
+	assert.NotContains(t, msg.messages()[0].RichMessage.Markdown, "урок")
 }
 
 func TestPollOnce_usesLeadMinutesFromPayload(t *testing.T) {
@@ -143,7 +223,7 @@ func TestPollOnce_usesLeadMinutesFromPayload(t *testing.T) {
 
 	require.NoError(t, b.pollOnce(context.Background()))
 	require.Len(t, msg.messages(), 1)
-	assert.Contains(t, msg.messages()[0].Text, "15 мин")
+	assert.Contains(t, msg.messages()[0].RichMessage.Markdown, "15 мин")
 }
 
 func TestPollOnce_studentReminder(t *testing.T) {
@@ -173,9 +253,10 @@ func TestPollOnce_studentReminder(t *testing.T) {
 	require.Len(t, msg.messages(), 1)
 	out := msg.messages()[0]
 	assert.Equal(t, int64(99), out.ChatID)
-	assert.Contains(t, out.Text, "Напоминание")
-	assert.NotContains(t, out.Text, "с Leo")
-	assert.NotContains(t, out.Text, meet)
+	assert.Contains(t, out.RichMessage.Markdown, "Урок через")
+	assert.NotContains(t, out.RichMessage.Markdown, "с Leo")
+	assert.NotContains(t, out.RichMessage.Markdown, "**Leo**")
+	assert.NotContains(t, out.RichMessage.Markdown, meet)
 	kb, ok := out.ReplyMarkup.(*models.InlineKeyboardMarkup)
 	require.True(t, ok)
 	require.Len(t, kb.InlineKeyboard, 1)

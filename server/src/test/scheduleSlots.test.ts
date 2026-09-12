@@ -4,6 +4,7 @@ import {
   dateKeyInTz,
   slotToStartUtc,
   weekdayIndexInWeek,
+  zonedWeekOffsetRangeUtc,
   zonedWeekRangeUtc,
 } from '../scheduleSlots.js';
 
@@ -38,6 +39,15 @@ describe('scheduleSlots timezone', () => {
     const now = new Date('2026-08-31T01:00:00+03:00');
     const { from } = zonedWeekRangeUtc(now, MOSCOW, 'monday');
     expect(dateKeyInTz(from, MOSCOW)).toBe('2026-08-31');
+  });
+
+  it('shifts the week window by calendar weeks without using 24h arithmetic', () => {
+    const now = new Date('2026-08-31T01:00:00+03:00');
+    const current = zonedWeekOffsetRangeUtc(now, MOSCOW, 'monday', 0);
+    const next = zonedWeekOffsetRangeUtc(now, MOSCOW, 'monday', 1);
+    expect(current.from.toISOString()).toBe('2026-08-30T21:00:00.000Z');
+    expect(next.from.toISOString()).toBe('2026-09-06T21:00:00.000Z');
+    expect(next.to.toISOString()).toBe('2026-09-13T21:00:00.000Z');
   });
 
   it('builds recurring occurrence UTC from the local wall clock on that date', () => {

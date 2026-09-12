@@ -26,6 +26,27 @@ describe('lessons', () => {
     return res.body.id as string;
   }
 
+  function weekQuery() {
+    const from = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const to = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    return { from, to };
+  }
+
+  async function createPastCompletedLesson(agent: ReturnType<typeof request.agent>) {
+    const student = await agent
+      .post('/api/students')
+      .send({ name: 'Student', prepaid: 0, debt: 0, rate: 20, currency: 'EUR' })
+      .expect(201);
+    const startUtc = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    const lesson = await agent
+      .post('/api/lessons')
+      .send({ studentId: student.body.id, startUtc, durationMin: 60 })
+      .expect(201);
+    const listed = await agent.get('/api/lessons').query(weekQuery()).expect(200);
+    expect(listed.body[0].status).toBe('completed');
+    return lesson.body.id as string;
+  }
+
   it('create/list within range; range filtering', async () => {
     const { agent } = await registerTutor(app);
     const studentId = await createStudent(agent);
@@ -174,5 +195,45 @@ describe('lessons', () => {
       .query({ from: 'bad', to: '2026-06-02T00:00:00.000Z' })
       .expect(400);
     expect(res.body.error.code).toBe('VALIDATION');
+  });
+
+  it('reschedules completed past lesson to the future as planned and uncharges', async () => {
+    const { agent } = await registerTutor(app);
+    const lessonId = await createPastCompletedLesson(agent);
+    const futureStart = new Date(Date.now() + 20 * 60_000).toISOString();
+
+    const patched = await agent
+      .patch(`/api/lessons/${lessonId}`)
+      .send({ startUtc: futureStart, restoreBalance: true })
+      .expect(200);
+
+    expect(patched.body.status).toBe('planned');
+    expect(patched.body.balanceCharged).toBe(false);
+  });
+
+  it('keeps completed when rescheduled to another past time', async () => {
+    const { agent } = await registerTutor(app);
+    const lessonId = await createPastCompletedLesson(agent);
+    const stillPast = new Date(Date.now() - 3_600_000).toISOString();
+
+    const patched = await agent
+      .patch(`/api/lessons/${lessonId}`)
+      .send({ startUtc: stillPast })
+      .expect(200);
+
+    expect(patched.body.status).toBe('completed');
+  });
+
+  it('honors explicit completed when moving startUtc to the future', async () => {
+    const { agent } = await registerTutor(app);
+    const lessonId = await createPastCompletedLesson(agent);
+    const futureStart = new Date(Date.now() + 20 * 60_000).toISOString();
+
+    const patched = await agent
+      .patch(`/api/lessons/${lessonId}`)
+      .send({ startUtc: futureStart, status: 'completed' })
+      .expect(200);
+
+    expect(patched.body.status).toBe('completed');
   });
 });

@@ -24,7 +24,7 @@ export async function setupTestDb(): Promise<pg.Pool> {
 
 export async function truncateAll(pool: pg.Pool): Promise<void> {
   await pool.query(`
-    TRUNCATE TABLE telegram_sent_reminders, lessons, recurring_schedule_skips, recurring_schedules, students, tutors RESTART IDENTITY CASCADE
+    TRUNCATE TABLE telegram_notification_outbox, telegram_sent_reminders, lessons, recurring_schedule_skips, recurring_schedules, students, tutors RESTART IDENTITY CASCADE
   `);
   try {
     await pool.query('DELETE FROM session');

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { listDueReminders, markRemindersSent } from '../botReminders.js';
-import { buildOpenSlotsForTutor } from '../botOpenSlots.js';
+import { buildOpenSlotsForTutor, openSlotsQuerySchema } from '../botOpenSlots.js';
 import { loadOpenLessonDebts } from '../billingDebt.js';
 import { query } from '../db.js';
 import { AppError } from '../errors.js';
@@ -95,7 +95,7 @@ const markSentSchema = z.object({
       telegramUserId: z
         .union([z.number().int().positive(), z.string().regex(/^\d+$/)])
         .transform(Number),
-      kind: z.enum(['lesson', 'personal']),
+      kind: z.enum(['lesson', 'personal', 'reschedule']),
       entityId: z.string().uuid(),
     }),
   ),
@@ -313,7 +313,8 @@ botRouter.get('/week', async (req, res, next) => {
 
 botRouter.get('/open-slots', async (req, res, next) => {
   try {
-    res.json(await buildOpenSlotsForTutor(req.tutorId!));
+    const { weekOffset } = validate(openSlotsQuerySchema, req.query);
+    res.json(await buildOpenSlotsForTutor(req.tutorId!, weekOffset));
   } catch (err) {
     next(err);
   }

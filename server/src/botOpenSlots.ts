@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { query } from './db.js';
 import { AppError } from './errors.js';
 import type { PersonalEventRow } from './mappers.js';
@@ -5,8 +6,12 @@ import { computeOpenSlotsForWeek, type OpenSlotsDay } from './openSlots.js';
 import { topUpRecurringPersonalSchedules } from './personalRecurringSchedule.js';
 import { topUpRecurringSchedules } from './recurringSchedule.js';
 import type { SlotOverrideRow } from './scheduleBlocks.js';
-import { zonedWeekRangeUtc } from './scheduleSlots.js';
+import { zonedWeekOffsetRangeUtc } from './scheduleSlots.js';
 import type { WeekStartsOn } from './types.js';
+
+export const openSlotsQuerySchema = z.object({
+  weekOffset: z.coerce.number().int().min(0).max(8).default(0),
+});
 
 type TutorOpenSlotsPrefs = {
   timezone: string;
@@ -24,7 +29,10 @@ export type OpenSlotsPayload = {
   days: OpenSlotsDay[];
 };
 
-export async function buildOpenSlotsForTutor(tutorId: string): Promise<OpenSlotsPayload> {
+export async function buildOpenSlotsForTutor(
+  tutorId: string,
+  weekOffset = 0,
+): Promise<OpenSlotsPayload> {
   const prefsResult = await query<TutorOpenSlotsPrefs>(
     `SELECT timezone, week_starts_on, hidden_weekdays,
             default_block_start_minutes, default_block_end_minutes
@@ -36,7 +44,12 @@ export async function buildOpenSlotsForTutor(tutorId: string): Promise<OpenSlots
     throw new AppError('UNAUTHORIZED', 401, 'Authentication required');
   }
 
-  const { from, to } = zonedWeekRangeUtc(new Date(), tutor.timezone, tutor.week_starts_on);
+  const { from, to } = zonedWeekOffsetRangeUtc(
+    new Date(),
+    tutor.timezone,
+    tutor.week_starts_on,
+    weekOffset,
+  );
 
   await topUpRecurringSchedules(tutorId);
   await topUpRecurringPersonalSchedules(tutorId);
@@ -66,6 +79,7 @@ export async function buildOpenSlotsForTutor(tutorId: string): Promise<OpenSlots
   ];
 
   const days = computeOpenSlotsForWeek({
+    now: from,
     timezone: tutor.timezone,
     weekStartsOn: tutor.week_starts_on,
     hiddenWeekdays: tutor.hidden_weekdays ?? [],

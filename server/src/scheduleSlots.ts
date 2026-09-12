@@ -141,3 +141,20 @@ export function zonedWeekRangeUtc(
     to: wallClockToUtc(e.year, e.month, e.day, 0, 0, timezone),
   };
 }
+
+/** Week window `weekOffset` weeks after the current tutor week (0 = this week). */
+export function zonedWeekOffsetRangeUtc(
+  now: Date,
+  timezone: string,
+  weekStartsOn: WeekStartsOn,
+  weekOffset: number,
+): { from: Date; to: Date } {
+  const current = zonedWeekRangeUtc(now, timezone, weekStartsOn);
+  if (weekOffset === 0) {
+    return current;
+  }
+  const startKey = dateKeyInTz(current.from, timezone);
+  const targetKey = addDaysToDateOnly(startKey, weekOffset * 7);
+  const { year, month, day } = parseDateOnly(targetKey);
+  return zonedWeekRangeUtc(wallClockToUtc(year, month, day, 12, 0, timezone), timezone, weekStartsOn);
+}

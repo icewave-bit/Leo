@@ -5,6 +5,7 @@ import {
   getTutorAcademicHourMin,
   inferAcademicUnits,
 } from '../academicHour.js';
+import { clearSentRemindersForEntity, enqueueLessonRescheduleNotices } from '../botReminders.js';
 import { getPool, query } from '../db.js';
 import { AppError } from '../errors.js';
 import {
@@ -182,15 +183,20 @@ lessonsRouter.patch('/:id', async (req, res, next) => {
       throw new AppError('NOT_FOUND', 404, 'Lesson not found');
     }
     const previousStatus = row.status;
+    const startChanged =
+      body.startUtc !== undefined &&
+      new Date(body.startUtc).toISOString() !== row.start_utc.toISOString();
+    const movingToFuture = startChanged && new Date(body.startUtc!) > new Date();
+    const nextStatus =
+      body.status ?? (movingToFuture && row.status !== 'planned' ? 'planned' : undefined);
 
     if (body.restoreBalance === true && row.balance_charged) {
       await reverseLessonBalanceCharge(client, row);
     }
 
-    if (body.startUtc !== undefined && row.recurring_schedule_id) {
-      const newStart = new Date(body.startUtc).toISOString();
-      const oldStart = row.start_utc.toISOString();
-      if (newStart !== oldStart) {
+    if (startChanged) {
+      await clearSentRemindersForEntity(client, 'lesson', row.id);
+      if (row.recurring_schedule_id) {
         await skipRecurringOccurrence(client, row.recurring_schedule_id, row.start_utc);
       }
     }
@@ -213,9 +219,9 @@ lessonsRouter.patch('/:id', async (req, res, next) => {
       values.push(inferAcademicUnits(body.durationMin, academicHourMin));
     }
 
-    if (body.status !== undefined) {
+    if (nextStatus !== undefined) {
       fields.push(`status = $${idx++}`);
-      values.push(body.status);
+      values.push(nextStatus);
     }
     if (body.paid !== undefined) {
       fields.push(`paid = $${idx++}`);
@@ -253,13 +259,13 @@ lessonsRouter.patch('/:id', async (req, res, next) => {
     );
     let updated = current.rows[0]!;
 
-    if (body.status !== undefined) {
+    if (nextStatus !== undefined) {
       const paidAfterUpdate = body.paid !== undefined ? body.paid : updated.paid;
       await syncLessonBalanceForStatus(
         client,
         updated,
         previousStatus,
-        body.status,
+        nextStatus,
         paidAfterUpdate,
       );
       const refreshed = await client.query<LessonRow>(
@@ -276,6 +282,15 @@ lessonsRouter.patch('/:id', async (req, res, next) => {
         [updated.id],
       );
       updated = refreshed.rows[0]!;
+    }
+
+    if (startChanged) {
+      await enqueueLessonRescheduleNotices(client, {
+        lessonId: updated.id,
+        fromStartUtc: row.start_utc,
+        toStartUtc: updated.start_utc,
+        charged: updated.balance_charged,
+      });
     }
 
     await client.query('COMMIT');

@@ -402,4 +402,32 @@ describe('telegram bot api', () => {
     expect(today.body.lessons[0].studentName).toBe('Meet Student');
     expect(today.body.lessons[0].meetUrl).toBe(meetUrl);
   });
+
+  it('open-slots weekOffset shifts the returned week window', async () => {
+    const { agent } = await registerTutor(app, { timezone: 'UTC' });
+    const telegramUserId = await linkTelegram(agent, app, '424244');
+
+    const current = await request(app)
+      .get('/api/bot/open-slots')
+      .set('Authorization', `Bearer ${botToken()}`)
+      .set('X-Telegram-User-Id', telegramUserId)
+      .expect(200);
+    const next = await request(app)
+      .get('/api/bot/open-slots')
+      .query({ weekOffset: 1 })
+      .set('Authorization', `Bearer ${botToken()}`)
+      .set('X-Telegram-User-Id', telegramUserId)
+      .expect(200);
+
+    expect(Array.isArray(current.body.days)).toBe(true);
+    expect(next.body.from).not.toBe(current.body.from);
+    expect(new Date(next.body.from).getTime()).toBeGreaterThan(new Date(current.body.from).getTime());
+
+    await request(app)
+      .get('/api/bot/open-slots')
+      .query({ weekOffset: 99 })
+      .set('Authorization', `Bearer ${botToken()}`)
+      .set('X-Telegram-User-Id', telegramUserId)
+      .expect(400);
+  });
 });

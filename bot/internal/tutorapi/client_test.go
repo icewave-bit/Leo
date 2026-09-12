@@ -112,6 +112,31 @@ func TestClient_Today_sendsAuthHeaders(t *testing.T) {
 	assert.Equal(t, "Europe/Minsk", schedule.Timezone)
 }
 
+func TestClient_OpenSlots_sendsWeekOffset(t *testing.T) {
+	var gotPath, gotQuery string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.Query().Get("weekOffset")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"timezone": "UTC",
+			"days":     []any{},
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	c := tutorapi.NewClient(tutorapi.ClientConfig{
+		BaseURL:  srv.URL,
+		BotToken: "test-bot-token-16",
+	})
+
+	slots, err := c.OpenSlots(context.Background(), 42, 1)
+	require.NoError(t, err)
+	assert.Equal(t, "/api/bot/open-slots", gotPath)
+	assert.Equal(t, "1", gotQuery)
+	assert.Equal(t, "UTC", slots.Timezone)
+}
+
 func TestClient_Link_postsBody(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
@@ -154,12 +179,12 @@ func TestClient_Me_decodesTelegramNotify(t *testing.T) {
 				"timezone":       "Europe/Minsk",
 				"telegramLinked": true,
 				"telegramNotify": map[string]any{
-					"enabled":     true,
-					"leadMinutes": 15,
-					"silent":      true,
-					"lessons":           true,
-					"personal":          false,
-					"personalGroupIds":  []string{},
+					"enabled":          true,
+					"leadMinutes":      15,
+					"silent":           true,
+					"lessons":          true,
+					"personal":         false,
+					"personalGroupIds": []string{},
 				},
 			},
 		})

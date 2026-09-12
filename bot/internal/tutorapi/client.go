@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -108,16 +109,8 @@ func (c *Client) Week(ctx context.Context, telegramUserID int64) (Schedule, erro
 	return out, nil
 }
 
-func (c *Client) OpenSlots(ctx context.Context, telegramUserID int64) (OpenSlots, error) {
-	var out OpenSlots
-	if err := c.do(ctx, httpRequest{
-		method:         http.MethodGet,
-		path:           "/api/bot/open-slots",
-		telegramUserID: telegramUserID,
-	}, &out); err != nil {
-		return OpenSlots{}, err
-	}
-	return out, nil
+func (c *Client) OpenSlots(ctx context.Context, telegramUserID int64, weekOffset int) (OpenSlots, error) {
+	return c.fetchOpenSlots(ctx, "/api/bot/open-slots", telegramUserID, weekOffset)
 }
 
 func (c *Client) Students(ctx context.Context, telegramUserID int64) ([]Student, error) {
@@ -245,11 +238,16 @@ func (c *Client) StudentBalance(ctx context.Context, telegramUserID int64) (Stud
 	return out.Balance, nil
 }
 
-func (c *Client) StudentOpenSlots(ctx context.Context, telegramUserID int64) (OpenSlots, error) {
+func (c *Client) StudentOpenSlots(ctx context.Context, telegramUserID int64, weekOffset int) (OpenSlots, error) {
+	return c.fetchOpenSlots(ctx, "/api/bot/student/open-slots", telegramUserID, weekOffset)
+}
+
+func (c *Client) fetchOpenSlots(ctx context.Context, path string, telegramUserID int64, weekOffset int) (OpenSlots, error) {
 	var out OpenSlots
 	if err := c.do(ctx, httpRequest{
 		method:         http.MethodGet,
-		path:           "/api/bot/student/open-slots",
+		path:           path,
+		query:          url.Values{"weekOffset": {strconv.Itoa(weekOffset)}},
 		telegramUserID: telegramUserID,
 	}, &out); err != nil {
 		return OpenSlots{}, err
@@ -260,6 +258,7 @@ func (c *Client) StudentOpenSlots(ctx context.Context, telegramUserID int64) (Op
 type httpRequest struct {
 	method         string
 	path           string
+	query          url.Values
 	body           any
 	telegramUserID int64
 }
@@ -277,6 +276,9 @@ func (c *Client) do(ctx context.Context, req httpRequest, dest any) error {
 	httpReq, err := http.NewRequestWithContext(ctx, req.method, c.baseURL+req.path, bodyReader)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
+	}
+	if len(req.query) > 0 {
+		httpReq.URL.RawQuery = req.query.Encode()
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+c.botToken)
 	if req.body != nil {

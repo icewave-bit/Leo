@@ -349,4 +349,270 @@ describe('bot due reminders', () => {
       .expect(200);
     expect(again.body.reminders).toEqual([]);
   });
+
+  it('reschedules unpaid completed lesson into the lead window and returns a due reminder', async () => {
+    const { agent } = await registerTutor(app, { timezone: 'UTC' });
+    await linkTelegram(agent, app, '424301');
+    const student = await createStudent(agent);
+    const pastStart = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    const lesson = await agent
+      .post('/api/lessons')
+      .send({ studentId: student.id, startUtc: pastStart, durationMin: 60 })
+      .expect(201);
+
+    const from = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const to = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    const listed = await agent.get('/api/lessons').query({ from, to }).expect(200);
+    expect(listed.body[0].status).toBe('completed');
+    expect(listed.body[0].paid).toBe(false);
+
+    await markRemindersSent([
+      { telegramUserId: 424301, kind: 'lesson', entityId: lesson.body.id },
+    ]);
+
+    const futureStart = new Date(Date.now() + 20 * 60_000).toISOString();
+    const patched = await agent
+      .patch(`/api/lessons/${lesson.body.id}`)
+      .send({ startUtc: futureStart, restoreBalance: true })
+      .expect(200);
+    expect(patched.body.status).toBe('planned');
+
+    const reminders = await listDueReminders(new Date());
+    const lessonReminders = reminders.filter((r) => r.kind === 'lesson');
+    const reschedules = reminders.filter((r) => r.kind === 'reschedule');
+    expect(lessonReminders).toHaveLength(1);
+    expect(lessonReminders[0]).toMatchObject({
+      kind: 'lesson',
+      telegramUserId: 424301,
+      role: 'tutor',
+      lesson: { id: lesson.body.id, status: 'planned' },
+    });
+    expect(reschedules).toHaveLength(1);
+    expect(reschedules[0]).toMatchObject({
+      kind: 'reschedule',
+      telegramUserId: 424301,
+      role: 'tutor',
+      reschedule: {
+        lessonId: lesson.body.id,
+        charged: false,
+      },
+    });
+    expect(reschedules[0]?.reschedule?.fromStartUtc).toBe(listed.body[0].startUtc);
+    expect(reschedules[0]?.reschedule?.toStartUtc).toBe(patched.body.startUtc);
+  });
+
+  it('returns a reminder again after startUtc changes inside the lead window', async () => {
+    const { agent } = await registerTutor(app, { timezone: 'UTC' });
+    await linkTelegram(agent, app, '424302');
+    const student = await createStudent(agent);
+    const startUtc = new Date(Date.now() + 15 * 60_000).toISOString();
+    const lesson = await agent
+      .post('/api/lessons')
+      .send({ studentId: student.id, startUtc, durationMin: 60 })
+      .expect(201);
+
+    await markRemindersSent([
+      { telegramUserId: 424302, kind: 'lesson', entityId: lesson.body.id },
+    ]);
+    expect(await listDueReminders(new Date())).toEqual([]);
+
+    const movedStart = new Date(Date.now() + 25 * 60_000).toISOString();
+    await agent
+      .patch(`/api/lessons/${lesson.body.id}`)
+      .send({ startUtc: movedStart })
+      .expect(200);
+
+    const reminders = await listDueReminders(new Date());
+    expect(reminders.filter((r) => r.kind === 'lesson')).toHaveLength(1);
+    expect(reminders.filter((r) => r.kind === 'lesson')[0]?.lesson?.id).toBe(lesson.body.id);
+    expect(reminders.filter((r) => r.kind === 'reschedule')).toHaveLength(1);
+  });
+
+  it('returns a personal reminder again after startUtc changes', async () => {
+    const { agent } = await registerTutor(app, { timezone: 'UTC' });
+    await linkTelegram(agent, app, '424303');
+    await agent.patch('/api/auth/me').send({ telegramNotify: { personal: true } }).expect(200);
+    const groups = await agent.get('/api/personal-event-groups').expect(200);
+    const workGroup = groups.body.find((g: { name: string }) => g.name === 'Работа');
+    expect(workGroup).toBeTruthy();
+
+    const startUtc = new Date(Date.now() + 15 * 60_000).toISOString();
+    const created = await agent
+      .post('/api/personal-events')
+      .send({
+        groupId: workGroup.id,
+        title: 'Call',
+        startUtc,
+        durationMin: 60,
+      })
+      .expect(201);
+
+    await markRemindersSent([
+      { telegramUserId: 424303, kind: 'personal', entityId: created.body.id },
+    ]);
+    expect(await listDueReminders(new Date())).toEqual([]);
+
+    const movedStart = new Date(Date.now() + 25 * 60_000).toISOString();
+    await agent
+      .patch(`/api/personal-events/${created.body.id}`)
+      .send({ startUtc: movedStart })
+      .expect(200);
+
+    const reminders = await listDueReminders(new Date());
+    expect(reminders.filter((r) => r.kind === 'personal')).toHaveLength(1);
+    expect(reminders.filter((r) => r.kind === 'personal')[0]?.event?.id).toBe(created.body.id);
+  });
+
+  it('queues a tutor reschedule notice without charge for a future move', async () => {
+    const { agent } = await registerTutor(app, { timezone: 'UTC' });
+    await linkTelegram(agent, app, '424304');
+    const student = await createStudent(agent);
+    const fromStart = new Date(Date.now() + 2 * 3_600_000).toISOString();
+    const lesson = await agent
+      .post('/api/lessons')
+      .send({ studentId: student.id, startUtc: fromStart, durationMin: 60 })
+      .expect(201);
+
+    const toStart = new Date(Date.now() + 5 * 3_600_000).toISOString();
+    const patched = await agent
+      .patch(`/api/lessons/${lesson.body.id}`)
+      .send({ startUtc: toStart })
+      .expect(200);
+
+    const reminders = await listDueReminders(new Date());
+    const reschedules = reminders.filter((r) => r.kind === 'reschedule');
+    expect(reschedules).toHaveLength(1);
+    expect(reschedules[0]).toMatchObject({
+      kind: 'reschedule',
+      telegramUserId: 424304,
+      role: 'tutor',
+      silent: false,
+      reschedule: {
+        lessonId: lesson.body.id,
+        fromStartUtc: lesson.body.startUtc,
+        toStartUtc: patched.body.startUtc,
+        studentName: 'Leo',
+        charged: false,
+      },
+    });
+  });
+
+  it('marks a charged past lesson reschedule as со списанием when charge is kept', async () => {
+    const { agent } = await registerTutor(app, { timezone: 'UTC' });
+    await linkTelegram(agent, app, '424305');
+    const student = await agent
+      .post('/api/students')
+      .send({ name: 'Leo', prepaid: 0, debt: 0, rate: 20, currency: 'EUR' })
+      .expect(201);
+    const pastStart = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    const lesson = await agent
+      .post('/api/lessons')
+      .send({ studentId: student.body.id, startUtc: pastStart, durationMin: 60 })
+      .expect(201);
+
+    const from = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const to = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    const listed = await agent.get('/api/lessons').query({ from, to }).expect(200);
+    expect(listed.body[0].status).toBe('completed');
+    expect(listed.body[0].balanceCharged).toBe(true);
+
+    const stillPast = new Date(Date.now() - 3_600_000).toISOString();
+    const patched = await agent
+      .patch(`/api/lessons/${lesson.body.id}`)
+      .send({ startUtc: stillPast })
+      .expect(200);
+    expect(patched.body.status).toBe('completed');
+    expect(patched.body.balanceCharged).toBe(true);
+
+    const reschedules = (await listDueReminders(new Date())).filter((r) => r.kind === 'reschedule');
+    expect(reschedules).toHaveLength(1);
+    expect(reschedules[0]?.reschedule).toMatchObject({
+      lessonId: lesson.body.id,
+      charged: true,
+    });
+  });
+
+  it('notifies a linked student about a reschedule even if tutor notify is off', async () => {
+    const { agent } = await registerTutor(app, { timezone: 'UTC' });
+    await agent.patch('/api/auth/me').send({ telegramNotify: { enabled: false } }).expect(200);
+    const student = await agent
+      .post('/api/students')
+      .send({
+        name: 'Student One',
+        hue: 200,
+        currency: 'EUR',
+        prepaid: 0,
+        debt: 0,
+        telegramUsername: 'stu_move_1',
+      })
+      .expect(201);
+
+    await request(app)
+      .post('/api/bot/student/register')
+      .set('Authorization', `Bearer ${botToken()}`)
+      .send({ telegramUserId: '9002', telegramUsername: 'stu_move_1' })
+      .expect(200);
+
+    const fromStart = new Date(Date.now() + 2 * 3_600_000).toISOString();
+    const lesson = await agent
+      .post('/api/lessons')
+      .send({ studentId: student.body.id, startUtc: fromStart, durationMin: 60 })
+      .expect(201);
+
+    const toStart = new Date(Date.now() + 4 * 3_600_000).toISOString();
+    await agent.patch(`/api/lessons/${lesson.body.id}`).send({ startUtc: toStart }).expect(200);
+
+    const reminders = await listDueReminders(new Date());
+    expect(reminders.filter((r) => r.kind === 'reschedule')).toEqual([
+      expect.objectContaining({
+        kind: 'reschedule',
+        telegramUserId: 9002,
+        role: 'student',
+        silent: false,
+        reschedule: expect.objectContaining({
+          lessonId: lesson.body.id,
+          charged: false,
+        }),
+      }),
+    ]);
+  });
+
+  it('GET /api/bot/reminders/due then POST /sent hides a reschedule notice', async () => {
+    const { agent } = await registerTutor(app, { timezone: 'UTC' });
+    await linkTelegram(agent, app, '424306');
+    const student = await createStudent(agent);
+    const fromStart = new Date(Date.now() + 2 * 3_600_000).toISOString();
+    const lesson = await agent
+      .post('/api/lessons')
+      .send({ studentId: student.id, startUtc: fromStart, durationMin: 60 })
+      .expect(201);
+
+    const toStart = new Date(Date.now() + 4 * 3_600_000).toISOString();
+    await agent.patch(`/api/lessons/${lesson.body.id}`).send({ startUtc: toStart }).expect(200);
+
+    const due = await request(app)
+      .get('/api/bot/reminders/due')
+      .set('Authorization', `Bearer ${botToken()}`)
+      .expect(200);
+    const notice = due.body.reminders.find((r: { kind: string }) => r.kind === 'reschedule');
+    expect(notice?.reschedule.lessonId).toBe(lesson.body.id);
+
+    await request(app)
+      .post('/api/bot/reminders/sent')
+      .set('Authorization', `Bearer ${botToken()}`)
+      .send({
+        reminders: [
+          { telegramUserId: 424306, kind: 'reschedule', entityId: notice.reschedule.id },
+        ],
+      })
+      .expect(204);
+
+    const again = await request(app)
+      .get('/api/bot/reminders/due')
+      .set('Authorization', `Bearer ${botToken()}`)
+      .expect(200);
+    expect(again.body.reminders.filter((r: { kind: string }) => r.kind === 'reschedule')).toEqual(
+      [],
+    );
+  });
 });

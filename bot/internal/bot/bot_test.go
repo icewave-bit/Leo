@@ -17,12 +17,18 @@ import (
 )
 
 type mockMessenger struct {
-	mu      sync.Mutex
-	sent    []*telegram.SendMessageParams
-	sendErr error
+	mu       sync.Mutex
+	sent     []*telegram.SendRichMessageParams
+	edited   []*telegram.EditMessageTextParams
+	answered []string
+	sendErr  error
 }
 
-func (m *mockMessenger) SendMessage(_ context.Context, params *telegram.SendMessageParams) (*models.Message, error) {
+func (m *mockMessenger) SendMessage(_ context.Context, _ *telegram.SendMessageParams) (*models.Message, error) {
+	return &models.Message{ID: 1}, nil
+}
+
+func (m *mockMessenger) SendRichMessage(_ context.Context, params *telegram.SendRichMessageParams) (*models.Message, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sent = append(m.sent, params)
@@ -32,34 +38,57 @@ func (m *mockMessenger) SendMessage(_ context.Context, params *telegram.SendMess
 	return &models.Message{ID: 1}, nil
 }
 
+func (m *mockMessenger) EditMessageText(_ context.Context, params *telegram.EditMessageTextParams) (*models.Message, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.edited = append(m.edited, params)
+	return &models.Message{ID: params.MessageID}, nil
+}
+
+func (m *mockMessenger) AnswerCallbackQuery(_ context.Context, params *telegram.AnswerCallbackQueryParams) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.answered = append(m.answered, params.CallbackQueryID)
+	return true, nil
+}
+
 func (m *mockMessenger) Start(ctx context.Context) {
 	<-ctx.Done()
 }
 
-func (m *mockMessenger) messages() []*telegram.SendMessageParams {
+func (m *mockMessenger) messages() []*telegram.SendRichMessageParams {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]*telegram.SendMessageParams, len(m.sent))
+	out := make([]*telegram.SendRichMessageParams, len(m.sent))
 	copy(out, m.sent)
 	return out
 }
 
+func (m *mockMessenger) edits() []*telegram.EditMessageTextParams {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]*telegram.EditMessageTextParams, len(m.edited))
+	copy(out, m.edited)
+	return out
+}
+
 type mockMonitor struct {
-	linkIn         tutorapi.LinkInput
-	today          tutorapi.Schedule
-	studentToday   tutorapi.Schedule
-	due            []tutorapi.DueReminder
-	dueErr         error
-	markedSent     []tutorapi.SentReminder
-	todayCalled    bool
-	notLink        bool
-	linkErr        error
-	registerErr    error
-	student        *tutorapi.BotStudent
-	studentBalance *tutorapi.StudentBalance
-	openSlots      *tutorapi.OpenSlots
-	telegramNotify *tutorapi.TelegramNotify
-	registerIn     tutorapi.StudentRegisterInput
+	linkIn          tutorapi.LinkInput
+	today           tutorapi.Schedule
+	studentToday    tutorapi.Schedule
+	due             []tutorapi.DueReminder
+	dueErr          error
+	markedSent      []tutorapi.SentReminder
+	todayCalled     bool
+	notLink         bool
+	linkErr         error
+	registerErr     error
+	student         *tutorapi.BotStudent
+	studentBalance  *tutorapi.StudentBalance
+	openSlots       *tutorapi.OpenSlots
+	openSlotsOffset []int
+	telegramNotify  *tutorapi.TelegramNotify
+	registerIn      tutorapi.StudentRegisterInput
 }
 
 func defaultTelegramNotify() tutorapi.TelegramNotify {
@@ -114,7 +143,8 @@ func (m *mockMonitor) Week(_ context.Context, telegramUserID int64) (tutorapi.Sc
 	return m.Today(context.Background(), telegramUserID)
 }
 
-func (m *mockMonitor) OpenSlots(_ context.Context, _ int64) (tutorapi.OpenSlots, error) {
+func (m *mockMonitor) OpenSlots(_ context.Context, _ int64, weekOffset int) (tutorapi.OpenSlots, error) {
+	m.openSlotsOffset = append(m.openSlotsOffset, weekOffset)
 	if m.openSlots != nil {
 		return *m.openSlots, nil
 	}
@@ -157,9 +187,9 @@ func (m *mockMonitor) RegisterStudent(_ context.Context, in tutorapi.StudentRegi
 		TutorName: "Anna",
 		Timezone:  "Europe/Minsk",
 		Balance: tutorapi.StudentBalance{
-			Prepaid: 10,
-			Debt:    0,
-			Currency: "EUR",
+			Prepaid:     10,
+			Debt:        0,
+			Currency:    "EUR",
 			BalanceKind: "money",
 		},
 	}, nil
@@ -201,7 +231,8 @@ func (m *mockMonitor) StudentBalance(_ context.Context, _ int64) (tutorapi.Stude
 	return tutorapi.StudentBalance{}, &tutorapi.Error{Code: "TELEGRAM_NOT_LINKED", Message: "not linked", Status: 403}
 }
 
-func (m *mockMonitor) StudentOpenSlots(_ context.Context, _ int64) (tutorapi.OpenSlots, error) {
+func (m *mockMonitor) StudentOpenSlots(_ context.Context, _ int64, weekOffset int) (tutorapi.OpenSlots, error) {
+	m.openSlotsOffset = append(m.openSlotsOffset, weekOffset)
 	if m.openSlots != nil {
 		return *m.openSlots, nil
 	}
@@ -234,8 +265,33 @@ func TestHandleUpdate_help(t *testing.T) {
 	}))
 	require.Len(t, msg.messages(), 1)
 	out := msg.messages()[0]
-	assert.Contains(t, out.Text, "Сегодня")
-	assert.Contains(t, out.Text, "Слоты")
+	assert.Contains(t, out.RichMessage.Markdown, "/today")
+	assert.Contains(t, out.RichMessage.Markdown, "/tomorrow")
+	assert.Contains(t, out.RichMessage.Markdown, "/slots")
+	assert.Contains(t, out.RichMessage.Markdown, "/students")
+	assert.Contains(t, out.RichMessage.Markdown, "/debt")
+	assert.NotContains(t, out.RichMessage.Markdown, "/balance")
+	assert.NotContains(t, out.RichMessage.Markdown, "/start")
+}
+
+func TestHandleUpdate_guestHelp_onlyLinkCommands(t *testing.T) {
+	msg := &mockMessenger{}
+	b := newTestBot(msg, &mockMonitor{notLink: true})
+
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		Message: &models.Message{
+			Text: "/help",
+			Chat: models.Chat{ID: 7},
+			From: &models.User{ID: 1},
+		},
+	}))
+
+	out := msg.messages()[0]
+	assert.Contains(t, out.RichMessage.Markdown, "/start")
+	assert.Contains(t, out.RichMessage.Markdown, "/link")
+	assert.NotContains(t, out.RichMessage.Markdown, "/today")
+	assert.NotContains(t, out.RichMessage.Markdown, "/students")
+	assert.NotContains(t, out.RichMessage.Markdown, "/balance")
 }
 
 func TestHandleUpdate_link(t *testing.T) {
@@ -256,7 +312,7 @@ func TestHandleUpdate_link(t *testing.T) {
 	assert.Equal(t, "fedor", mon.linkIn.TelegramUsername)
 
 	out := msg.messages()[0]
-	assert.Contains(t, out.Text, "Anna")
+	assert.Contains(t, out.RichMessage.Markdown, "Anna")
 }
 
 func TestHandleUpdate_notLinked(t *testing.T) {
@@ -272,7 +328,7 @@ func TestHandleUpdate_notLinked(t *testing.T) {
 	}))
 
 	out := msg.messages()[0]
-	assert.Contains(t, out.Text, "Привязать")
+	assert.Contains(t, out.RichMessage.Markdown, "Привязать")
 }
 
 func TestHandleUpdate_today(t *testing.T) {
@@ -298,9 +354,9 @@ func TestHandleUpdate_today(t *testing.T) {
 	}))
 
 	out := msg.messages()[0]
-	assert.Contains(t, out.Text, "На сегодня")
-	assert.Contains(t, out.Text, "Leo")
-	assert.Contains(t, out.Text, "запланирован")
+	assert.Contains(t, out.RichMessage.Markdown, "На сегодня")
+	assert.Contains(t, out.RichMessage.Markdown, "Leo")
+	assert.Contains(t, out.RichMessage.Markdown, "запланирован")
 	require.IsType(t, &models.ReplyKeyboardMarkup{}, out.ReplyMarkup)
 }
 
@@ -333,8 +389,8 @@ func TestHandleUpdate_todayIncludesPersonalEvents(t *testing.T) {
 	}))
 
 	out := msg.messages()[0]
-	assert.Contains(t, out.Text, "Yoga")
-	assert.Contains(t, out.Text, "Leo")
+	assert.Contains(t, out.RichMessage.Markdown, "Yoga")
+	assert.Contains(t, out.RichMessage.Markdown, "Leo")
 }
 
 func TestHandleUpdate_tomorrow(t *testing.T) {
@@ -360,15 +416,15 @@ func TestHandleUpdate_tomorrow(t *testing.T) {
 	}))
 
 	out := msg.messages()[0]
-	assert.Contains(t, out.Text, "На завтра")
-	assert.Contains(t, out.Text, "Leo")
+	assert.Contains(t, out.RichMessage.Markdown, "На завтра")
+	assert.Contains(t, out.RichMessage.Markdown, "Leo")
 	kb, ok := out.ReplyMarkup.(*models.ReplyKeyboardMarkup)
 	require.True(t, ok)
 	assert.Equal(t, btnTomorrow, kb.Keyboard[0][1].Text)
 	assert.Equal(t, btnSlots, kb.Keyboard[1][1].Text)
 }
 
-func TestHandleUpdate_tutorSlots(t *testing.T) {
+func TestHandleUpdate_tutorSlots_asksWeek(t *testing.T) {
 	msg := &mockMessenger{}
 	b := newTestBot(msg, &mockMonitor{
 		openSlots: &tutorapi.OpenSlots{
@@ -391,8 +447,98 @@ func TestHandleUpdate_tutorSlots(t *testing.T) {
 	}))
 
 	out := msg.messages()[0]
-	assert.Contains(t, out.Text, "Свободные слоты")
-	assert.Contains(t, out.Text, "10:00")
+	assert.Contains(t, out.RichMessage.Markdown, "Какую неделю")
+	assert.NotContains(t, out.RichMessage.Markdown, "10:00")
+	kb, ok := out.ReplyMarkup.(*models.InlineKeyboardMarkup)
+	require.True(t, ok)
+	require.Len(t, kb.InlineKeyboard, 1)
+	require.Len(t, kb.InlineKeyboard[0], 2)
+	assert.Equal(t, "Эта неделя", kb.InlineKeyboard[0][0].Text)
+	assert.Equal(t, "slots:0", kb.InlineKeyboard[0][0].CallbackData)
+	assert.Equal(t, "Следующая", kb.InlineKeyboard[0][1].Text)
+	assert.Equal(t, "slots:1", kb.InlineKeyboard[0][1].CallbackData)
+}
+
+func TestHandleCallback_slotsThisWeek(t *testing.T) {
+	msg := &mockMessenger{}
+	mon := &mockMonitor{
+		openSlots: &tutorapi.OpenSlots{
+			Timezone: "UTC",
+			Days: []tutorapi.OpenSlotsDay{{
+				Date: "2026-07-21",
+				Ranges: []tutorapi.OpenSlotRange{
+					{StartHour: 10, EndHour: 12},
+				},
+			}},
+		},
+	}
+	b := newTestBot(msg, mon)
+
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		CallbackQuery: &models.CallbackQuery{
+			ID:   "cb1",
+			From: models.User{ID: 1},
+			Data: "slots:0",
+			Message: models.MaybeInaccessibleMessage{
+				Type: models.MaybeInaccessibleMessageTypeMessage,
+				Message: &models.Message{
+					ID:   9,
+					Chat: models.Chat{ID: 7},
+				},
+			},
+		},
+	}))
+
+	require.Equal(t, []int{0}, mon.openSlotsOffset)
+	require.Len(t, msg.edits(), 1)
+	edit := msg.edits()[0]
+	require.NotNil(t, edit.RichMessage)
+	assert.Empty(t, edit.Text)
+	assert.Equal(t, int64(7), edit.ChatID)
+	assert.Equal(t, 9, edit.MessageID)
+	assert.Contains(t, edit.RichMessage.Markdown, "эта неделя")
+	assert.Contains(t, edit.RichMessage.Markdown, "10:00")
+	kb, ok := edit.ReplyMarkup.(*models.InlineKeyboardMarkup)
+	require.True(t, ok)
+	assert.Equal(t, cbSlotsPick, kb.InlineKeyboard[0][0].CallbackData)
+	assert.Equal(t, "slots:1", kb.InlineKeyboard[0][1].CallbackData)
+	assert.Equal(t, []string{"cb1"}, msg.answered)
+}
+
+func TestHandleCallback_slotsNextWeekThenBack(t *testing.T) {
+	msg := &mockMessenger{}
+	mon := &mockMonitor{openSlots: &tutorapi.OpenSlots{Timezone: "UTC"}}
+	b := newTestBot(msg, mon)
+
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		CallbackQuery: &models.CallbackQuery{
+			ID:   "cb2",
+			From: models.User{ID: 1},
+			Data: "slots:1",
+			Message: models.MaybeInaccessibleMessage{
+				Type:    models.MaybeInaccessibleMessageTypeMessage,
+				Message: &models.Message{ID: 9, Chat: models.Chat{ID: 7}},
+			},
+		},
+	}))
+	require.Equal(t, []int{1}, mon.openSlotsOffset)
+	assert.Contains(t, msg.edits()[0].RichMessage.Markdown, "следующая неделя")
+
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		CallbackQuery: &models.CallbackQuery{
+			ID:   "cb3",
+			From: models.User{ID: 1},
+			Data: cbSlotsPick,
+			Message: models.MaybeInaccessibleMessage{
+				Type:    models.MaybeInaccessibleMessageTypeMessage,
+				Message: &models.Message{ID: 9, Chat: models.Chat{ID: 7}},
+			},
+		},
+	}))
+	assert.Equal(t, slotsPickerText, msg.edits()[1].RichMessage.Markdown)
+	kb, ok := msg.edits()[1].ReplyMarkup.(*models.InlineKeyboardMarkup)
+	require.True(t, ok)
+	assert.Equal(t, "slots:0", kb.InlineKeyboard[0][0].CallbackData)
 }
 
 func TestHandleUpdate_buttonToday(t *testing.T) {
@@ -418,7 +564,7 @@ func TestHandleUpdate_buttonToday(t *testing.T) {
 	}))
 
 	out := msg.messages()[0]
-	assert.Contains(t, out.Text, "Leo")
+	assert.Contains(t, out.RichMessage.Markdown, "Leo")
 	require.IsType(t, &models.ReplyKeyboardMarkup{}, out.ReplyMarkup)
 }
 
@@ -435,7 +581,7 @@ func TestHandleUpdate_buttonLinkPrompt(t *testing.T) {
 	}))
 
 	out := msg.messages()[0]
-	assert.Contains(t, out.Text, "код")
+	assert.Contains(t, out.RichMessage.Markdown, "код")
 	assert.Equal(t, pendingLink, b.chats.pending(1))
 }
 
@@ -468,7 +614,7 @@ func TestHandleUpdate_linkTwoStep(t *testing.T) {
 	assert.Equal(t, roleTutor, b.chats.role(99))
 
 	out := msg.messages()[1]
-	assert.Contains(t, out.Text, "Anna")
+	assert.Contains(t, out.RichMessage.Markdown, "Anna")
 }
 
 func TestHandleUpdate_linkTwoStep_failureStillReplies(t *testing.T) {
@@ -495,7 +641,7 @@ func TestHandleUpdate_linkTwoStep_failureStillReplies(t *testing.T) {
 
 	require.Len(t, msg.messages(), 2)
 	out := msg.messages()[1]
-	assert.NotEmpty(t, out.Text)
+	assert.NotEmpty(t, out.RichMessage.Markdown)
 	assert.Equal(t, pendingLink, b.chats.pending(99))
 }
 
@@ -554,8 +700,14 @@ func TestHandleUpdate_studentStart(t *testing.T) {
 	assert.Equal(t, "leo_student", mon.registerIn.TelegramUsername)
 	assert.Equal(t, roleStudent, b.chats.role(55))
 	out := msg.messages()[0]
-	assert.Contains(t, out.Text, "Leo")
-	assert.Contains(t, out.Text, "Баланс")
+	assert.Contains(t, out.RichMessage.Markdown, "Leo")
+	assert.Contains(t, out.RichMessage.Markdown, "/balance")
+	assert.Contains(t, out.RichMessage.Markdown, "/today")
+	assert.Contains(t, out.RichMessage.Markdown, "/slots")
+	assert.NotContains(t, out.RichMessage.Markdown, "/students")
+	assert.NotContains(t, out.RichMessage.Markdown, "/debt")
+	assert.NotContains(t, out.RichMessage.Markdown, "/tomorrow")
+	assert.NotContains(t, out.RichMessage.Markdown, "/link")
 	kb, ok := out.ReplyMarkup.(*models.ReplyKeyboardMarkup)
 	require.True(t, ok)
 	assert.Equal(t, btnBalance, kb.Keyboard[1][1].Text)
@@ -578,7 +730,7 @@ func TestHandleUpdate_studentStartNotFound(t *testing.T) {
 	}))
 
 	out := msg.messages()[0]
-	assert.Contains(t, out.Text, "не найден")
+	assert.Contains(t, out.RichMessage.Markdown, "не найден")
 }
 
 func TestHandleUpdate_studentWeek(t *testing.T) {
@@ -606,9 +758,9 @@ func TestHandleUpdate_studentWeek(t *testing.T) {
 	}))
 
 	out := msg.messages()[0]
-	assert.Contains(t, out.Text, "Уроки на неделю")
-	assert.Contains(t, out.Text, "запланирован")
-	assert.NotContains(t, out.Text, "— Leo")
+	assert.Contains(t, out.RichMessage.Markdown, "Уроки на неделю")
+	assert.Contains(t, out.RichMessage.Markdown, "запланирован")
+	assert.NotContains(t, out.RichMessage.Markdown, "— Leo")
 }
 
 func TestRun_stopsOnContextCancel(t *testing.T) {

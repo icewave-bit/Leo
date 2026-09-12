@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { query } from './db.js';
 import { toBotPersonalEvent, type LessonRow, type PersonalEventRow } from './mappers.js';
 import { topUpRecurringPersonalSchedules } from './personalRecurringSchedule.js';
@@ -5,8 +6,9 @@ import { topUpRecurringSchedules } from './recurringSchedule.js';
 
 export const STUDENT_REMINDER_LEAD_MINUTES = 30;
 
-export type DueReminderKind = 'lesson' | 'personal';
+export type DueReminderKind = 'lesson' | 'personal' | 'reschedule';
 export type DueReminderRole = 'tutor' | 'student';
+export type SentReminderKind = 'lesson' | 'personal';
 
 export type DueLesson = {
   id: string;
@@ -26,6 +28,16 @@ export type DuePersonalEvent = {
   durationMin: number;
 };
 
+export type DueReschedule = {
+  id: string;
+  lessonId: string;
+  fromStartUtc: string;
+  toStartUtc: string;
+  studentName: string;
+  charged: boolean;
+  meetUrl: string | null;
+};
+
 export type DueReminder = {
   kind: DueReminderKind;
   telegramUserId: number;
@@ -35,6 +47,29 @@ export type DueReminder = {
   silent: boolean;
   lesson?: DueLesson;
   event?: DuePersonalEvent;
+  reschedule?: DueReschedule;
+};
+
+type ReschedulePayload = {
+  fromStartUtc: string;
+  toStartUtc: string;
+  studentName: string;
+  charged: boolean;
+  meetUrl: string | null;
+  timezone: string;
+  silent: boolean;
+};
+
+type OutboxRecipient = {
+  telegramUserId: string | null;
+  notifyEnabled: boolean;
+  notifyLessons: boolean;
+  silent: boolean;
+  timezone: string;
+  studentTelegramUserId: string | null;
+  studentName: string;
+  meetUrl: string | null;
+  archived: boolean;
 };
 
 export type SentReminder = {
@@ -227,20 +262,30 @@ async function listDuePersonalEvents(now: Date): Promise<DueReminder[]> {
 
 export async function listDueReminders(now = new Date()): Promise<DueReminder[]> {
   await topUpForDueReminders();
-  const [tutorLessons, studentLessons, personal] = await Promise.all([
+  const [tutorLessons, studentLessons, personal, reschedules] = await Promise.all([
     listDueTutorLessons(now),
     listDueStudentLessons(now),
     listDuePersonalEvents(now),
+    listDueReschedules(),
   ]);
-  return [...tutorLessons, ...studentLessons, ...personal].sort((a, b) => {
+  const timed = [...tutorLessons, ...studentLessons, ...personal].sort((a, b) => {
     const aStart = a.lesson?.startUtc ?? a.event?.startUtc ?? '';
     const bStart = b.lesson?.startUtc ?? b.event?.startUtc ?? '';
     return aStart.localeCompare(bStart);
   });
+  return [...reschedules, ...timed];
 }
 
 export async function markRemindersSent(items: SentReminder[]): Promise<void> {
   for (const item of items) {
+    if (item.kind === 'reschedule') {
+      await query(
+        `DELETE FROM telegram_notification_outbox
+         WHERE id = $1 AND telegram_user_id = $2 AND kind = 'reschedule'`,
+        [item.entityId, item.telegramUserId],
+      );
+      continue;
+    }
     await query(
       `INSERT INTO telegram_sent_reminders (telegram_user_id, kind, entity_id)
        VALUES ($1, $2, $3)
@@ -248,4 +293,119 @@ export async function markRemindersSent(items: SentReminder[]): Promise<void> {
       [item.telegramUserId, item.kind, item.entityId],
     );
   }
+}
+
+export async function clearSentRemindersForEntity(
+  client: PoolClient,
+  kind: SentReminderKind,
+  entityId: string,
+): Promise<void> {
+  await client.query(`DELETE FROM telegram_sent_reminders WHERE kind = $1 AND entity_id = $2`, [
+    kind,
+    entityId,
+  ]);
+}
+
+export async function enqueueLessonRescheduleNotices(
+  client: PoolClient,
+  input: {
+    lessonId: string;
+    fromStartUtc: Date;
+    toStartUtc: Date;
+    charged: boolean;
+  },
+): Promise<void> {
+  const loaded = await client.query<OutboxRecipient>(
+    `SELECT t.telegram_user_id::text AS "telegramUserId",
+            t.telegram_notify_enabled AS "notifyEnabled",
+            t.telegram_notify_lessons AS "notifyLessons",
+            t.telegram_notify_silent AS silent,
+            t.timezone,
+            s.telegram_user_id::text AS "studentTelegramUserId",
+            s.name AS "studentName",
+            s.meet_url AS "meetUrl",
+            (s.archived_at IS NOT NULL) AS archived
+     FROM lessons l
+     JOIN tutors t ON t.id = l.tutor_id
+     JOIN students s ON s.id = l.student_id
+     WHERE l.id = $1`,
+    [input.lessonId],
+  );
+  const row = loaded.rows[0];
+  if (!row) return;
+
+  const payload: ReschedulePayload = {
+    fromStartUtc: input.fromStartUtc.toISOString(),
+    toStartUtc: input.toStartUtc.toISOString(),
+    studentName: row.studentName,
+    charged: input.charged,
+    meetUrl: row.meetUrl,
+    timezone: row.timezone,
+    silent: row.silent,
+  };
+
+  const recipients: Array<{ telegramUserId: string; role: DueReminderRole; silent: boolean }> = [];
+  if (row.telegramUserId && row.notifyEnabled && row.notifyLessons) {
+    recipients.push({ telegramUserId: row.telegramUserId, role: 'tutor', silent: row.silent });
+  }
+  if (row.studentTelegramUserId && !row.archived) {
+    recipients.push({
+      telegramUserId: row.studentTelegramUserId,
+      role: 'student',
+      silent: false,
+    });
+  }
+
+  const seen = new Set<string>();
+  for (const recipient of recipients) {
+    if (seen.has(recipient.telegramUserId)) continue;
+    seen.add(recipient.telegramUserId);
+    await client.query(
+      `INSERT INTO telegram_notification_outbox (kind, telegram_user_id, role, entity_id, payload)
+       VALUES ('reschedule', $1, $2, $3, $4::jsonb)`,
+      [
+        recipient.telegramUserId,
+        recipient.role,
+        input.lessonId,
+        JSON.stringify({ ...payload, silent: recipient.silent }),
+      ],
+    );
+  }
+}
+
+type OutboxRow = {
+  id: string;
+  telegram_user_id: string;
+  role: DueReminderRole;
+  entity_id: string;
+  payload: ReschedulePayload;
+};
+
+async function listDueReschedules(): Promise<DueReminder[]> {
+  const result = await query<OutboxRow>(
+    `SELECT id, telegram_user_id::text AS telegram_user_id, role, entity_id, payload
+     FROM telegram_notification_outbox
+     WHERE kind = 'reschedule'
+     ORDER BY created_at, id`,
+  );
+  return result.rows.map((row) => {
+    const payload = row.payload;
+    return {
+      kind: 'reschedule' as const,
+      telegramUserId: parseTelegramUserId(row.telegram_user_id),
+      role: row.role,
+      timezone: payload.timezone,
+      leadMinutes: 0,
+      silent: payload.silent,
+      reschedule: {
+        id: row.id,
+        lessonId: row.entity_id,
+        fromStartUtc: payload.fromStartUtc,
+        toStartUtc: payload.toStartUtc,
+        studentName: payload.studentName,
+        charged: payload.charged,
+        meetUrl: payload.meetUrl,
+      },
+    };
+  });
 }

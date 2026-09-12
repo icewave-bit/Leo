@@ -22,7 +22,7 @@ type Monitor interface {
 	Today(ctx context.Context, telegramUserID int64) (tutorapi.Schedule, error)
 	Tomorrow(ctx context.Context, telegramUserID int64) (tutorapi.Schedule, error)
 	Week(ctx context.Context, telegramUserID int64) (tutorapi.Schedule, error)
-	OpenSlots(ctx context.Context, telegramUserID int64) (tutorapi.OpenSlots, error)
+	OpenSlots(ctx context.Context, telegramUserID int64, weekOffset int) (tutorapi.OpenSlots, error)
 	Students(ctx context.Context, telegramUserID int64) ([]tutorapi.Student, error)
 	Debt(ctx context.Context, telegramUserID int64) ([]tutorapi.Student, error)
 	DueReminders(ctx context.Context) ([]tutorapi.DueReminder, error)
@@ -33,11 +33,14 @@ type Monitor interface {
 	StudentWeek(ctx context.Context, telegramUserID int64) (tutorapi.Schedule, error)
 	StudentToday(ctx context.Context, telegramUserID int64) (tutorapi.Schedule, error)
 	StudentBalance(ctx context.Context, telegramUserID int64) (tutorapi.StudentBalance, error)
-	StudentOpenSlots(ctx context.Context, telegramUserID int64) (tutorapi.OpenSlots, error)
+	StudentOpenSlots(ctx context.Context, telegramUserID int64, weekOffset int) (tutorapi.OpenSlots, error)
 }
 
 type TelegramClient interface {
 	SendMessage(ctx context.Context, params *telegram.SendMessageParams) (*models.Message, error)
+	SendRichMessage(ctx context.Context, params *telegram.SendRichMessageParams) (*models.Message, error)
+	EditMessageText(ctx context.Context, params *telegram.EditMessageTextParams) (*models.Message, error)
+	AnswerCallbackQuery(ctx context.Context, params *telegram.AnswerCallbackQueryParams) (bool, error)
 	Start(ctx context.Context)
 }
 
@@ -105,15 +108,35 @@ func New(cfg Config) (*Bot, error) {
 		}
 		// Clear BotFather/API command menu — we use the reply keyboard instead.
 		// Non-fatal: proxies sometimes return truncated bodies for this call.
-		if _, err := tg.DeleteMyCommands(context.Background(), &telegram.DeleteMyCommandsParams{}); err != nil {
-			b.logger.Warn("clear telegram commands", "err", err)
-		}
-		b.api = tg
+		clearTelegramCommandMenu(context.Background(), tg, b.logger)
+		b.api = &liveTelegram{Bot: tg, http: httpClient, token: cfg.TelegramToken}
 	default:
 		return nil, errors.New("TelegramClient or TelegramToken is required")
 	}
 
 	return b, nil
+}
+
+func clearTelegramCommandMenu(ctx context.Context, tg *telegram.Bot, logger *slog.Logger) {
+	scopes := []models.BotCommandScope{
+		&models.BotCommandScopeDefault{},
+		&models.BotCommandScopeAllPrivateChats{},
+		&models.BotCommandScopeAllGroupChats{},
+		&models.BotCommandScopeAllChatAdministrators{},
+	}
+	for _, lang := range []string{"", "ru", "en"} {
+		for _, scope := range scopes {
+			params := &telegram.DeleteMyCommandsParams{Scope: scope, LanguageCode: lang}
+			if _, err := tg.DeleteMyCommands(ctx, params); err != nil {
+				logger.Warn("clear telegram commands", "err", err, "lang", lang)
+			}
+		}
+	}
+	if _, err := tg.SetChatMenuButton(ctx, &telegram.SetChatMenuButtonParams{
+		MenuButton: &models.MenuButtonDefault{Type: models.MenuButtonTypeDefault},
+	}); err != nil {
+		logger.Warn("reset telegram menu button", "err", err)
+	}
 }
 
 func (b *Bot) Run(ctx context.Context) error {
@@ -135,6 +158,9 @@ func (b *Bot) runUpdates(ctx context.Context) error {
 }
 
 func (b *Bot) handleUpdate(ctx context.Context, update *models.Update) error {
+	if update.CallbackQuery != nil {
+		return b.handleCallbackQuery(ctx, update.CallbackQuery)
+	}
 	if update.Message == nil || update.Message.Text == "" || update.Message.From == nil {
 		return nil
 	}
@@ -148,40 +174,49 @@ func (b *Bot) handleUpdate(ctx context.Context, update *models.Update) error {
 		username:       update.Message.From.Username,
 	}
 
-	var respText string
+	var resp botReply
 	var err error
 
 	if b.chats.pending(userID) == pendingLink {
 		if cmd, _ := resolveInput(update.Message.Text); cmd == "" {
-			respText, err = b.linkWithCode(ctx, req, strings.TrimSpace(update.Message.Text))
+			var text string
+			text, err = b.linkWithCode(ctx, req, strings.TrimSpace(update.Message.Text))
+			resp = textReply(text)
 		} else {
 			b.chats.clearPending(userID)
 		}
 	}
 
-	if respText == "" && err == nil {
+	if resp.text == "" && err == nil {
 		cmd, arg := resolveInput(update.Message.Text)
 		if cmd == "" {
 			return nil
 		}
 		req.cmd = cmd
 		req.arg = arg
-		respText, err = b.dispatch(ctx, req)
+		resp, err = b.dispatch(ctx, req)
 	}
 	if err != nil {
-		respText = userFacingError(err)
+		resp = textReply(userFacingError(err))
 	}
-	if respText == "" {
+	if resp.text == "" {
 		return nil
 	}
 
 	role := b.chats.role(userID)
-	reply := &telegram.SendMessageParams{
-		ChatID:      chatID,
-		Text:        respText,
-		ReplyMarkup: keyboardForRole(role),
+	markup := models.ReplyMarkup(keyboardForRole(role))
+	if resp.inline != nil {
+		markup = resp.inline
 	}
-	if _, err := b.api.SendMessage(ctx, reply); err != nil {
+	rich := richMarkdown(resp.text)
+	if !resp.skipDetect {
+		rich = richHelpMarkdown(resp.text)
+	}
+	if _, err := b.api.SendRichMessage(ctx, &telegram.SendRichMessageParams{
+		ChatID:      chatID,
+		RichMessage: rich,
+		ReplyMarkup: markup,
+	}); err != nil {
 		return fmt.Errorf("send message: %w", err)
 	}
 	return nil
@@ -194,33 +229,48 @@ type commandRequest struct {
 	username       string
 }
 
-func (b *Bot) dispatch(ctx context.Context, req commandRequest) (string, error) {
+type botReply struct {
+	text       string
+	inline     *models.InlineKeyboardMarkup
+	skipDetect bool
+}
+
+func textReply(text string) botReply {
+	return botReply{text: text, skipDetect: true}
+}
+
+func wrapReply(text string, err error) (botReply, error) {
+	return textReply(text), err
+}
+
+func (b *Bot) dispatch(ctx context.Context, req commandRequest) (botReply, error) {
 	switch req.cmd {
 	case "/help", "/start":
 		if req.arg != "" {
-			return b.link(ctx, req)
+			return wrapReply(b.link(ctx, req))
 		}
-		return b.startOrHelp(ctx, req)
+		text, err := b.startOrHelp(ctx, req)
+		return botReply{text: text}, err
 	case "/link":
-		return b.link(ctx, req)
+		return wrapReply(b.link(ctx, req))
 	case "/me":
-		return b.me(ctx, req)
+		return wrapReply(b.me(ctx, req))
 	case "/today":
-		return b.today(ctx, req)
+		return wrapReply(b.today(ctx, req))
 	case "/tomorrow":
-		return b.tomorrow(ctx, req)
+		return wrapReply(b.tomorrow(ctx, req))
 	case "/week":
-		return b.week(ctx, req)
+		return wrapReply(b.week(ctx, req))
 	case "/balance":
-		return b.studentBalance(ctx, req)
+		return wrapReply(b.studentBalance(ctx, req))
 	case "/slots":
-		return b.slots(ctx, req)
+		return b.slotsMenu(ctx, req)
 	case "/students":
-		return b.students(ctx, req.telegramUserID)
+		return wrapReply(b.students(ctx, req.telegramUserID))
 	case "/debt":
-		return b.debt(ctx, req.telegramUserID)
+		return wrapReply(b.debt(ctx, req.telegramUserID))
 	default:
-		return "Неизвестная команда. Нажмите /help", nil
+		return textReply("Неизвестная команда. Нажмите /help"), nil
 	}
 }
 
@@ -259,8 +309,8 @@ func (b *Bot) registerStudent(ctx context.Context, req commandRequest) (string, 
 		return "", err
 	}
 	b.chats.setRole(req.telegramUserID, roleStudent)
-	return fmt.Sprintf("Привет, %s! Аккаунт привязан к репетитору %s.\n\n%s",
-		student.Name, student.TutorName, helpTextStudent()), nil
+	return fmt.Sprintf("Привет, **%s**! Аккаунт привязан к репетитору **%s**.\n\n%s",
+		mdEscape(student.Name), mdEscape(student.TutorName), helpTextStudent()), nil
 }
 
 func (b *Bot) resolveRole(ctx context.Context, telegramUserID int64) (botRole, error) {
@@ -314,7 +364,7 @@ func (b *Bot) linkWithCode(ctx context.Context, req commandRequest, code string)
 	}
 	b.chats.clearPending(req.telegramUserID)
 	b.chats.setRole(req.telegramUserID, roleTutor)
-	return fmt.Sprintf("Аккаунт привязан: %s", tutor.Name), nil
+	return fmt.Sprintf("Аккаунт привязан: **%s**", mdEscape(tutor.Name)), nil
 }
 
 func (b *Bot) me(ctx context.Context, req commandRequest) (string, error) {
@@ -404,21 +454,11 @@ func (b *Bot) studentBalance(ctx context.Context, req commandRequest) (string, e
 	return b.formatBalance(bal), nil
 }
 
-func (b *Bot) slots(ctx context.Context, req commandRequest) (string, error) {
-	role, err := b.resolveRole(ctx, req.telegramUserID)
-	if err != nil {
-		return "", err
+func (b *Bot) slotsMenu(ctx context.Context, req commandRequest) (botReply, error) {
+	if _, err := b.resolveRole(ctx, req.telegramUserID); err != nil {
+		return botReply{}, err
 	}
-	var slots tutorapi.OpenSlots
-	if role == roleStudent {
-		slots, err = b.monitor.StudentOpenSlots(ctx, req.telegramUserID)
-	} else {
-		slots, err = b.monitor.OpenSlots(ctx, req.telegramUserID)
-	}
-	if err != nil {
-		return "", err
-	}
-	return b.formatOpenSlots(slots), nil
+	return botReply{text: slotsPickerText, inline: slotsWeekKeyboard(), skipDetect: true}, nil
 }
 
 func (b *Bot) students(ctx context.Context, telegramUserID int64) (string, error) {
@@ -455,13 +495,57 @@ func parseCommand(text string) (cmd, arg string) {
 	return cmd, arg
 }
 
+type helpCommand struct {
+	cmd  string
+	desc string
+}
+
+var tutorHelpCommands = []helpCommand{
+	{"/today", "расписание на сегодня"},
+	{"/tomorrow", "расписание на завтра"},
+	{"/week", "расписание на неделю"},
+	{"/slots", "свободные слоты (эта или следующая неделя)"},
+	{"/students", "ученики и балансы"},
+	{"/debt", "долги"},
+	{"/me", "профиль"},
+	{"/help", "эта подсказка"},
+}
+
+var studentHelpCommands = []helpCommand{
+	{"/today", "уроки на сегодня"},
+	{"/week", "уроки на неделю"},
+	{"/slots", "свободные слоты репетитора (эта или следующая неделя)"},
+	{"/balance", "предоплата и долг"},
+	{"/me", "профиль"},
+	{"/help", "эта подсказка"},
+}
+
+var guestHelpCommands = []helpCommand{
+	{"/start", "привязать аккаунт ученика"},
+	{"/link", "привязать аккаунт репетитора"},
+	{"/help", "эта подсказка"},
+}
+
+func formatHelpCommands(cmds []helpCommand) string {
+	var buf strings.Builder
+	for i, c := range cmds {
+		if i > 0 {
+			buf.WriteByte('\n')
+		}
+		buf.WriteString(c.cmd)
+		buf.WriteString(" — ")
+		buf.WriteString(c.desc)
+	}
+	return buf.String()
+}
+
 func helpTextTutor() string {
 	return strings.TrimSpace(`
-LeO — пользуйтесь кнопками внизу:
-Сегодня / Завтра / Неделя — расписание
-Слоты — свободные места
-Ученики / Долги — балансы
-Справка — эта подсказка
+# LeO
+
+Кнопки внизу или команды:
+
+` + formatHelpCommands(tutorHelpCommands) + `
 
 Настройки уведомлений — в LeO: Настройки → Telegram → Уведомления
 `)
@@ -469,11 +553,11 @@ LeO — пользуйтесь кнопками внизу:
 
 func helpTextStudent() string {
 	return strings.TrimSpace(`
-LeO для ученика — кнопки внизу:
-Сегодня / Неделя — уроки
-Слоты — свободные места репетитора
-Баланс — предоплата и долг
-Справка — эта подсказка
+# LeO для ученика
+
+Кнопки внизу или команды:
+
+` + formatHelpCommands(studentHelpCommands) + `
 
 Напоминания о уроках приходят автоматически за 30 минут.
 `)
@@ -481,9 +565,14 @@ LeO для ученика — кнопки внизу:
 
 func helpTextGuest() string {
 	return strings.TrimSpace(`
-LeO бот
-• Ученик: попросите репетитора указать ваш @username в LeO и нажмите /start
-• Репетитор: создайте код в настройках LeO и нажмите «Привязать»
+# LeO бот
+
+Доступные команды:
+
+` + formatHelpCommands(guestHelpCommands) + `
+
+Ученик: попросите репетитора указать ваш @username в LeO и нажмите /start
+Репетитор: создайте код в настройках LeO и нажмите «Привязать»
 `)
 }
 

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { clearSentRemindersForEntity } from '../botReminders.js';
 import { getPool, query } from '../db.js';
 import { AppError } from '../errors.js';
 import { toPersonalEvent, type PersonalEventRow } from '../mappers.js';
@@ -110,10 +111,13 @@ personalEventsRouter.patch('/:id', async (req, res, next) => {
       throw new AppError('NOT_FOUND', 404, 'Personal event not found');
     }
 
-    if (body.startUtc !== undefined && row.recurring_personal_schedule_id) {
-      const newStart = new Date(body.startUtc).toISOString();
-      const oldStart = row.start_utc.toISOString();
-      if (newStart !== oldStart) {
+    const startChanged =
+      body.startUtc !== undefined &&
+      new Date(body.startUtc).toISOString() !== row.start_utc.toISOString();
+
+    if (startChanged) {
+      await clearSentRemindersForEntity(client, 'personal', row.id);
+      if (row.recurring_personal_schedule_id) {
         await skipRecurringPersonalOccurrence(
           client,
           row.recurring_personal_schedule_id,

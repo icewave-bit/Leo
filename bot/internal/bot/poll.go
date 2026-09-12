@@ -94,6 +94,16 @@ func (b *Bot) sendDueReminder(ctx context.Context, reminder tutorapi.DueReminder
 		}
 		text := b.formatPersonalReminder(*reminder.Event, reminder.Timezone, lead)
 		return b.sendReminder(ctx, reminder.TelegramUserID, text, reminder.Silent, nil)
+	case "reschedule":
+		if reminder.Reschedule == nil {
+			return fmt.Errorf("due reschedule reminder missing reschedule")
+		}
+		text := b.formatLessonReschedule(*reminder.Reschedule, reminder.Timezone, reminder.Role == "student")
+		meetURL := ""
+		if reminder.Reschedule.MeetURL != nil {
+			meetURL = strings.TrimSpace(*reminder.Reschedule.MeetURL)
+		}
+		return b.sendReminder(ctx, reminder.TelegramUserID, text, reminder.Silent, meetJoinKeyboard(meetURL))
 	default:
 		return fmt.Errorf("unknown reminder kind %q", reminder.Kind)
 	}
@@ -104,7 +114,25 @@ func dueReminderKey(reminder tutorapi.DueReminder) string {
 	if entityID == "" {
 		return ""
 	}
-	return fmt.Sprintf("%d:%s:%s", reminder.TelegramUserID, reminder.Kind, entityID)
+	return fmt.Sprintf("%d:%s:%s:%s", reminder.TelegramUserID, reminder.Kind, entityID, dueStartUTC(reminder))
+}
+
+func dueStartUTC(reminder tutorapi.DueReminder) string {
+	switch reminder.Kind {
+	case "personal":
+		if reminder.Event != nil {
+			return reminder.Event.StartUTC
+		}
+	case "reschedule":
+		if reminder.Reschedule != nil {
+			return reminder.Reschedule.ToStartUTC
+		}
+	default:
+		if reminder.Lesson != nil {
+			return reminder.Lesson.StartUTC
+		}
+	}
+	return ""
 }
 
 func dueEntityID(reminder tutorapi.DueReminder) string {
@@ -112,6 +140,10 @@ func dueEntityID(reminder tutorapi.DueReminder) string {
 	case "personal":
 		if reminder.Event != nil {
 			return reminder.Event.ID
+		}
+	case "reschedule":
+		if reminder.Reschedule != nil {
+			return reminder.Reschedule.ID
 		}
 	default:
 		if reminder.Lesson != nil {
@@ -128,15 +160,15 @@ func (b *Bot) sendReminder(
 	silent bool,
 	markup *models.InlineKeyboardMarkup,
 ) error {
-	msg := &telegram.SendMessageParams{
+	msg := &telegram.SendRichMessageParams{
 		ChatID:              chatID,
-		Text:                text,
+		RichMessage:         richMarkdown(text),
 		DisableNotification: silent,
 	}
 	if markup != nil {
 		msg.ReplyMarkup = markup
 	}
-	if _, err := b.api.SendMessage(ctx, msg); err != nil {
+	if _, err := b.api.SendRichMessage(ctx, msg); err != nil {
 		return fmt.Errorf("send reminder: %w", err)
 	}
 	return nil
@@ -150,22 +182,31 @@ func meetJoinKeyboard(meetURL string) *models.InlineKeyboardMarkup {
 		return nil
 	}
 	return &models.InlineKeyboardMarkup{
-		InlineKeyboard: [][]models.InlineKeyboardButton{{
-			{Text: "Подключиться", URL: meetURL},
-		}},
+		InlineKeyboard: [][]models.InlineKeyboardButton{{{
+			Text:  "Подключиться",
+			URL:   meetURL,
+			Style: "primary",
+		}}},
 	}
 }
 
 func (b *Bot) formatLessonReminder(lesson tutorapi.Lesson, timezone string, lead time.Duration, forStudent bool) string {
-	when := formatInZone(lesson.StartUTC, timezone, "15:04")
-	if forStudent {
-		return fmt.Sprintf("Напоминание: через %s урок (%s)", formatLead(lead), when)
+	when := mdDateTime(lesson.StartUTC, timezone, "15:04", "t")
+	var buf strings.Builder
+	buf.WriteString(mdHeading("Урок через " + formatLead(lead)))
+	buf.WriteByte('\n')
+	if !forStudent {
+		buf.WriteString("\n**")
+		buf.WriteString(mdEscape(lesson.StudentName))
+		buf.WriteString("**")
+		if lesson.DurationMin > 0 {
+			buf.WriteString(fmt.Sprintf(" · %d мин", lesson.DurationMin))
+		}
+		buf.WriteByte('\n')
 	}
-	return fmt.Sprintf("Напоминание: через %s урок с %s (%s)",
-		formatLead(lead),
-		lesson.StudentName,
-		when,
-	)
+	buf.WriteString("\n")
+	buf.WriteString(when)
+	return buf.String()
 }
 
 func lessonMeetURL(lesson tutorapi.Lesson) string {
@@ -176,8 +217,8 @@ func lessonMeetURL(lesson tutorapi.Lesson) string {
 }
 
 func (b *Bot) formatPersonalReminder(event tutorapi.PersonalEvent, timezone string, lead time.Duration) string {
-	when := formatInZone(event.StartUTC, timezone, "15:04")
-	return fmt.Sprintf("Напоминание: через %s — %s (%s)", formatLead(lead), event.Title, when)
+	when := mdDateTime(event.StartUTC, timezone, "15:04", "t")
+	return mdHeading("Через "+formatLead(lead)) + "\n\n**" + mdEscape(event.Title) + "**\n\n" + when
 }
 
 func formatLead(lead time.Duration) string {

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { loadOpenLessonDebts } from '../billingDebt.js';
-import { buildOpenSlotsForTutor } from '../botOpenSlots.js';
+import { buildOpenSlotsForTutor, openSlotsQuerySchema } from '../botOpenSlots.js';
 import { query } from '../db.js';
 import { AppError } from '../errors.js';
 import { syncTutorLessonState } from '../lessonBalance.js';
@@ -282,7 +282,8 @@ botStudentRouter.get('/today', async (req, res, next) => {
 
 botStudentRouter.get('/open-slots', async (req, res, next) => {
   try {
-    res.json(await buildOpenSlotsForTutor(req.tutorId!));
+    const { weekOffset } = validate(openSlotsQuerySchema, req.query);
+    res.json(await buildOpenSlotsForTutor(req.tutorId!, weekOffset));
   } catch (err) {
     next(err);
   }
