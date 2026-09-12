@@ -39,7 +39,7 @@ func TestFormatTutor_notifyDisabled(t *testing.T) {
 
 func TestFormatSchedule_empty(t *testing.T) {
 	b := &Bot{}
-	assert.Equal(t, "# На сегодня\n\nНет записей", b.formatSchedule("На сегодня", tutorapi.Schedule{}))
+	assert.Equal(t, "# На сегодня\n\nНет записей", b.formatSchedule("На сегодня", tutorapi.Schedule{}, time.Time{}, false))
 }
 
 func TestFormatSchedule_interleavesPersonalEvents(t *testing.T) {
@@ -58,13 +58,45 @@ func TestFormatSchedule_interleavesPersonalEvents(t *testing.T) {
 			GroupName:   "Здоровье",
 			DurationMin: 45,
 		}},
-	})
+	}, time.Time{}, false)
 	assert.Contains(t, text, "Yoga")
 	assert.Contains(t, text, "Здоровье")
 	assert.Contains(t, text, "Leo")
+	assert.NotContains(t, text, "запланирован")
+	assert.NotContains(t, text, "оплачен")
+	assert.NotContains(t, text, "мин")
 	yogaIdx := strings.Index(text, "Yoga")
 	leoIdx := strings.Index(text, "Leo")
 	assert.Greater(t, leoIdx, yogaIdx)
+}
+
+func TestFormatSchedule_splitsTodayAroundNow(t *testing.T) {
+	b := &Bot{}
+	now := time.Date(2026, 7, 20, 11, 0, 0, 0, time.UTC)
+	text := b.formatSchedule("На сегодня", tutorapi.Schedule{
+		Timezone: "UTC",
+		Lessons: []tutorapi.Lesson{{
+			StartUTC:    "2026-07-20T12:00:00Z",
+			StudentName: "Leo",
+		}},
+		Events: []tutorapi.PersonalEvent{{
+			StartUTC:  "2026-07-20T09:00:00Z",
+			Title:     "Yoga",
+			GroupName: "Здоровье",
+		}},
+	}, now, true)
+	assert.Contains(t, text, nowSplitLabel)
+	assert.Greater(t, strings.Index(text, nowSplitLabel), strings.Index(text, "Yoga"))
+	assert.Greater(t, strings.Index(text, "Leo"), strings.Index(text, nowSplitLabel))
+
+	allFuture := b.formatSchedule("На сегодня", tutorapi.Schedule{
+		Timezone: "UTC",
+		Lessons: []tutorapi.Lesson{{
+			StartUTC:    "2026-07-20T12:00:00Z",
+			StudentName: "Leo",
+		}},
+	}, time.Date(2026, 7, 20, 8, 0, 0, 0, time.UTC), true)
+	assert.NotContains(t, allFuture, nowSplitLabel)
 }
 
 func TestFormatLessonReminder_includesMeetURL(t *testing.T) {
@@ -94,6 +126,22 @@ func TestFormatLessonReminder_includesMeetURL(t *testing.T) {
 	assert.Equal(t, "Подключиться", kb.InlineKeyboard[0][0].Text)
 	assert.Equal(t, meet, kb.InlineKeyboard[0][0].URL)
 	assert.Equal(t, "primary", kb.InlineKeyboard[0][0].Style)
+}
+
+func TestFormatLessonReminder_unpaidWhenBalanceShort(t *testing.T) {
+	b := &Bot{}
+	covered := b.formatLessonReminder(tutorapi.Lesson{
+		StartUTC:    "2026-07-20T14:00:00Z",
+		StudentName: "Leo",
+	}, "UTC", 30*time.Minute, false)
+	assert.NotContains(t, covered, "не оплачен")
+
+	short := b.formatLessonReminder(tutorapi.Lesson{
+		StartUTC:    "2026-07-20T14:00:00Z",
+		StudentName: "Leo",
+		Unpaid:      true,
+	}, "UTC", 30*time.Minute, true)
+	assert.Contains(t, short, "не оплачен")
 }
 
 func TestFormatLessonReminder_omitsEmptyMeetURL(t *testing.T) {
@@ -141,6 +189,9 @@ func TestFormatLessonLine_usesTimezone(t *testing.T) {
 	}, "Europe/Moscow")
 	assert.Contains(t, line, "17:00")
 	assert.NotContains(t, line, "14:00")
+	assert.NotContains(t, line, "оплачен")
+	assert.NotContains(t, line, "мин")
+	assert.NotContains(t, line, "запланирован")
 }
 
 func TestMdDateTime_usesUnixAndTutorLabel(t *testing.T) {
@@ -170,15 +221,88 @@ func TestSlotsWeekTitle(t *testing.T) {
 	assert.Equal(t, "Свободные слоты — через 2 нед.", slotsWeekTitle(2))
 }
 
-func TestFormatStudentLine_money(t *testing.T) {
+func TestFormatStudents_signedBalance(t *testing.T) {
 	b := &Bot{}
-	line := b.formatStudentLine(tutorapi.Student{
-		Name:        "Anna",
-		Currency:    "EUR",
+	text := b.formatStudents("Ученики", []tutorapi.Student{
+		{ID: "a", Name: "Anna", Currency: "EUR", BalanceKind: "money", Prepaid: 10, Debt: 2.5},
+		{ID: "b", Name: "Boris", Currency: "EUR", BalanceKind: "money", Prepaid: 0, Debt: 4},
+		{ID: "c", Name: "Cira", Currency: "EUR", BalanceKind: "money", Prepaid: 0, Debt: 0},
+	})
+	assert.Contains(t, text, "| Ученик | Баланс |")
+	assert.NotContains(t, text, "Предоплата")
+	assert.NotContains(t, text, "Долг")
+	assert.Contains(t, text, "| Anna | +7.50 EUR |")
+	assert.Contains(t, text, "| Boris | **−4.00 EUR** |")
+	assert.Contains(t, text, "| Cira | 0.00 EUR |")
+}
+
+func TestFormatStudents_lessonsAndDependent(t *testing.T) {
+	b := &Bot{}
+	payerID := "payer"
+	text := b.formatStudents("Ученики", []tutorapi.Student{
+		{ID: payerID, Name: "Anna", Currency: "EUR", BalanceKind: "lessons", Prepaid: 3, Debt: 0},
+		{ID: "child", Name: "Leo", Currency: "EUR", BalanceKind: "lessons", BillingStudentID: &payerID},
+	})
+	assert.Contains(t, text, "| Anna | +3 ур. |")
+	assert.Contains(t, text, "| Leo | Anna |")
+	assert.NotContains(t, text, "через")
+}
+
+func TestFormatDebts_onlyNegativeSortedByLargest(t *testing.T) {
+	b := &Bot{}
+	rate := 25.0
+	payerID := "payer"
+	text := b.formatDebts([]tutorapi.Student{
+		{ID: "a", Name: "Ada", Currency: "EUR", BalanceKind: "money", Prepaid: 20, Debt: 0},
+		{ID: "b", Name: "Boris", Currency: "EUR", BalanceKind: "money", Prepaid: 0, Debt: 4},
+		{ID: "c", Name: "Cira", Currency: "EUR", BalanceKind: "money", Prepaid: 1, Debt: 20},
+		{ID: "d", Name: "Dina", Currency: "EUR", BalanceKind: "lessons", Prepaid: 0, Debt: 2, Rate: &rate},
+		{ID: "e", Name: "Leo", Currency: "EUR", BalanceKind: "money", BillingStudentID: &payerID, Prepaid: 0, Debt: 99},
+	})
+	assert.Contains(t, text, "# Долги")
+	assert.Contains(t, text, "| Ученик | Баланс |")
+	assert.NotContains(t, text, "Предоплата")
+	assert.NotContains(t, text, "Ada")
+	assert.NotContains(t, text, "Leo")
+	assert.NotContains(t, text, "+")
+	assert.NotContains(t, text, "через")
+	dina := strings.Index(text, "Dina")
+	cira := strings.Index(text, "Cira")
+	boris := strings.Index(text, "Boris")
+	require.Greater(t, dina, 0)
+	assert.Greater(t, cira, dina)
+	assert.Greater(t, boris, cira)
+	assert.Contains(t, text, "| Dina | −2 ур. |")
+	assert.Contains(t, text, "| Cira | −19.00 EUR |")
+	assert.Contains(t, text, "| Boris | −4.00 EUR |")
+}
+
+func TestFormatDebts_empty(t *testing.T) {
+	b := &Bot{}
+	assert.Equal(t, "# Долги\n\nНет должников", b.formatDebts([]tutorapi.Student{
+		{Name: "Ada", Currency: "EUR", BalanceKind: "money", Prepaid: 10, Debt: 0},
+	}))
+}
+
+func TestFormatBalance_signedNet(t *testing.T) {
+	b := &Bot{}
+	text := b.formatBalance(tutorapi.StudentBalance{
 		BalanceKind: "money",
+		Currency:    "EUR",
 		Prepaid:     10,
 		Debt:        2.5,
 	})
-	assert.Contains(t, line, "Anna")
-	assert.Contains(t, line, "EUR")
+	assert.Contains(t, text, "**+7.50 EUR**")
+	assert.NotContains(t, text, "Предоплата")
+	assert.NotContains(t, text, "Долг")
+
+	neg := b.formatBalance(tutorapi.StudentBalance{
+		BalanceKind:   "money",
+		Currency:      "EUR",
+		Prepaid:       0,
+		Debt:          4,
+		BillingShared: true,
+	})
+	assert.Contains(t, neg, "**−4.00 EUR**")
+	assert.Contains(t, neg, "общий счёт семьи")
 }

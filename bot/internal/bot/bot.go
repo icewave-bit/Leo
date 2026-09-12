@@ -396,13 +396,13 @@ func (b *Bot) today(ctx context.Context, req commandRequest) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return b.formatStudentSchedule("Уроки на сегодня", schedule), nil
+		return b.formatStudentSchedule("Уроки на сегодня", schedule, time.Now().UTC(), true), nil
 	}
 	schedule, err := b.monitor.Today(ctx, req.telegramUserID)
 	if err != nil {
 		return "", err
 	}
-	return b.formatSchedule("На сегодня", schedule), nil
+	return b.formatSchedule("На сегодня", schedule, time.Now().UTC(), true), nil
 }
 
 func (b *Bot) tomorrow(ctx context.Context, req commandRequest) (string, error) {
@@ -417,7 +417,7 @@ func (b *Bot) tomorrow(ctx context.Context, req commandRequest) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	return b.formatSchedule("На завтра", schedule), nil
+	return b.formatSchedule("На завтра", schedule, time.Time{}, false), nil
 }
 
 func (b *Bot) week(ctx context.Context, req commandRequest) (string, error) {
@@ -430,13 +430,13 @@ func (b *Bot) week(ctx context.Context, req commandRequest) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return b.formatStudentSchedule("Уроки на неделю", schedule), nil
+		return b.formatStudentSchedule("Уроки на неделю", schedule, time.Time{}, false), nil
 	}
 	schedule, err := b.monitor.Week(ctx, req.telegramUserID)
 	if err != nil {
 		return "", err
 	}
-	return b.formatSchedule("На неделю", schedule), nil
+	return b.formatSchedule("На неделю", schedule, time.Time{}, false), nil
 }
 
 func (b *Bot) studentBalance(ctx context.Context, req commandRequest) (string, error) {
@@ -445,7 +445,7 @@ func (b *Bot) studentBalance(ctx context.Context, req commandRequest) (string, e
 		return "", err
 	}
 	if role != roleStudent {
-		return "Команда доступна ученикам. Репетиторам: /students или /debt", nil
+		return "Команда доступна ученикам. Репетиторам: /students", nil
 	}
 	bal, err := b.monitor.StudentBalance(ctx, req.telegramUserID)
 	if err != nil {
@@ -476,7 +476,7 @@ func (b *Bot) debt(ctx context.Context, telegramUserID int64) (string, error) {
 		return "", err
 	}
 	b.chats.setRole(telegramUserID, roleTutor)
-	return b.formatStudents("Долги", list), nil
+	return b.formatDebts(list), nil
 }
 
 func parseCommand(text string) (cmd, arg string) {
@@ -506,7 +506,7 @@ var tutorHelpCommands = []helpCommand{
 	{"/week", "расписание на неделю"},
 	{"/slots", "свободные слоты (эта или следующая неделя)"},
 	{"/students", "ученики и балансы"},
-	{"/debt", "долги"},
+	{"/debt", "отрицательный баланс"},
 	{"/me", "профиль"},
 	{"/help", "эта подсказка"},
 }
@@ -515,7 +515,7 @@ var studentHelpCommands = []helpCommand{
 	{"/today", "уроки на сегодня"},
 	{"/week", "уроки на неделю"},
 	{"/slots", "свободные слоты репетитора (эта или следующая неделя)"},
-	{"/balance", "предоплата и долг"},
+	{"/balance", "баланс"},
 	{"/me", "профиль"},
 	{"/help", "эта подсказка"},
 }

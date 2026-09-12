@@ -56,6 +56,7 @@ type Lesson struct {
 	DurationMin   int     `json:"durationMin"`
 	Status        string  `json:"status"`
 	Paid          bool    `json:"paid"`
+	Unpaid        bool    `json:"unpaid"`
 	StudentName   string  `json:"studentName"`
 	AcademicUnits int     `json:"academicUnits"`
 	MeetURL       *string `json:"meetUrl"`
@@ -108,13 +109,16 @@ type Schedule struct {
 }
 
 type Student struct {
-	Name           string   `json:"name"`
-	Currency       string   `json:"currency"`
-	BalanceKind    string   `json:"balanceKind"`
-	Prepaid        float64  `json:"prepaid"`
-	Debt           float64  `json:"debt"`
-	OpenLessonDebt float64  `json:"openLessonDebt"`
-	Rate           *float64 `json:"rate"`
+	ID               string   `json:"id"`
+	Name             string   `json:"name"`
+	Currency         string   `json:"currency"`
+	BalanceKind      string   `json:"balanceKind"`
+	Prepaid          float64  `json:"prepaid"`
+	Debt             float64  `json:"debt"`
+	OpenLessonDebt   float64  `json:"openLessonDebt"`
+	Rate             *float64 `json:"rate"`
+	BillingStudentID *string  `json:"billingStudentId"`
+	BillingPayerName *string  `json:"billingPayerName"`
 }
 
 type StudentBalance struct {

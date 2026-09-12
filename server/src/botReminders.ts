@@ -1,8 +1,10 @@
 import type { PoolClient } from 'pg';
 import { query } from './db.js';
+import { computeWalletChargeAmount } from './lessonBalance.js';
 import { toBotPersonalEvent, type LessonRow, type PersonalEventRow } from './mappers.js';
 import { topUpRecurringPersonalSchedules } from './personalRecurringSchedule.js';
 import { topUpRecurringSchedules } from './recurringSchedule.js';
+import type { AcademicUnits, BalanceKind } from './types.js';
 
 export const STUDENT_REMINDER_LEAD_MINUTES = 30;
 
@@ -17,6 +19,7 @@ export type DueLesson = {
   status: string;
   studentName: string;
   meetUrl: string | null;
+  unpaid: boolean;
 };
 
 export type DuePersonalEvent = {
@@ -85,6 +88,12 @@ type DueLessonRow = LessonRow & {
   silent: boolean;
   student_name: string;
   meet_url: string | null;
+  is_group: boolean;
+  student_rate: string | null;
+  wallet_prepaid: string;
+  wallet_debt: string;
+  wallet_balance_kind: BalanceKind;
+  wallet_rate: string | null;
 };
 
 type DuePersonalRow = PersonalEventRow & {
@@ -99,6 +108,18 @@ function parseTelegramUserId(raw: string): number {
   return Number(raw);
 }
 
+function lessonReminderUnpaid(row: DueLessonRow): boolean {
+  if (row.is_group) return false;
+  const charge = computeWalletChargeAmount(
+    row.wallet_balance_kind,
+    row.wallet_rate != null ? Number(row.wallet_rate) : null,
+    row.student_rate != null ? Number(row.student_rate) : null,
+    row.academic_units as AcademicUnits,
+  );
+  if (charge == null || charge <= 0) return false;
+  return Number(row.wallet_prepaid) - Number(row.wallet_debt) < charge;
+}
+
 function toDueLesson(row: DueLessonRow): DueLesson {
   return {
     id: row.id,
@@ -107,6 +128,7 @@ function toDueLesson(row: DueLessonRow): DueLesson {
     status: row.status,
     studentName: row.student_name,
     meetUrl: row.meet_url,
+    unpaid: lessonReminderUnpaid(row),
   };
 }
 
@@ -176,10 +198,14 @@ async function listDueTutorLessons(now: Date): Promise<DueReminder[]> {
             l.status, l.type, l.paid, l.notes, l.balance_charged, l.balance_paid_applied,
             l.charge_prepaid_delta, l.charge_debt_delta, l.recurring_schedule_id,
             l.created_at, l.updated_at,
-            s.name AS student_name, s.meet_url
+            s.name AS student_name, s.meet_url, s.is_group,
+            s.rate AS student_rate,
+            w.prepaid AS wallet_prepaid, w.debt AS wallet_debt,
+            w.balance_kind AS wallet_balance_kind, w.rate AS wallet_rate
      FROM lessons l
      JOIN tutors t ON t.id = l.tutor_id
      JOIN students s ON s.id = l.student_id
+     JOIN students w ON w.id = COALESCE(s.billing_student_id, s.id)
      LEFT JOIN telegram_sent_reminders sr
        ON sr.telegram_user_id = t.telegram_user_id
       AND sr.kind = 'lesson'
@@ -208,10 +234,14 @@ async function listDueStudentLessons(now: Date): Promise<DueReminder[]> {
             l.status, l.type, l.paid, l.notes, l.balance_charged, l.balance_paid_applied,
             l.charge_prepaid_delta, l.charge_debt_delta, l.recurring_schedule_id,
             l.created_at, l.updated_at,
-            s.name AS student_name, s.meet_url
+            s.name AS student_name, s.meet_url, s.is_group,
+            s.rate AS student_rate,
+            w.prepaid AS wallet_prepaid, w.debt AS wallet_debt,
+            w.balance_kind AS wallet_balance_kind, w.rate AS wallet_rate
      FROM lessons l
      JOIN tutors t ON t.id = l.tutor_id
      JOIN students s ON s.id = l.student_id
+     JOIN students w ON w.id = COALESCE(s.billing_student_id, s.id)
      LEFT JOIN telegram_sent_reminders sr
        ON sr.telegram_user_id = s.telegram_user_id
       AND sr.kind = 'lesson'

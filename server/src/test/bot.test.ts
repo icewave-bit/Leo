@@ -119,6 +119,50 @@ describe('telegram bot api', () => {
     expect(debt.body.students).toEqual([]);
   });
 
+  it('bot students list is full roster; debt lists only negative net wallets', async () => {
+    const { agent } = await registerTutor(app);
+    const telegramUserId = await linkTelegram(agent, app, '555020');
+
+    await agent
+      .post('/api/students')
+      .send({ name: 'Credit', hue: 1, currency: 'EUR', prepaid: 20, debt: 5 })
+      .expect(201);
+    await agent
+      .post('/api/students')
+      .send({ name: 'Ada', hue: 2, currency: 'EUR', prepaid: 0, debt: 5 })
+      .expect(201);
+    const larger = await agent
+      .post('/api/students')
+      .send({ name: 'Zoe', hue: 4, currency: 'EUR', prepaid: 1, debt: 20 })
+      .expect(201);
+    await agent
+      .post('/api/students')
+      .send({ name: 'Zero', hue: 3, currency: 'EUR', prepaid: 0, debt: 0 })
+      .expect(201);
+
+    const students = await request(app)
+      .get('/api/bot/students')
+      .set('Authorization', `Bearer ${botToken()}`)
+      .set('X-Telegram-User-Id', telegramUserId)
+      .expect(200);
+    expect(students.body.students.map((s: { name: string }) => s.name)).toEqual([
+      'Ada',
+      'Credit',
+      'Zero',
+      'Zoe',
+    ]);
+
+    const debt = await request(app)
+      .get('/api/bot/debt')
+      .set('Authorization', `Bearer ${botToken()}`)
+      .set('X-Telegram-User-Id', telegramUserId)
+      .expect(200);
+    expect(debt.body.students.map((s: { name: string }) => s.name)).toEqual(['Zoe', 'Ada']);
+    expect(debt.body.students[0].id).toBe(larger.body.id);
+    expect(debt.body.students[0].prepaid - debt.body.students[0].debt).toBe(-19);
+    expect(debt.body.students[1].prepaid - debt.body.students[1].debt).toBe(-5);
+  });
+
   it('returns TELEGRAM_NOT_LINKED when telegram id is unknown', async () => {
     const res = await request(app)
       .get('/api/bot/me')
@@ -401,6 +445,62 @@ describe('telegram bot api', () => {
     expect(today.body.lessons).toHaveLength(1);
     expect(today.body.lessons[0].studentName).toBe('Meet Student');
     expect(today.body.lessons[0].meetUrl).toBe(meetUrl);
+  });
+
+  it('GET /api/bot/today includes personal events without personal notify', async () => {
+    const { tutorId, agent } = await registerTutor(app, { timezone: 'UTC' });
+    const telegramUserId = await linkTelegram(agent, app, '555011');
+    const groups = await ensureDefaultPersonalEventGroups(tutorId);
+    const workGroup = groups.find((g) => g.name === 'Работа')!;
+
+    const startUtc = new Date();
+    startUtc.setUTCHours(14, 0, 0, 0);
+
+    await query(
+      `INSERT INTO personal_events (tutor_id, group_id, title, start_utc, duration_min)
+       VALUES ($1, $2, $3, $4, 60)`,
+      [tutorId, workGroup.id, 'Встреча', startUtc.toISOString()],
+    );
+
+    const today = await request(app)
+      .get('/api/bot/today')
+      .set('Authorization', `Bearer ${botToken()}`)
+      .set('X-Telegram-User-Id', telegramUserId)
+      .expect(200);
+
+    expect(today.body.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: 'Встреча', groupName: 'Работа' }),
+      ]),
+    );
+  });
+
+  it('GET /api/bot/students names the billing payer in billingPayerName', async () => {
+    const { agent } = await registerTutor(app);
+    const telegramUserId = await linkTelegram(agent, app, '555012');
+    const payer = await agent
+      .post('/api/students')
+      .send({ name: 'Payer', hue: 1, currency: 'EUR', prepaid: 10, debt: 0 })
+      .expect(201);
+    await agent
+      .post('/api/students')
+      .send({
+        name: 'Child',
+        hue: 2,
+        currency: 'EUR',
+        billingStudentId: payer.body.id,
+      })
+      .expect(201);
+
+    const students = await request(app)
+      .get('/api/bot/students')
+      .set('Authorization', `Bearer ${botToken()}`)
+      .set('X-Telegram-User-Id', telegramUserId)
+      .expect(200);
+
+    const child = students.body.students.find((s: { name: string }) => s.name === 'Child');
+    expect(child.billingStudentId).toBe(payer.body.id);
+    expect(child.billingPayerName).toBe('Payer');
   });
 
   it('open-slots weekOffset shifts the returned week window', async () => {

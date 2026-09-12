@@ -356,7 +356,8 @@ func TestHandleUpdate_today(t *testing.T) {
 	out := msg.messages()[0]
 	assert.Contains(t, out.RichMessage.Markdown, "На сегодня")
 	assert.Contains(t, out.RichMessage.Markdown, "Leo")
-	assert.Contains(t, out.RichMessage.Markdown, "запланирован")
+	assert.NotContains(t, out.RichMessage.Markdown, "запланирован")
+	assert.NotContains(t, out.RichMessage.Markdown, "оплачен")
 	require.IsType(t, &models.ReplyKeyboardMarkup{}, out.ReplyMarkup)
 }
 
@@ -759,7 +760,8 @@ func TestHandleUpdate_studentWeek(t *testing.T) {
 
 	out := msg.messages()[0]
 	assert.Contains(t, out.RichMessage.Markdown, "Уроки на неделю")
-	assert.Contains(t, out.RichMessage.Markdown, "запланирован")
+	assert.NotContains(t, out.RichMessage.Markdown, "запланирован")
+	assert.NotContains(t, out.RichMessage.Markdown, "оплачен")
 	assert.NotContains(t, out.RichMessage.Markdown, "— Leo")
 }
 

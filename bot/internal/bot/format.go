@@ -2,6 +2,7 @@ package bot
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/fedortarasov/leo-bot/internal/tutorapi"
 )
+
+const minusSign = "−" // U+2212, same as the LeO UI signed balance
 
 func (b *Bot) formatTutor(t tutorapi.Tutor) string {
 	return mdHeading(t.Name) + "\n\nЧасовой пояс: " + mdEscape(t.Timezone) + "\n\n" + formatNotifySummary(t.TelegramNotify)
@@ -28,55 +31,39 @@ func formatNotifySummary(n tutorapi.TelegramNotify) string {
 	)
 }
 
-func (b *Bot) formatSchedule(title string, schedule tutorapi.Schedule) string {
-	type item struct {
-		start string
-		line  string
-	}
-	items := make([]item, 0, len(schedule.Lessons)+len(schedule.Events))
+const nowSplitLabel = "— сейчас —"
+
+type scheduleItem struct {
+	startUTC string
+	line     string
+}
+
+func (b *Bot) formatSchedule(title string, schedule tutorapi.Schedule, now time.Time, splitNow bool) string {
+	items := make([]scheduleItem, 0, len(schedule.Lessons)+len(schedule.Events))
 	for _, lesson := range schedule.Lessons {
-		items = append(items, item{
-			start: lesson.StartUTC,
-			line:  b.formatLessonLine(lesson, schedule.Timezone),
+		items = append(items, scheduleItem{
+			startUTC: lesson.StartUTC,
+			line:     b.formatLessonLine(lesson, schedule.Timezone),
 		})
 	}
 	for _, event := range schedule.Events {
-		items = append(items, item{
-			start: event.StartUTC,
-			line:  b.formatPersonalEventLine(event, schedule.Timezone),
+		items = append(items, scheduleItem{
+			startUTC: event.StartUTC,
+			line:     b.formatPersonalEventLine(event, schedule.Timezone),
 		})
 	}
 	if len(items) == 0 {
 		return mdHeading(title) + "\n\nНет записей"
 	}
-
 	sort.SliceStable(items, func(i, j int) bool {
-		return items[i].start < items[j].start
+		return items[i].startUTC < items[j].startUTC
 	})
-
-	var buf strings.Builder
-	buf.WriteString(mdHeading(title))
-	buf.WriteByte('\n')
-	for _, it := range items {
-		buf.WriteByte('\n')
-		buf.WriteString(it.line)
-	}
-	return buf.String()
+	return mdHeading(title) + "\n" + renderScheduleItems(items, now, splitNow)
 }
 
 func (b *Bot) formatLessonLine(lesson tutorapi.Lesson, timezone string) string {
 	when := mdDateTime(lesson.StartUTC, timezone, "Mon 02.01 15:04", "wdt")
-	paid := "оплачен"
-	if !lesson.Paid {
-		paid = "==не оплачен=="
-	}
-	line := fmt.Sprintf("- %s — **%s** (%s, %d мин, %s)",
-		when,
-		mdEscape(lesson.StudentName),
-		lessonStatusRU(lesson.Status),
-		lesson.DurationMin,
-		paid,
-	)
+	line := fmt.Sprintf("- %s — **%s**", when, mdEscape(lesson.StudentName))
 	if lesson.Status == "cancelled" || lesson.Status == "no_show" {
 		return "~~" + strings.TrimPrefix(line, "- ") + "~~"
 	}
@@ -87,9 +74,48 @@ func (b *Bot) formatPersonalEventLine(event tutorapi.PersonalEvent, timezone str
 	when := mdDateTime(event.StartUTC, timezone, "Mon 02.01 15:04", "wdt")
 	group := strings.TrimSpace(event.GroupName)
 	if group == "" {
-		return fmt.Sprintf("- %s — **%s** (личное, %d мин)", when, mdEscape(event.Title), event.DurationMin)
+		return fmt.Sprintf("- %s — **%s**", when, mdEscape(event.Title))
 	}
-	return fmt.Sprintf("- %s — **%s** (%s, %d мин)", when, mdEscape(event.Title), mdEscape(group), event.DurationMin)
+	return fmt.Sprintf("- %s — **%s** (%s)", when, mdEscape(event.Title), mdEscape(group))
+}
+
+func renderScheduleItems(items []scheduleItem, now time.Time, splitNow bool) string {
+	var buf strings.Builder
+	split := splitNow && !now.IsZero() && scheduleHasPastAndFuture(items, now)
+	pastDone := false
+	for _, it := range items {
+		if split && !pastDone && !scheduleItemPast(it.startUTC, now) {
+			buf.WriteString("\n\n")
+			buf.WriteString(nowSplitLabel)
+			pastDone = true
+		}
+		buf.WriteByte('\n')
+		buf.WriteString(it.line)
+	}
+	return buf.String()
+}
+
+func scheduleHasPastAndFuture(items []scheduleItem, now time.Time) bool {
+	past, future := false, false
+	for _, it := range items {
+		if scheduleItemPast(it.startUTC, now) {
+			past = true
+		} else {
+			future = true
+		}
+		if past && future {
+			return true
+		}
+	}
+	return false
+}
+
+func scheduleItemPast(startUTC string, now time.Time) bool {
+	u, ok := unixUTC(startUTC)
+	if !ok {
+		return false
+	}
+	return time.Unix(u, 0).UTC().Before(now.UTC())
 }
 
 func (b *Bot) formatStudents(title string, students []tutorapi.Student) string {
@@ -99,34 +125,118 @@ func (b *Bot) formatStudents(title string, students []tutorapi.Student) string {
 
 	var buf strings.Builder
 	buf.WriteString(mdHeading(title))
-	buf.WriteString("\n\n| Ученик | Предоплата | Долг |\n|:-------|-----------:|-----:|")
+	buf.WriteString("\n\n| Ученик | Баланс |\n|:-------|-------:|")
 	for _, s := range students {
 		buf.WriteByte('\n')
-		buf.WriteString(b.formatStudentRow(s))
+		buf.WriteString(b.formatStudentRow(s, students))
 	}
 	return buf.String()
 }
 
-func (b *Bot) formatStudentLine(s tutorapi.Student) string {
-	unit := studentUnit(s.BalanceKind, s.Currency)
-	line := fmt.Sprintf("• %s — предоплата %.2f %s, долг %.2f %s",
-		s.Name, s.Prepaid, unit, s.Debt, unit)
-	if s.OpenLessonDebt > 0 {
-		line += fmt.Sprintf(", открытый долг по урокам %.2f %s", s.OpenLessonDebt, unit)
+func (b *Bot) formatDebts(students []tutorapi.Student) string {
+	debtors := debtorsByLargestDebt(students)
+	if len(debtors) == 0 {
+		return mdHeading("Долги") + "\n\nНет должников"
 	}
-	return line
+
+	var buf strings.Builder
+	buf.WriteString(mdHeading("Долги"))
+	buf.WriteString("\n\n| Ученик | Баланс |\n|:-------|-------:|")
+	for _, s := range debtors {
+		net := studentBalanceNet(s.Prepaid, s.Debt, s.BalanceKind)
+		buf.WriteByte('\n')
+		buf.WriteString(fmt.Sprintf("| %s | %s |", mdEscape(s.Name), formatSignedAmount(net, s.BalanceKind, s.Currency)))
+	}
+	return buf.String()
 }
 
-func (b *Bot) formatStudentRow(s tutorapi.Student) string {
-	unit := studentUnit(s.BalanceKind, s.Currency)
-	debt := fmt.Sprintf("%.2f %s", s.Debt, unit)
-	if s.Debt > 0 || s.OpenLessonDebt > 0 {
-		debt = "**" + debt + "**"
+func (b *Bot) formatStudentRow(s tutorapi.Student, students []tutorapi.Student) string {
+	label := formatStudentBalanceLabel(s, students)
+	if s.BillingStudentID == nil && studentBalanceNet(s.Prepaid, s.Debt, s.BalanceKind) < 0 {
+		label = "**" + label + "**"
 	}
-	if s.OpenLessonDebt > 0 {
-		debt += fmt.Sprintf(" (+%.2f)", s.OpenLessonDebt)
+	return fmt.Sprintf("| %s | %s |", mdEscape(s.Name), label)
+}
+
+func isDebtor(s tutorapi.Student) bool {
+	if s.BillingStudentID != nil && *s.BillingStudentID != "" {
+		return false
 	}
-	return fmt.Sprintf("| %s | %.2f %s | %s |", mdEscape(s.Name), s.Prepaid, unit, debt)
+	return studentBalanceNet(s.Prepaid, s.Debt, s.BalanceKind) < 0
+}
+
+func debtorsByLargestDebt(students []tutorapi.Student) []tutorapi.Student {
+	out := make([]tutorapi.Student, 0, len(students))
+	for _, s := range students {
+		if isDebtor(s) {
+			out = append(out, s)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		ki, kj := studentDebtMoneyNet(out[i]), studentDebtMoneyNet(out[j])
+		if ki != kj {
+			return ki < kj
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out
+}
+
+func studentDebtMoneyNet(s tutorapi.Student) float64 {
+	net := studentBalanceNet(s.Prepaid, s.Debt, s.BalanceKind)
+	if s.BalanceKind == "lessons" && s.Rate != nil && *s.Rate > 0 {
+		return math.Round(net*(*s.Rate)*100) / 100
+	}
+	return net
+}
+
+func formatStudentBalanceLabel(s tutorapi.Student, students []tutorapi.Student) string {
+	if name := strings.TrimSpace(derefString(s.BillingPayerName)); name != "" {
+		return mdEscape(name)
+	}
+	if s.BillingStudentID != nil && *s.BillingStudentID != "" {
+		for _, p := range students {
+			if p.ID == *s.BillingStudentID {
+				return mdEscape(p.Name)
+			}
+		}
+		return "общий счёт"
+	}
+	return formatSignedAmount(studentBalanceNet(s.Prepaid, s.Debt, s.BalanceKind), s.BalanceKind, s.Currency)
+}
+
+func derefString(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
+func studentBalanceNet(prepaid, debt float64, kind string) float64 {
+	net := prepaid - debt
+	if kind == "lessons" {
+		return math.Round(net)
+	}
+	return math.Round(net*100) / 100
+}
+
+func formatSignedAmount(net float64, kind, currency string) string {
+	unit := studentUnit(kind, currency)
+	abs := math.Abs(net)
+	var amount string
+	if kind == "lessons" {
+		amount = fmt.Sprintf("%.0f %s", abs, unit)
+	} else {
+		amount = fmt.Sprintf("%.2f %s", abs, unit)
+	}
+	switch {
+	case net > 0:
+		return "+" + amount
+	case net < 0:
+		return minusSign + amount
+	default:
+		return amount
+	}
 }
 
 func studentUnit(balanceKind, currency string) string {
@@ -145,38 +255,31 @@ func (b *Bot) formatBotStudent(s tutorapi.BotStudent) string {
 }
 
 func (b *Bot) formatBalance(bal tutorapi.StudentBalance) string {
-	unit := studentUnit(bal.BalanceKind, bal.Currency)
+	amount := formatSignedAmount(studentBalanceNet(bal.Prepaid, bal.Debt, bal.BalanceKind), bal.BalanceKind, bal.Currency)
 	var buf strings.Builder
 	buf.WriteString(mdHeading("Баланс"))
-	buf.WriteString(fmt.Sprintf("\n\nПредоплата: **%.2f %s**\nДолг: **%.2f %s**", bal.Prepaid, unit, bal.Debt, unit))
-	if bal.OpenLessonDebt > 0 {
-		buf.WriteString(fmt.Sprintf("\nОткрытый долг по урокам: **%.2f %s**", bal.OpenLessonDebt, unit))
-	}
+	buf.WriteString(fmt.Sprintf("\n\n**%s**", amount))
 	if bal.BillingShared {
 		buf.WriteString("\n\n_общий счёт семьи_")
 	}
 	return buf.String()
 }
 
-func (b *Bot) formatStudentSchedule(title string, schedule tutorapi.Schedule) string {
+func (b *Bot) formatStudentSchedule(title string, schedule tutorapi.Schedule, now time.Time, splitNow bool) string {
 	if len(schedule.Lessons) == 0 {
 		return mdHeading(title) + "\n\nНет уроков"
 	}
 
-	var buf strings.Builder
-	buf.WriteString(mdHeading(title))
-	buf.WriteByte('\n')
+	items := make([]scheduleItem, 0, len(schedule.Lessons))
 	for _, lesson := range schedule.Lessons {
-		buf.WriteByte('\n')
 		when := mdDateTime(lesson.StartUTC, schedule.Timezone, "Mon 02.01 15:04", "wdt")
-		paid := "оплачен"
-		if !lesson.Paid {
-			paid = "==не оплачен=="
+		line := "- " + when
+		if lesson.Status == "cancelled" || lesson.Status == "no_show" {
+			line = "~~" + when + "~~"
 		}
-		buf.WriteString(fmt.Sprintf("- %s — %s, %d мин, %s",
-			when, lessonStatusRU(lesson.Status), lesson.DurationMin, paid))
+		items = append(items, scheduleItem{startUTC: lesson.StartUTC, line: line})
 	}
-	return buf.String()
+	return mdHeading(title) + "\n" + renderScheduleItems(items, now, splitNow)
 }
 
 func (b *Bot) formatOpenSlots(slots tutorapi.OpenSlots, weekOffset int) string {
@@ -271,19 +374,4 @@ func formatInZone(startUTC, timezone, layout string) string {
 		loc = time.UTC
 	}
 	return t.In(loc).Format(layout)
-}
-
-func lessonStatusRU(status string) string {
-	switch status {
-	case "planned":
-		return "запланирован"
-	case "completed":
-		return "проведён"
-	case "cancelled":
-		return "отменён"
-	case "no_show":
-		return "неявка"
-	default:
-		return status
-	}
 }

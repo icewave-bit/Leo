@@ -104,8 +104,69 @@ describe('bot due reminders', () => {
         studentName: 'Leo',
         status: 'planned',
         meetUrl: 'https://meet.google.com/abc-defg-hij',
+        unpaid: false,
       },
     });
+  });
+
+  it('marks lesson reminder unpaid when wallet cannot cover the charge', async () => {
+    const { agent, tutorId } = await registerTutor(app, { timezone: 'UTC' });
+    await linkTelegram(agent, app, '424221');
+    const short = await agent
+      .post('/api/students')
+      .send({ name: 'Short', hue: 1, currency: 'EUR', rate: 20, prepaid: 0, debt: 0 })
+      .expect(201);
+    const covered = await agent
+      .post('/api/students')
+      .send({ name: 'Covered', hue: 2, currency: 'EUR', rate: 20, prepaid: 40, debt: 0 })
+      .expect(201);
+    const now = new Date('2026-08-15T12:00:00.000Z');
+    await insertLesson({
+      tutorId,
+      studentId: short.body.id,
+      startUtc: new Date('2026-08-15T12:20:00.000Z'),
+    });
+    await insertLesson({
+      tutorId,
+      studentId: covered.body.id,
+      startUtc: new Date('2026-08-15T12:25:00.000Z'),
+    });
+
+    const reminders = await listDueReminders(now);
+    const byName = Object.fromEntries(
+      reminders.map((r) => [r.lesson?.studentName, r.lesson?.unpaid]),
+    );
+    expect(byName.Short).toBe(true);
+    expect(byName.Covered).toBe(false);
+  });
+
+  it('uses family payer wallet for reminder unpaid', async () => {
+    const { agent, tutorId } = await registerTutor(app, { timezone: 'UTC' });
+    await linkTelegram(agent, app, '424222');
+    const payer = await agent
+      .post('/api/students')
+      .send({ name: 'Payer', hue: 1, currency: 'EUR', rate: 20, prepaid: 0, debt: 0 })
+      .expect(201);
+    const child = await agent
+      .post('/api/students')
+      .send({
+        name: 'Child',
+        hue: 2,
+        currency: 'EUR',
+        rate: 20,
+        billingStudentId: payer.body.id,
+      })
+      .expect(201);
+    const now = new Date('2026-08-15T12:00:00.000Z');
+    await insertLesson({
+      tutorId,
+      studentId: child.body.id,
+      startUtc: new Date('2026-08-15T12:20:00.000Z'),
+    });
+
+    const reminders = await listDueReminders(now);
+    expect(reminders).toHaveLength(1);
+    expect(reminders[0]?.lesson?.unpaid).toBe(true);
   });
 
   it('skips lessons outside the lead window', async () => {

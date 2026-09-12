@@ -10,7 +10,7 @@ import { toBotPersonalEvent, toLesson, toStudent, toTutor, type LessonRow, type 
 import { requireBotAuth, requireBotBearer } from '../middleware/requireBotAuth.js';
 import { topUpRecurringPersonalSchedules } from '../personalRecurringSchedule.js';
 import { zonedDayOffsetRangeUtc, zonedDayRangeUtc, zonedWeekRangeUtc } from '../scheduleSlots.js';
-import type { WeekStartsOn } from '../types.js';
+import type { Student, WeekStartsOn } from '../types.js';
 import { validate } from '../validate.js';
 
 const linkSchema = z.object({
@@ -141,20 +141,14 @@ botRouter.get('/me', async (req, res, next) => {
 type TutorSchedulePrefs = {
   timezone: string;
   weekStartsOn: WeekStartsOn;
-  notifyPersonal: boolean;
-  personalGroupIds: string[];
 };
 
 async function loadTutorPrefs(tutorId: string): Promise<TutorSchedulePrefs> {
   const result = await query<{
     timezone: string;
     week_starts_on: WeekStartsOn;
-    telegram_notify_personal: boolean;
-    telegram_notify_personal_group_ids: string[] | null;
   }>(
-    `SELECT timezone, week_starts_on,
-            telegram_notify_personal, telegram_notify_personal_group_ids
-     FROM tutors WHERE id = $1`,
+    `SELECT timezone, week_starts_on FROM tutors WHERE id = $1`,
     [tutorId],
   );
   const row = result.rows[0];
@@ -164,8 +158,6 @@ async function loadTutorPrefs(tutorId: string): Promise<TutorSchedulePrefs> {
   return {
     timezone: row.timezone,
     weekStartsOn: row.week_starts_on,
-    notifyPersonal: row.telegram_notify_personal,
-    personalGroupIds: row.telegram_notify_personal_group_ids ?? [],
   };
 }
 
@@ -221,25 +213,13 @@ async function listPersonalEventsInRange(
   return result.rows.map(toBotPersonalEvent);
 }
 
-async function listOptedInPersonalEvents(
-  prefs: TutorSchedulePrefs,
-  tutorId: string,
-  from: Date,
-  to: Date,
-) {
-  if (!prefs.notifyPersonal) {
-    return [];
-  }
-  return listPersonalEventsInRange(tutorId, from, to, prefs.personalGroupIds);
-}
-
 botRouter.get('/today', async (req, res, next) => {
   try {
     const prefs = await loadTutorPrefs(req.tutorId!);
     const { from, to } = zonedDayRangeUtc(new Date(), prefs.timezone);
     const [lessons, events] = await Promise.all([
       listLessonsInRange(req.tutorId!, from, to),
-      listOptedInPersonalEvents(prefs, req.tutorId!, from, to),
+      listPersonalEventsInRange(req.tutorId!, from, to, []),
     ]);
     res.json({
       timezone: prefs.timezone,
@@ -259,7 +239,7 @@ botRouter.get('/tomorrow', async (req, res, next) => {
     const { from, to } = zonedDayOffsetRangeUtc(new Date(), prefs.timezone, 1);
     const [lessons, events] = await Promise.all([
       listLessonsInRange(req.tutorId!, from, to),
-      listOptedInPersonalEvents(prefs, req.tutorId!, from, to),
+      listPersonalEventsInRange(req.tutorId!, from, to, []),
     ]);
     res.json({
       timezone: prefs.timezone,
@@ -277,7 +257,7 @@ botRouter.get('/personal-events/today', async (req, res, next) => {
   try {
     const prefs = await loadTutorPrefs(req.tutorId!);
     const { from, to } = zonedDayRangeUtc(new Date(), prefs.timezone);
-    const events = await listOptedInPersonalEvents(prefs, req.tutorId!, from, to);
+    const events = await listPersonalEventsInRange(req.tutorId!, from, to, []);
 
     res.json({
       timezone: prefs.timezone,
@@ -296,7 +276,7 @@ botRouter.get('/week', async (req, res, next) => {
     const { from, to } = zonedWeekRangeUtc(new Date(), prefs.timezone, prefs.weekStartsOn);
     const [lessons, events] = await Promise.all([
       listLessonsInRange(req.tutorId!, from, to),
-      listOptedInPersonalEvents(prefs, req.tutorId!, from, to),
+      listPersonalEventsInRange(req.tutorId!, from, to, []),
     ]);
     res.json({
       timezone: prefs.timezone,
@@ -331,8 +311,13 @@ botRouter.get('/students', async (req, res, next) => {
       req.tutorId!,
       result.rows.map((r) => r.id),
     );
+    const students = result.rows.map((row) => toStudent(row, openDebts.get(row.id) ?? 0));
+    const names = new Map(students.map((s) => [s.id, s.name]));
     res.json({
-      students: result.rows.map((row) => toStudent(row, openDebts.get(row.id) ?? 0)),
+      students: students.map((s) => ({
+        ...s,
+        billingPayerName: s.billingStudentId ? (names.get(s.billingStudentId) ?? null) : null,
+      })),
     });
   } catch (err) {
     next(err);
@@ -352,9 +337,28 @@ botRouter.get('/debt', async (req, res, next) => {
     );
     const students = result.rows
       .map((row) => toStudent(row, openDebts.get(row.id) ?? 0))
-      .filter((s) => s.debt > 0 || s.openLessonDebt > 0);
+      .filter((s) => s.billingStudentId == null && studentWalletNet(s) < 0)
+      .sort((a, b) => {
+        const diff = studentDebtMoneyNet(a) - studentDebtMoneyNet(b);
+        if (diff !== 0) return diff;
+        return a.name.localeCompare(b.name, 'ru');
+      });
     res.json({ students });
   } catch (err) {
     next(err);
   }
 });
+
+function studentWalletNet(s: Pick<Student, 'prepaid' | 'debt'>): number {
+  return s.prepaid - s.debt;
+}
+
+function studentDebtMoneyNet(
+  s: Pick<Student, 'prepaid' | 'debt' | 'balanceKind' | 'rate'>,
+): number {
+  const net = s.prepaid - s.debt;
+  if (s.balanceKind === 'lessons' && s.rate != null && s.rate > 0) {
+    return Math.round(net * s.rate * 100) / 100;
+  }
+  return Math.round(net * 100) / 100;
+}

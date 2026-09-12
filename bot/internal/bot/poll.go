@@ -206,6 +206,9 @@ func (b *Bot) formatLessonReminder(lesson tutorapi.Lesson, timezone string, lead
 	}
 	buf.WriteString("\n")
 	buf.WriteString(when)
+	if lesson.Unpaid {
+		buf.WriteString("\n\nне оплачен")
+	}
 	return buf.String()
 }
 
