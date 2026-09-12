@@ -9,6 +9,7 @@ import {
   personalEventDraftAtom,
   personalEventsAtom,
   scheduleVariantAtom,
+  type ScheduleVariant,
   selectedLessonIdAtom,
   selectedPersonalEventIdAtom,
   weekStartAtom,
@@ -69,8 +70,8 @@ function Topbar({
   onAddLesson,
   weekNavBusy,
 }: {
-  variant: 'week' | 'timeline' | 'agenda';
-  setVariant: (v: 'week' | 'timeline' | 'agenda') => void;
+  variant: ScheduleVariant;
+  setVariant: (v: ScheduleVariant) => void;
   resolvedTheme: ShellOutletContext['resolvedTheme'];
   setTheme: ShellOutletContext['setTheme'];
   mobile: boolean;
@@ -252,7 +253,7 @@ export function SchedulePage() {
   const lessons = useAtomValue(lessonsAtom);
   const personalEvents = useAtomValue(personalEventsAtom);
   const slotOverrides = useAtomValue(scheduleSlotOverridesAtom);
-  const [variant, setVariant] = useAtom(scheduleVariantAtom);
+  const [storedVariant, setVariant] = useAtom(scheduleVariantAtom);
   const weekStart = useAtomValue(weekStartAtom);
   const [selectedId, setSelectedId] = useAtom(selectedLessonIdAtom);
   const [selectedPersonalId, setSelectedPersonalId] = useAtom(selectedPersonalEventIdAtom);
@@ -279,7 +280,7 @@ export function SchedulePage() {
   const selectedPersonal = selectedPersonalId
     ? personalEvents.find((e) => e.id === selectedPersonalId)
     : null;
-  const effVariant = mobile && variant !== 'week' ? variant : variant;
+  const variant = storedVariant ?? (mobile ? 'timeline' : 'week');
 
   const weekStartsOn = tutor?.weekStartsOn ?? 'monday';
   const hiddenWeekdays = tutor?.hiddenWeekdays ?? [];
@@ -421,7 +422,7 @@ export function SchedulePage() {
       />
       <div className="app__content">
         <main className="board">
-          {effVariant === 'week' && (
+          {variant === 'week' && (
             <WeekGrid
               compact={mobile}
               onSelect={(id) => {
@@ -437,7 +438,7 @@ export function SchedulePage() {
               onReschedulePersonal={reschedulePersonalEvent}
             />
           )}
-          {effVariant === 'timeline' && (
+          {variant === 'timeline' && (
             <FocusTimeline
               onSelect={(id) => {
                 setSelectedPersonalId(null);
@@ -450,7 +451,7 @@ export function SchedulePage() {
               onAddLesson={(day) => openCreateLesson(day, 10)}
             />
           )}
-          {effVariant === 'agenda' && (
+          {variant === 'agenda' && (
             <AgendaList
               onSelect={(id) => {
                 setSelectedPersonalId(null);

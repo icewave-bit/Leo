@@ -98,21 +98,26 @@ func resolveInput(text string) (cmd, arg string) {
 const (
 	cbSlotsPick     = "slots:pick"
 	cbSlotsPrefix   = "slots:"
+	cbWeekPick      = "week:pick"
+	cbWeekPrefix    = "week:"
 	slotsPickerText = `# Свободные слоты
+
+Какую неделю показать?`
+	weekPickerText = `# На неделю
 
 Какую неделю показать?`
 )
 
-func slotsWeekKeyboard() *models.InlineKeyboardMarkup {
+func weekChoiceKeyboard(cbPrefix string) *models.InlineKeyboardMarkup {
 	return &models.InlineKeyboardMarkup{
 		InlineKeyboard: [][]models.InlineKeyboardButton{{
-			{Text: "Эта неделя", CallbackData: cbSlotsPrefix + "0", Style: "primary"},
-			{Text: "Следующая", CallbackData: cbSlotsPrefix + "1"},
+			{Text: "Эта неделя", CallbackData: cbPrefix + "0", Style: "primary"},
+			{Text: "Следующая", CallbackData: cbPrefix + "1"},
 		}},
 	}
 }
 
-func slotsResultKeyboard(weekOffset int) *models.InlineKeyboardMarkup {
+func weekSwitchKeyboard(cbPrefix, pickCB string, weekOffset int) *models.InlineKeyboardMarkup {
 	other := 1
 	otherLabel := "Следующая неделя"
 	if weekOffset != 0 {
@@ -121,8 +126,24 @@ func slotsResultKeyboard(weekOffset int) *models.InlineKeyboardMarkup {
 	}
 	return &models.InlineKeyboardMarkup{
 		InlineKeyboard: [][]models.InlineKeyboardButton{{
-			{Text: "« Недели", CallbackData: cbSlotsPick},
-			{Text: otherLabel, CallbackData: fmt.Sprintf("%s%d", cbSlotsPrefix, other)},
+			{Text: "« Недели", CallbackData: pickCB},
+			{Text: otherLabel, CallbackData: fmt.Sprintf("%s%d", cbPrefix, other)},
 		}},
 	}
+}
+
+func slotsWeekKeyboard() *models.InlineKeyboardMarkup {
+	return weekChoiceKeyboard(cbSlotsPrefix)
+}
+
+func slotsResultKeyboard(weekOffset int) *models.InlineKeyboardMarkup {
+	return weekSwitchKeyboard(cbSlotsPrefix, cbSlotsPick, weekOffset)
+}
+
+func scheduleWeekKeyboard() *models.InlineKeyboardMarkup {
+	return weekChoiceKeyboard(cbWeekPrefix)
+}
+
+func scheduleWeekResultKeyboard(weekOffset int) *models.InlineKeyboardMarkup {
+	return weekSwitchKeyboard(cbWeekPrefix, cbWeekPick, weekOffset)
 }

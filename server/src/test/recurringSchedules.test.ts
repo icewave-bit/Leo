@@ -183,6 +183,483 @@ describe('recurring-schedules', () => {
     ).toBe(true);
   });
 
+  it('moves remaining series lessons and template time without changing weekday', async () => {
+    const { agent } = await registerTutor(app);
+    const studentId = await createStudent(agent);
+
+    await agent
+      .post('/api/recurring-schedules')
+      .send({
+        studentId,
+        weekdays: [1],
+        startMinutes: 600,
+        academicUnits: 1,
+        startDate: '2030-06-04',
+        endDate: '2030-06-25',
+      })
+      .expect(201);
+
+    const range = { from: '2030-06-01T00:00:00.000Z', to: '2030-07-01T00:00:00.000Z' };
+    const before = await agent.get('/api/lessons').query(range).expect(200);
+    expect(before.body).toHaveLength(4);
+
+    const target = before.body[0];
+    await agent
+      .patch(`/api/lessons/${target.id}`)
+      .send({ startUtc: '2030-06-04T12:00:00.000Z', moveSeries: true })
+      .expect(200);
+
+    const after = await agent.get('/api/lessons').query(range).expect(200);
+    expect(after.body).toHaveLength(4);
+    expect(after.body.map((l: { startUtc: string }) => l.startUtc)).toEqual([
+      '2030-06-04T12:00:00.000Z',
+      '2030-06-11T12:00:00.000Z',
+      '2030-06-18T12:00:00.000Z',
+      '2030-06-25T12:00:00.000Z',
+    ]);
+
+    const schedules = await agent.get('/api/recurring-schedules').expect(200);
+    expect(schedules.body[0]).toMatchObject({
+      startMinutes: 720,
+      weekdays: [1],
+    });
+  });
+
+  it('shifts remaining series lessons and template weekday by calendar days', async () => {
+    const { agent } = await registerTutor(app);
+    const studentId = await createStudent(agent);
+
+    await agent
+      .post('/api/recurring-schedules')
+      .send({
+        studentId,
+        weekdays: [1],
+        startMinutes: 600,
+        academicUnits: 1,
+        startDate: '2030-06-04',
+        endDate: '2030-06-25',
+      })
+      .expect(201);
+
+    const range = { from: '2030-06-01T00:00:00.000Z', to: '2030-07-01T00:00:00.000Z' };
+    const before = await agent.get('/api/lessons').query(range).expect(200);
+    const target = before.body[0];
+
+    await agent
+      .patch(`/api/lessons/${target.id}`)
+      .send({ startUtc: '2030-06-06T10:00:00.000Z', moveSeries: true })
+      .expect(200);
+
+    const after = await agent.get('/api/lessons').query(range).expect(200);
+    expect(after.body.map((l: { startUtc: string }) => l.startUtc)).toEqual([
+      '2030-06-06T10:00:00.000Z',
+      '2030-06-13T10:00:00.000Z',
+      '2030-06-20T10:00:00.000Z',
+      '2030-06-27T10:00:00.000Z',
+    ]);
+
+    const schedules = await agent.get('/api/recurring-schedules').expect(200);
+    expect(schedules.body[0]).toMatchObject({
+      weekdays: [3],
+      startMinutes: 600,
+      startDate: '2030-06-06',
+      endDate: '2030-06-27',
+    });
+  });
+
+  it('keeps biweekly phase when the series is moved from the first occurrence', async () => {
+    const { agent } = await registerTutor(app);
+    const studentId = await createStudent(agent);
+
+    await agent
+      .post('/api/recurring-schedules')
+      .send({
+        studentId,
+        weekdays: [1],
+        startMinutes: 600,
+        academicUnits: 1,
+        intervalWeeks: 2,
+        startDate: '2030-06-04',
+        endDate: '2030-07-16',
+      })
+      .expect(201);
+
+    const range = { from: '2030-06-01T00:00:00.000Z', to: '2030-07-20T00:00:00.000Z' };
+    const before = await agent.get('/api/lessons').query(range).expect(200);
+    expect(before.body.map((l: { startUtc: string }) => l.startUtc)).toEqual([
+      '2030-06-04T10:00:00.000Z',
+      '2030-06-18T10:00:00.000Z',
+      '2030-07-02T10:00:00.000Z',
+      '2030-07-16T10:00:00.000Z',
+    ]);
+
+    await agent
+      .patch(`/api/lessons/${before.body[0].id}`)
+      .send({ startUtc: '2030-06-06T10:00:00.000Z', moveSeries: true })
+      .expect(200);
+
+    const after = await agent.get('/api/lessons').query(range).expect(200);
+    expect(after.body.map((l: { startUtc: string }) => l.startUtc)).toEqual([
+      '2030-06-06T10:00:00.000Z',
+      '2030-06-20T10:00:00.000Z',
+      '2030-07-04T10:00:00.000Z',
+      '2030-07-18T10:00:00.000Z',
+    ]);
+
+    const schedules = await agent.get('/api/recurring-schedules').expect(200);
+    expect(schedules.body[0]).toMatchObject({
+      weekdays: [3],
+      intervalWeeks: 2,
+      startDate: '2030-06-06',
+      endDate: '2030-07-18',
+    });
+  });
+
+  it('moves from a middle occurrence onward and keeps earlier lessons', async () => {
+    const { agent } = await registerTutor(app);
+    const studentId = await createStudent(agent);
+
+    await agent
+      .post('/api/recurring-schedules')
+      .send({
+        studentId,
+        weekdays: [1],
+        startMinutes: 600,
+        academicUnits: 1,
+        startDate: '2030-06-04',
+        endDate: '2030-06-25',
+      })
+      .expect(201);
+
+    const range = { from: '2030-06-01T00:00:00.000Z', to: '2030-07-01T00:00:00.000Z' };
+    const before = await agent.get('/api/lessons').query(range).expect(200);
+    const anchor = before.body[1];
+
+    await agent
+      .patch(`/api/lessons/${anchor.id}`)
+      .send({ startUtc: '2030-06-13T10:00:00.000Z', moveSeries: true })
+      .expect(200);
+
+    const after = await agent.get('/api/lessons').query(range).expect(200);
+    expect(after.body.map((l: { startUtc: string }) => l.startUtc)).toEqual([
+      '2030-06-04T10:00:00.000Z',
+      '2030-06-13T10:00:00.000Z',
+      '2030-06-20T10:00:00.000Z',
+      '2030-06-27T10:00:00.000Z',
+    ]);
+
+    const schedules = await agent.get('/api/recurring-schedules').expect(200);
+    expect(schedules.body[0]).toMatchObject({
+      weekdays: [3],
+      startDate: '2030-06-13',
+      endDate: '2030-06-27',
+    });
+  });
+
+  it('does not change other lessons or the series template without moveSeries', async () => {
+    const { agent } = await registerTutor(app);
+    const studentId = await createStudent(agent);
+
+    await agent
+      .post('/api/recurring-schedules')
+      .send({
+        studentId,
+        weekdays: [1],
+        startMinutes: 600,
+        academicUnits: 1,
+        startDate: '2030-06-04',
+        endDate: '2030-06-25',
+      })
+      .expect(201);
+
+    const range = { from: '2030-06-01T00:00:00.000Z', to: '2030-07-01T00:00:00.000Z' };
+    const before = await agent.get('/api/lessons').query(range).expect(200);
+    const target = before.body[0];
+    const newStartUtc = '2030-06-04T12:00:00.000Z';
+
+    await agent.patch(`/api/lessons/${target.id}`).send({ startUtc: newStartUtc }).expect(200);
+
+    const after = await agent.get('/api/lessons').query(range).expect(200);
+    expect(after.body).toHaveLength(4);
+    expect(after.body.some((l: { startUtc: string }) => l.startUtc === target.startUtc)).toBe(false);
+    expect(
+      after.body.some((l: { id: string; startUtc: string }) => l.id === target.id && l.startUtc === newStartUtc),
+    ).toBe(true);
+    expect(after.body.map((l: { startUtc: string }) => l.startUtc).sort()).toEqual(
+      [newStartUtc, '2030-06-11T10:00:00.000Z', '2030-06-18T10:00:00.000Z', '2030-06-25T10:00:00.000Z'].sort(),
+    );
+
+    const schedules = await agent.get('/api/recurring-schedules').expect(200);
+    expect(schedules.body[0]).toMatchObject({
+      weekdays: [1],
+      startMinutes: 600,
+      startDate: '2030-06-04',
+    });
+  });
+
+  it('does not rematerialize a deleted occurrence after moving the series', async () => {
+    const { agent } = await registerTutor(app);
+    const studentId = await createStudent(agent);
+
+    await agent
+      .post('/api/recurring-schedules')
+      .send({
+        studentId,
+        weekdays: [1],
+        startMinutes: 600,
+        academicUnits: 1,
+        startDate: '2030-06-04',
+        endDate: '2030-06-25',
+      })
+      .expect(201);
+
+    const range = { from: '2030-06-01T00:00:00.000Z', to: '2030-07-01T00:00:00.000Z' };
+    const before = await agent.get('/api/lessons').query(range).expect(200);
+    const deleted = before.body[2];
+    await agent.delete(`/api/lessons/${deleted.id}`).expect(204);
+
+    await agent
+      .patch(`/api/lessons/${before.body[0].id}`)
+      .send({ startUtc: '2030-06-06T10:00:00.000Z', moveSeries: true })
+      .expect(200);
+
+    const after = await agent.get('/api/lessons').query(range).expect(200);
+    expect(after.body.map((l: { startUtc: string }) => l.startUtc)).toEqual([
+      '2030-06-06T10:00:00.000Z',
+      '2030-06-13T10:00:00.000Z',
+      '2030-06-27T10:00:00.000Z',
+    ]);
+    expect(after.body.some((l: { startUtc: string }) => l.startUtc === '2030-06-20T10:00:00.000Z')).toBe(
+      false,
+    );
+  });
+
+  it('rejects moveSeries on a lesson that is not in a series', async () => {
+    const { agent } = await registerTutor(app);
+    const studentId = await createStudent(agent);
+
+    const lesson = await agent
+      .post('/api/lessons')
+      .send({
+        studentId,
+        startUtc: '2030-06-04T10:00:00.000Z',
+        durationMin: 60,
+      })
+      .expect(201);
+
+    const res = await agent
+      .patch(`/api/lessons/${lesson.body.id}`)
+      .send({ startUtc: '2030-06-05T10:00:00.000Z', moveSeries: true })
+      .expect(400);
+    expect(res.body.error.code).toBe('VALIDATION');
+  });
+
+  it('splits one weekday out of a multi-weekday series and leaves the others', async () => {
+    const { agent } = await registerTutor(app);
+    const studentId = await createStudent(agent);
+
+    const created = await agent
+      .post('/api/recurring-schedules')
+      .send({
+        studentId,
+        weekdays: [0, 3],
+        startMinutes: 360,
+        academicUnits: 1,
+        startDate: '2030-06-03',
+        endDate: '2030-06-27',
+      })
+      .expect(201);
+
+    const range = { from: '2030-06-01T00:00:00.000Z', to: '2030-07-01T00:00:00.000Z' };
+    const before = await agent.get('/api/lessons').query(range).expect(200);
+    const thursday = before.body.find(
+      (l: { startUtc: string }) => l.startUtc === '2030-06-06T06:00:00.000Z',
+    );
+    expect(thursday).toBeDefined();
+
+    const patched = await agent
+      .patch(`/api/lessons/${thursday.id}`)
+      .send({ startUtc: '2030-06-06T08:00:00.000Z', moveSeries: true })
+      .expect(200);
+
+    const after = await agent.get('/api/lessons').query(range).expect(200);
+    expect(after.body.map((l: { startUtc: string }) => l.startUtc)).toEqual([
+      '2030-06-03T06:00:00.000Z',
+      '2030-06-06T08:00:00.000Z',
+      '2030-06-10T06:00:00.000Z',
+      '2030-06-13T08:00:00.000Z',
+      '2030-06-17T06:00:00.000Z',
+      '2030-06-20T08:00:00.000Z',
+      '2030-06-24T06:00:00.000Z',
+      '2030-06-27T08:00:00.000Z',
+    ]);
+
+    const mondayLessons = after.body.filter((l: { startUtc: string }) =>
+      l.startUtc.endsWith('T06:00:00.000Z'),
+    );
+    const thursdayLessons = after.body.filter((l: { startUtc: string }) =>
+      l.startUtc.endsWith('T08:00:00.000Z'),
+    );
+    expect(mondayLessons.every((l: { recurringScheduleId: string }) => l.recurringScheduleId === created.body.id)).toBe(
+      true,
+    );
+    expect(
+      thursdayLessons.every((l: { recurringScheduleId: string }) => l.recurringScheduleId === patched.body.recurringScheduleId),
+    ).toBe(true);
+    expect(patched.body.recurringScheduleId).not.toBe(created.body.id);
+
+    const schedules = await agent.get('/api/recurring-schedules').expect(200);
+    expect(schedules.body).toHaveLength(2);
+    expect(schedules.body.find((s: { id: string }) => s.id === created.body.id)).toMatchObject({
+      weekdays: [0],
+      startMinutes: 360,
+      startDate: '2030-06-03',
+    });
+    expect(
+      schedules.body.find((s: { id: string }) => s.id === patched.body.recurringScheduleId),
+    ).toMatchObject({
+      weekdays: [3],
+      startMinutes: 480,
+      startDate: '2030-06-06',
+      endDate: '2030-06-27',
+    });
+  });
+
+  it('keeps earlier occurrences of the split weekday on the original series', async () => {
+    const { agent } = await registerTutor(app);
+    const studentId = await createStudent(agent);
+
+    const created = await agent
+      .post('/api/recurring-schedules')
+      .send({
+        studentId,
+        weekdays: [0, 3],
+        startMinutes: 360,
+        academicUnits: 1,
+        startDate: '2030-06-03',
+        endDate: '2030-06-27',
+      })
+      .expect(201);
+
+    const range = { from: '2030-06-01T00:00:00.000Z', to: '2030-07-01T00:00:00.000Z' };
+    const before = await agent.get('/api/lessons').query(range).expect(200);
+    const laterThursday = before.body.find(
+      (l: { startUtc: string }) => l.startUtc === '2030-06-13T06:00:00.000Z',
+    );
+    expect(laterThursday).toBeDefined();
+
+    await agent
+      .patch(`/api/lessons/${laterThursday.id}`)
+      .send({ startUtc: '2030-06-13T08:00:00.000Z', moveSeries: true })
+      .expect(200);
+
+    const after = await agent.get('/api/lessons').query(range).expect(200);
+    expect(after.body.map((l: { startUtc: string }) => l.startUtc)).toEqual([
+      '2030-06-03T06:00:00.000Z',
+      '2030-06-06T06:00:00.000Z',
+      '2030-06-10T06:00:00.000Z',
+      '2030-06-13T08:00:00.000Z',
+      '2030-06-17T06:00:00.000Z',
+      '2030-06-20T08:00:00.000Z',
+      '2030-06-24T06:00:00.000Z',
+      '2030-06-27T08:00:00.000Z',
+    ]);
+    const keptThursday = after.body.find(
+      (l: { startUtc: string }) => l.startUtc === '2030-06-06T06:00:00.000Z',
+    );
+    expect(keptThursday.recurringScheduleId).toBe(created.body.id);
+  });
+
+  it('splits only the dragged weekday when it also changes day', async () => {
+    const { agent } = await registerTutor(app);
+    const studentId = await createStudent(agent);
+
+    const created = await agent
+      .post('/api/recurring-schedules')
+      .send({
+        studentId,
+        weekdays: [0, 2],
+        startMinutes: 600,
+        academicUnits: 1,
+        startDate: '2030-06-03',
+        endDate: '2030-06-19',
+      })
+      .expect(201);
+
+    const range = { from: '2030-06-01T00:00:00.000Z', to: '2030-07-01T00:00:00.000Z' };
+    const before = await agent.get('/api/lessons').query(range).expect(200);
+    const monday = before.body.find((l: { startUtc: string }) => l.startUtc === '2030-06-03T10:00:00.000Z');
+    expect(monday).toBeDefined();
+
+    await agent
+      .patch(`/api/lessons/${monday.id}`)
+      .send({ startUtc: '2030-06-04T10:00:00.000Z', moveSeries: true })
+      .expect(200);
+
+    const after = await agent.get('/api/lessons').query(range).expect(200);
+    expect(after.body.map((l: { startUtc: string }) => l.startUtc)).toEqual([
+      '2030-06-04T10:00:00.000Z',
+      '2030-06-05T10:00:00.000Z',
+      '2030-06-11T10:00:00.000Z',
+      '2030-06-12T10:00:00.000Z',
+      '2030-06-18T10:00:00.000Z',
+      '2030-06-19T10:00:00.000Z',
+    ]);
+
+    const schedules = await agent.get('/api/recurring-schedules').expect(200);
+    expect(schedules.body).toHaveLength(2);
+    expect(schedules.body.find((s: { id: string }) => s.id === created.body.id)).toMatchObject({
+      weekdays: [2],
+      startMinutes: 600,
+      startDate: '2030-06-03',
+    });
+    expect(schedules.body.find((s: { weekdays: number[] }) => s.weekdays[0] === 1)).toMatchObject({
+      weekdays: [1],
+      startMinutes: 600,
+      startDate: '2030-06-04',
+    });
+  });
+
+  it('keeps a Moscow overnight slot on the same local weekday after a series move', async () => {
+    const { agent } = await registerTutor(app, { timezone: 'Europe/Moscow' });
+    const studentId = await createStudent(agent);
+
+    await agent
+      .post('/api/recurring-schedules')
+      .send({
+        studentId,
+        weekdays: [1],
+        startMinutes: 60,
+        academicUnits: 1,
+        startDate: '2030-06-04',
+        endDate: '2030-06-18',
+      })
+      .expect(201);
+
+    const range = { from: '2030-06-01T00:00:00.000Z', to: '2030-07-01T00:00:00.000Z' };
+    const before = await agent.get('/api/lessons').query(range).expect(200);
+    expect(before.body[0].startUtc).toBe('2030-06-03T22:00:00.000Z');
+
+    await agent
+      .patch(`/api/lessons/${before.body[0].id}`)
+      .send({ startUtc: '2030-06-03T23:00:00.000Z', moveSeries: true })
+      .expect(200);
+
+    const after = await agent.get('/api/lessons').query(range).expect(200);
+    expect(after.body.map((l: { startUtc: string }) => l.startUtc)).toEqual([
+      '2030-06-03T23:00:00.000Z',
+      '2030-06-10T23:00:00.000Z',
+      '2030-06-17T23:00:00.000Z',
+    ]);
+
+    const schedules = await agent.get('/api/recurring-schedules').expect(200);
+    expect(schedules.body[0]).toMatchObject({
+      weekdays: [1],
+      startMinutes: 120,
+      startDate: '2030-06-04',
+    });
+  });
+
   it('deletes series from anchor lesson onward and keeps earlier occurrences', async () => {
     const { agent } = await registerTutor(app);
     const studentId = await createStudent(agent);

@@ -59,6 +59,7 @@ func TestFormatSchedule_interleavesPersonalEvents(t *testing.T) {
 			DurationMin: 45,
 		}},
 	}, time.Time{}, false)
+	assert.Contains(t, text, "| День | События |")
 	assert.Contains(t, text, "Yoga")
 	assert.Contains(t, text, "Здоровье")
 	assert.Contains(t, text, "Leo")
@@ -68,6 +69,21 @@ func TestFormatSchedule_interleavesPersonalEvents(t *testing.T) {
 	yogaIdx := strings.Index(text, "Yoga")
 	leoIdx := strings.Index(text, "Leo")
 	assert.Greater(t, leoIdx, yogaIdx)
+}
+
+func TestFormatSchedule_groupsEventsByDay(t *testing.T) {
+	b := &Bot{}
+	text := b.formatSchedule("На неделю", tutorapi.Schedule{
+		Timezone: "UTC",
+		Lessons: []tutorapi.Lesson{
+			{StartUTC: "2026-07-20T10:00:00Z", StudentName: "Leo"},
+			{StartUTC: "2026-07-21T11:00:00Z", StudentName: "Anna"},
+		},
+	}, time.Time{}, false)
+	assert.Contains(t, text, "| День | События |")
+	assert.Contains(t, text, "Mon 20.07")
+	assert.Contains(t, text, "Tue 21.07")
+	assert.Greater(t, strings.Index(text, "Tue 21.07"), strings.Index(text, "Mon 20.07"))
 }
 
 func TestFormatSchedule_splitsTodayAroundNow(t *testing.T) {
@@ -169,6 +185,7 @@ func TestFormatLessonReschedule_tutorAndStudent(t *testing.T) {
 	assert.Contains(t, tutorText, "**Leo**")
 	assert.Contains(t, tutorText, "без списания")
 	assert.Contains(t, tutorText, "tg://time?unix=")
+	assert.NotContains(t, tutorText, "последующие")
 
 	charged := move
 	charged.Charged = true
@@ -178,9 +195,33 @@ func TestFormatLessonReschedule_tutorAndStudent(t *testing.T) {
 	assert.NotContains(t, studentText, "**Leo**")
 }
 
-func TestFormatLessonLine_usesTimezone(t *testing.T) {
+func TestFormatLessonReschedule_seriesSameTimeAndSplitTimes(t *testing.T) {
 	b := &Bot{}
-	line := b.formatLessonLine(tutorapi.Lesson{
+	sameTime := tutorapi.LessonReschedule{
+		FromStartUTC: "2026-09-12T15:00:00.000Z",
+		ToStartUTC:   "2026-09-12T15:00:00.000Z",
+		StudentName:  "Leo",
+		Series: []tutorapi.LessonRescheduleSlot{{
+			Weekdays:     []int{0, 3},
+			StartMinutes: 1080,
+		}},
+	}
+	sameText := b.formatLessonReschedule(sameTime, "UTC", false)
+	assert.Contains(t, sameText, "Все последующие уроки будут проходить по Пн и Чт в 18:00")
+
+	split := sameTime
+	split.Series = []tutorapi.LessonRescheduleSlot{
+		{Weekdays: []int{0}, StartMinutes: 1140},
+		{Weekdays: []int{3}, StartMinutes: 1080},
+	}
+	splitText := b.formatLessonReschedule(split, "UTC", true)
+	assert.Contains(t, splitText, "Все последующие уроки будут проходить по Пн в 19:00 и Чт в 18:00")
+	assert.NotContains(t, splitText, "**Leo**")
+}
+
+func TestFormatLessonCell_usesTimezone(t *testing.T) {
+	b := &Bot{}
+	line := b.formatLessonCell(tutorapi.Lesson{
 		StartUTC:    "2026-07-20T14:00:00Z",
 		StudentName: "Ivan",
 		Status:      "planned",
@@ -192,6 +233,34 @@ func TestFormatLessonLine_usesTimezone(t *testing.T) {
 	assert.NotContains(t, line, "оплачен")
 	assert.NotContains(t, line, "мин")
 	assert.NotContains(t, line, "запланирован")
+	assert.NotContains(t, line, "Mon")
+}
+
+func TestFormatLessonCell_cancelledStaysInTable(t *testing.T) {
+	b := &Bot{}
+	line := b.formatLessonCell(tutorapi.Lesson{
+		StartUTC:    "2026-07-20T14:00:00Z",
+		StudentName: "Ivan",
+		Status:      "cancelled",
+	}, "UTC")
+	assert.True(t, strings.HasPrefix(line, "~~"))
+	assert.Contains(t, line, "Ivan")
+
+	text := b.formatSchedule("На сегодня", tutorapi.Schedule{
+		Timezone: "UTC",
+		Lessons: []tutorapi.Lesson{
+			{StartUTC: "2026-07-20T10:00:00Z", StudentName: "Anna", Status: "planned"},
+			{StartUTC: "2026-07-20T11:00:00Z", StudentName: "Ivan", Status: "cancelled"},
+			{StartUTC: "2026-07-20T12:00:00Z", StudentName: "Leo", Status: "planned"},
+		},
+	}, time.Time{}, false)
+	assert.Contains(t, text, "| День | События |")
+	assert.Contains(t, text, "~~")
+	anna := strings.Index(text, "Anna")
+	ivan := strings.Index(text, "Ivan")
+	leo := strings.Index(text, "Leo")
+	require.Greater(t, ivan, anna)
+	require.Greater(t, leo, ivan)
 }
 
 func TestMdDateTime_usesUnixAndTutorLabel(t *testing.T) {
@@ -275,6 +344,7 @@ func TestFormatDebts_onlyNegativeSortedByLargest(t *testing.T) {
 	assert.Contains(t, text, "| Dina | −2 ур. |")
 	assert.Contains(t, text, "| Cira | −19.00 EUR |")
 	assert.Contains(t, text, "| Boris | −4.00 EUR |")
+	assert.Contains(t, text, "| **Итого** | **−73.00 EUR** |")
 }
 
 func TestFormatDebts_empty(t *testing.T) {

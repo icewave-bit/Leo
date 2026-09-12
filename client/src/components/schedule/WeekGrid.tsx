@@ -12,6 +12,7 @@ import {
 import { nowTimeLinePrefsAtom } from '../../atoms/nowTimeIndicator';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { LessonBalanceConfirmOptions } from '../LessonBalanceConfirmOptions';
+import { LessonRescheduleSeriesOptions } from '../LessonRescheduleSeriesOptions';
 import { findBillingPayer } from '../../utils/billingStudent';
 import {
   WG_DAY_HOURS,
@@ -37,6 +38,7 @@ import {
   layoutDayTimedItems,
   weekGridLessonLayoutClass,
   weekGridLessonPositionStyle,
+  weekGridOverlapAxis,
   type WeekGridLessonLayout,
 } from '../../utils/weekGridLayout';
 import {
@@ -95,10 +97,16 @@ function LessonEvent({
   onPointerDown?: (e: React.PointerEvent) => void;
   onClick?: () => void;
 }) {
-  const top = start * pxPerHour;
-  const height = lesson.dur * pxPerHour - 4;
+  const axis = weekGridOverlapAxis(compact);
+  const pos = weekGridLessonPositionStyle(layout, {
+    start,
+    dur: lesson.dur,
+    pxPerHour,
+    axis,
+  });
+  const height = typeof pos.height === 'number' ? pos.height : 0;
   const tight = height < pxPerHour * 0.72;
-  const colsClass = weekGridLessonLayoutClass(layout);
+  const colsClass = weekGridLessonLayoutClass(layout, axis);
 
   return (
     <button
@@ -110,10 +118,8 @@ function LessonEvent({
         (colsClass ? ` ${colsClass}` : '')
       }
       style={{
-        top,
-        height,
         ...lessonCardVars(student),
-        ...weekGridLessonPositionStyle(layout),
+        ...pos,
       }}
       title={
         `${student.name} · ${lessonEventLabel(lesson)}` +
@@ -160,7 +166,12 @@ export function WeekGrid({
   onSelect: (id: string) => void;
   onSelectPersonal: (id: string) => void;
   onSlotClick: (day: number, startHour: number, anchorEl: HTMLElement) => void;
-  onReschedule: (id: string, day: number, start: number) => Promise<void>;
+  onReschedule: (
+    id: string,
+    day: number,
+    start: number,
+    opts?: { restoreBalance?: boolean; moveSeries?: boolean },
+  ) => Promise<void>;
   onReschedulePersonal: (id: string, day: number, start: number) => Promise<void>;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -236,9 +247,12 @@ export function WeekGrid({
     rescheduling,
     rescheduleDescription,
     pendingStudent,
+    pendingSeries,
     needsBalanceConfirm,
     restoreBalance,
     setRestoreBalance,
+    moveSeries,
+    setMoveSeries,
     onPointerDown,
     onLessonClick,
     confirmReschedule,
@@ -357,6 +371,12 @@ export function WeekGrid({
         onConfirm={() => void confirmReschedule()}
         onCancel={cancelReschedule}
       >
+        {pendingSeries ? (
+          <LessonRescheduleSeriesOptions
+            moveSeries={moveSeries}
+            onMoveSeriesChange={setMoveSeries}
+          />
+        ) : null}
         {needsBalanceConfirm && pending && pendingStudent && pendingWallet ? (
           <LessonBalanceConfirmOptions
             walletBalanceKind={pendingWallet.balanceKind}

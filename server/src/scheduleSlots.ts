@@ -76,6 +76,19 @@ export function addDaysToDateOnly(isoDate: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+export function dateOnlyDiffDays(from: string, to: string): number {
+  const a = parseDateOnly(from);
+  const b = parseDateOnly(to);
+  const fromUtc = Date.UTC(a.year, a.month - 1, a.day);
+  const toUtc = Date.UTC(b.year, b.month - 1, b.day);
+  return Math.round((toUtc - fromUtc) / 86_400_000);
+}
+
+export function localStartMinutes(date: Date, tz: string): number {
+  const p = zonedParts(date, tz);
+  return p.hour * 60 + p.minute;
+}
+
 /** Local wall-clock Y-M-D H:M in `timezone` → UTC Date. */
 export function wallClockToUtc(
   year: number,

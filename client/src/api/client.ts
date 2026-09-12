@@ -134,6 +134,7 @@ export const api = {
     id: string,
     body: Partial<Pick<Lesson, 'status' | 'paid' | 'notes' | 'startUtc'>> & {
       restoreBalance?: boolean;
+      moveSeries?: boolean;
     },
   ) => request<Lesson>(`/api/lessons/${id}`, { method: 'PATCH', json: body }),
   deleteLesson: (id: string, opts?: { restoreBalance?: boolean }) => {

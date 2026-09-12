@@ -42,7 +42,7 @@ export function useWeekGridDrag(opts: {
     id: string,
     day: number,
     start: number,
-    opts?: { restoreBalance?: boolean },
+    opts?: { restoreBalance?: boolean; moveSeries?: boolean },
   ) => Promise<void>;
   getStudent: (id: string) => ViewStudent | undefined;
   daysFull: readonly string[];
@@ -74,6 +74,7 @@ export function useWeekGridDrag(opts: {
   const [pending, setPending] = useState<PendingReschedule | null>(null);
   const [rescheduling, setRescheduling] = useState(false);
   const [restoreBalance, setRestoreBalance] = useState(true);
+  const [moveSeries, setMoveSeries] = useState(false);
 
   const endDrag = useCallback(() => {
     sessionRef.current = null;
@@ -184,6 +185,7 @@ export function useWeekGridDrag(opts: {
         if (!sameLessonSlot(session.origin, slot)) {
           const lesson = session.lesson;
           setRestoreBalance(lesson.balanceCharged);
+          setMoveSeries(false);
           setPending({
             lesson,
             studentName: studentName(lesson.studentId) ?? 'Ученик',
@@ -230,22 +232,25 @@ export function useWeekGridDrag(opts: {
     ? isLessonPast(pending.lesson.startUtc, pending.lesson.durationMin)
     : false;
   const pendingStudent = pending ? getStudent(pending.lesson.studentId) : undefined;
+  const pendingSeries = Boolean(pending?.lesson.recurringScheduleId);
 
   const confirmReschedule = useCallback(async () => {
     if (!pending) return;
     setRescheduling(true);
     try {
-      await onReschedule(
-        pending.lesson.id,
-        pending.to.day,
-        pending.to.start,
-        needsBalanceConfirm ? { restoreBalance } : undefined,
-      );
+      const opts =
+        needsBalanceConfirm || moveSeries
+          ? {
+              ...(needsBalanceConfirm ? { restoreBalance } : {}),
+              ...(moveSeries ? { moveSeries: true } : {}),
+            }
+          : undefined;
+      await onReschedule(pending.lesson.id, pending.to.day, pending.to.start, opts);
       setPending(null);
     } finally {
       setRescheduling(false);
     }
-  }, [needsBalanceConfirm, onReschedule, pending, restoreBalance]);
+  }, [moveSeries, needsBalanceConfirm, onReschedule, pending, restoreBalance]);
 
   const cancelReschedule = useCallback(() => {
     if (!rescheduling) setPending(null);
@@ -261,9 +266,12 @@ export function useWeekGridDrag(opts: {
     preview,
     pending,
     pendingStudent,
+    pendingSeries,
     needsBalanceConfirm,
     restoreBalance,
     setRestoreBalance,
+    moveSeries,
+    setMoveSeries,
     rescheduling,
     rescheduleDescription,
     onPointerDown,

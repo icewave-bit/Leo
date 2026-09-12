@@ -87,6 +87,7 @@ type mockMonitor struct {
 	studentBalance  *tutorapi.StudentBalance
 	openSlots       *tutorapi.OpenSlots
 	openSlotsOffset []int
+	weekOffset      []int
 	telegramNotify  *tutorapi.TelegramNotify
 	registerIn      tutorapi.StudentRegisterInput
 }
@@ -139,8 +140,9 @@ func (m *mockMonitor) Tomorrow(_ context.Context, telegramUserID int64) (tutorap
 	return m.Today(context.Background(), telegramUserID)
 }
 
-func (m *mockMonitor) Week(_ context.Context, telegramUserID int64) (tutorapi.Schedule, error) {
-	return m.Today(context.Background(), telegramUserID)
+func (m *mockMonitor) Week(_ context.Context, _ int64, weekOffset int) (tutorapi.Schedule, error) {
+	m.weekOffset = append(m.weekOffset, weekOffset)
+	return m.Today(context.Background(), 0)
 }
 
 func (m *mockMonitor) OpenSlots(_ context.Context, _ int64, weekOffset int) (tutorapi.OpenSlots, error) {
@@ -205,7 +207,8 @@ func (m *mockMonitor) StudentMe(_ context.Context, _ int64) (tutorapi.BotStudent
 	return tutorapi.BotStudent{}, &tutorapi.Error{Code: "TELEGRAM_NOT_LINKED", Message: "not linked", Status: 403}
 }
 
-func (m *mockMonitor) StudentWeek(ctx context.Context, telegramUserID int64) (tutorapi.Schedule, error) {
+func (m *mockMonitor) StudentWeek(ctx context.Context, telegramUserID int64, weekOffset int) (tutorapi.Schedule, error) {
+	m.weekOffset = append(m.weekOffset, weekOffset)
 	return m.StudentToday(ctx, telegramUserID)
 }
 
@@ -506,6 +509,66 @@ func TestHandleCallback_slotsThisWeek(t *testing.T) {
 	assert.Equal(t, []string{"cb1"}, msg.answered)
 }
 
+func TestHandleUpdate_week_asksWhichWeek(t *testing.T) {
+	msg := &mockMessenger{}
+	b := newTestBot(msg, &mockMonitor{})
+
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		Message: &models.Message{
+			Text: btnWeek,
+			Chat: models.Chat{ID: 7},
+			From: &models.User{ID: 1},
+		},
+	}))
+
+	out := msg.messages()[0]
+	assert.Contains(t, out.RichMessage.Markdown, "Какую неделю")
+	kb, ok := out.ReplyMarkup.(*models.InlineKeyboardMarkup)
+	require.True(t, ok)
+	assert.Equal(t, "week:0", kb.InlineKeyboard[0][0].CallbackData)
+	assert.Equal(t, "week:1", kb.InlineKeyboard[0][1].CallbackData)
+}
+
+func TestHandleCallback_weekThisWeek(t *testing.T) {
+	msg := &mockMessenger{}
+	mon := &mockMonitor{
+		today: tutorapi.Schedule{
+			Timezone: "UTC",
+			Lessons: []tutorapi.Lesson{{
+				StartUTC:    "2026-07-20T10:00:00Z",
+				StudentName: "Leo",
+				Status:      "planned",
+			}},
+		},
+	}
+	b := newTestBot(msg, mon)
+
+	require.NoError(t, b.handleUpdate(context.Background(), &models.Update{
+		CallbackQuery: &models.CallbackQuery{
+			ID:   "cbw",
+			From: models.User{ID: 1},
+			Data: "week:1",
+			Message: models.MaybeInaccessibleMessage{
+				Type: models.MaybeInaccessibleMessageTypeMessage,
+				Message: &models.Message{
+					ID:   9,
+					Chat: models.Chat{ID: 7},
+				},
+			},
+		},
+	}))
+
+	require.Equal(t, []int{1}, mon.weekOffset)
+	require.Len(t, msg.edits(), 1)
+	edit := msg.edits()[0]
+	assert.Contains(t, edit.RichMessage.Markdown, "следующая неделя")
+	assert.Contains(t, edit.RichMessage.Markdown, "Leo")
+	kb, ok := edit.ReplyMarkup.(*models.InlineKeyboardMarkup)
+	require.True(t, ok)
+	assert.Equal(t, cbWeekPick, kb.InlineKeyboard[0][0].CallbackData)
+	assert.Equal(t, "week:0", kb.InlineKeyboard[0][1].CallbackData)
+}
+
 func TestHandleCallback_slotsNextWeekThenBack(t *testing.T) {
 	msg := &mockMessenger{}
 	mon := &mockMonitor{openSlots: &tutorapi.OpenSlots{Timezone: "UTC"}}
@@ -759,10 +822,12 @@ func TestHandleUpdate_studentWeek(t *testing.T) {
 	}))
 
 	out := msg.messages()[0]
-	assert.Contains(t, out.RichMessage.Markdown, "Уроки на неделю")
-	assert.NotContains(t, out.RichMessage.Markdown, "запланирован")
-	assert.NotContains(t, out.RichMessage.Markdown, "оплачен")
-	assert.NotContains(t, out.RichMessage.Markdown, "— Leo")
+	assert.Contains(t, out.RichMessage.Markdown, "Какую неделю")
+	assert.NotContains(t, out.RichMessage.Markdown, "14:00")
+	kb, ok := out.ReplyMarkup.(*models.InlineKeyboardMarkup)
+	require.True(t, ok)
+	assert.Equal(t, "week:0", kb.InlineKeyboard[0][0].CallbackData)
+	assert.Equal(t, "week:1", kb.InlineKeyboard[0][1].CallbackData)
 }
 
 func TestRun_stopsOnContextCancel(t *testing.T) {

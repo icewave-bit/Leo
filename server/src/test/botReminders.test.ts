@@ -441,13 +441,7 @@ describe('bot due reminders', () => {
     const reminders = await listDueReminders(new Date());
     const lessonReminders = reminders.filter((r) => r.kind === 'lesson');
     const reschedules = reminders.filter((r) => r.kind === 'reschedule');
-    expect(lessonReminders).toHaveLength(1);
-    expect(lessonReminders[0]).toMatchObject({
-      kind: 'lesson',
-      telegramUserId: 424301,
-      role: 'tutor',
-      lesson: { id: lesson.body.id, status: 'planned' },
-    });
+    expect(lessonReminders).toEqual([]);
     expect(reschedules).toHaveLength(1);
     expect(reschedules[0]).toMatchObject({
       kind: 'reschedule',
@@ -456,13 +450,14 @@ describe('bot due reminders', () => {
       reschedule: {
         lessonId: lesson.body.id,
         charged: false,
+        meetUrl: 'https://meet.google.com/abc-defg-hij',
       },
     });
     expect(reschedules[0]?.reschedule?.fromStartUtc).toBe(listed.body[0].startUtc);
     expect(reschedules[0]?.reschedule?.toStartUtc).toBe(patched.body.startUtc);
   });
 
-  it('returns a reminder again after startUtc changes inside the lead window', async () => {
+  it('treats a reschedule inside 30 minutes as the lesson reminder', async () => {
     const { agent } = await registerTutor(app, { timezone: 'UTC' });
     await linkTelegram(agent, app, '424302');
     const student = await createStudent(agent);
@@ -484,9 +479,40 @@ describe('bot due reminders', () => {
       .expect(200);
 
     const reminders = await listDueReminders(new Date());
+    expect(reminders.filter((r) => r.kind === 'lesson')).toEqual([]);
+    expect(reminders.filter((r) => r.kind === 'reschedule')).toHaveLength(1);
+    expect(reminders.filter((r) => r.kind === 'reschedule')[0]?.reschedule).toMatchObject({
+      lessonId: lesson.body.id,
+      meetUrl: 'https://meet.google.com/abc-defg-hij',
+    });
+  });
+
+  it('still returns a lesson reminder after a reschedule outside the 30-minute join window', async () => {
+    const { agent } = await registerTutor(app, { timezone: 'UTC' });
+    await linkTelegram(agent, app, '424307');
+    await agent.patch('/api/auth/me').send({ telegramNotify: { leadMinutes: 60 } }).expect(200);
+    const student = await createStudent(agent);
+    const startUtc = new Date(Date.now() + 50 * 60_000).toISOString();
+    const lesson = await agent
+      .post('/api/lessons')
+      .send({ studentId: student.id, startUtc, durationMin: 60 })
+      .expect(201);
+
+    await markRemindersSent([
+      { telegramUserId: 424307, kind: 'lesson', entityId: lesson.body.id },
+    ]);
+    expect(await listDueReminders(new Date())).toEqual([]);
+
+    const movedStart = new Date(Date.now() + 45 * 60_000).toISOString();
+    await agent.patch(`/api/lessons/${lesson.body.id}`).send({ startUtc: movedStart }).expect(200);
+
+    const reminders = await listDueReminders(new Date());
     expect(reminders.filter((r) => r.kind === 'lesson')).toHaveLength(1);
     expect(reminders.filter((r) => r.kind === 'lesson')[0]?.lesson?.id).toBe(lesson.body.id);
-    expect(reminders.filter((r) => r.kind === 'reschedule')).toHaveLength(1);
+    expect(reminders.filter((r) => r.kind === 'reschedule')[0]?.reschedule).toMatchObject({
+      lessonId: lesson.body.id,
+      meetUrl: null,
+    });
   });
 
   it('returns a personal reminder again after startUtc changes', async () => {
@@ -554,6 +580,7 @@ describe('bot due reminders', () => {
         toStartUtc: patched.body.startUtc,
         studentName: 'Leo',
         charged: false,
+        meetUrl: null,
       },
     });
   });
@@ -675,5 +702,90 @@ describe('bot due reminders', () => {
     expect(again.body.reminders.filter((r: { kind: string }) => r.kind === 'reschedule')).toEqual(
       [],
     );
+  });
+
+  it('queues a series reschedule notice with the remaining weekday pattern', async () => {
+    const { agent } = await registerTutor(app, { timezone: 'UTC' });
+    await linkTelegram(agent, app, '424308');
+    const student = await createStudent(agent);
+
+    await agent
+      .post('/api/recurring-schedules')
+      .send({
+        studentId: student.id,
+        weekdays: [0, 3],
+        startMinutes: 360,
+        academicUnits: 1,
+        startDate: '2030-06-03',
+        endDate: '2030-06-27',
+      })
+      .expect(201);
+
+    const listed = await agent
+      .get('/api/lessons')
+      .query({ from: '2030-06-01T00:00:00.000Z', to: '2030-07-01T00:00:00.000Z' })
+      .expect(200);
+    const thursday = listed.body.find(
+      (lesson: { startUtc: string }) => lesson.startUtc === '2030-06-06T06:00:00.000Z',
+    );
+    expect(thursday).toBeDefined();
+
+    await agent
+      .patch(`/api/lessons/${thursday.id}`)
+      .send({ startUtc: '2030-06-06T07:00:00.000Z', moveSeries: true })
+      .expect(200);
+
+    const reschedules = (await listDueReminders(new Date())).filter((r) => r.kind === 'reschedule');
+    expect(reschedules).toHaveLength(1);
+    expect(reschedules[0]).toMatchObject({
+      kind: 'reschedule',
+      telegramUserId: 424308,
+      role: 'tutor',
+      reschedule: {
+        lessonId: thursday.id,
+        fromStartUtc: thursday.startUtc,
+        toStartUtc: '2030-06-06T07:00:00.000Z',
+        meetUrl: null,
+        series: [
+          { weekdays: [0], startMinutes: 360 },
+          { weekdays: [3], startMinutes: 420 },
+        ],
+      },
+    });
+  });
+
+  it('merges remaining same-time series days after a weekday-only series move', async () => {
+    const { agent } = await registerTutor(app, { timezone: 'UTC' });
+    await linkTelegram(agent, app, '424309');
+    const student = await createStudent(agent);
+
+    await agent
+      .post('/api/recurring-schedules')
+      .send({
+        studentId: student.id,
+        weekdays: [0, 3],
+        startMinutes: 360,
+        academicUnits: 1,
+        startDate: '2030-06-03',
+        endDate: '2030-06-27',
+      })
+      .expect(201);
+
+    const listed = await agent
+      .get('/api/lessons')
+      .query({ from: '2030-06-01T00:00:00.000Z', to: '2030-07-01T00:00:00.000Z' })
+      .expect(200);
+    const monday = listed.body.find(
+      (lesson: { startUtc: string }) => lesson.startUtc === '2030-06-03T06:00:00.000Z',
+    );
+    expect(monday).toBeDefined();
+
+    await agent
+      .patch(`/api/lessons/${monday.id}`)
+      .send({ startUtc: '2030-06-04T06:00:00.000Z', moveSeries: true })
+      .expect(200);
+
+    const reschedules = (await listDueReminders(new Date())).filter((r) => r.kind === 'reschedule');
+    expect(reschedules[0]?.reschedule?.series).toEqual([{ weekdays: [1, 3], startMinutes: 360 }]);
   });
 });

@@ -97,16 +97,8 @@ func (c *Client) Tomorrow(ctx context.Context, telegramUserID int64) (Schedule, 
 	return out, nil
 }
 
-func (c *Client) Week(ctx context.Context, telegramUserID int64) (Schedule, error) {
-	var out Schedule
-	if err := c.do(ctx, httpRequest{
-		method:         http.MethodGet,
-		path:           "/api/bot/week",
-		telegramUserID: telegramUserID,
-	}, &out); err != nil {
-		return Schedule{}, err
-	}
-	return out, nil
+func (c *Client) Week(ctx context.Context, telegramUserID int64, weekOffset int) (Schedule, error) {
+	return c.fetchSchedule(ctx, "/api/bot/week", telegramUserID, weekOffset)
 }
 
 func (c *Client) OpenSlots(ctx context.Context, telegramUserID int64, weekOffset int) (OpenSlots, error) {
@@ -200,16 +192,8 @@ func (c *Client) StudentMe(ctx context.Context, telegramUserID int64) (BotStuden
 	return out.Student, nil
 }
 
-func (c *Client) StudentWeek(ctx context.Context, telegramUserID int64) (Schedule, error) {
-	var out Schedule
-	if err := c.do(ctx, httpRequest{
-		method:         http.MethodGet,
-		path:           "/api/bot/student/week",
-		telegramUserID: telegramUserID,
-	}, &out); err != nil {
-		return Schedule{}, err
-	}
-	return out, nil
+func (c *Client) StudentWeek(ctx context.Context, telegramUserID int64, weekOffset int) (Schedule, error) {
+	return c.fetchSchedule(ctx, "/api/bot/student/week", telegramUserID, weekOffset)
 }
 
 func (c *Client) StudentToday(ctx context.Context, telegramUserID int64) (Schedule, error) {
@@ -251,6 +235,19 @@ func (c *Client) fetchOpenSlots(ctx context.Context, path string, telegramUserID
 		telegramUserID: telegramUserID,
 	}, &out); err != nil {
 		return OpenSlots{}, err
+	}
+	return out, nil
+}
+
+func (c *Client) fetchSchedule(ctx context.Context, path string, telegramUserID int64, weekOffset int) (Schedule, error) {
+	var out Schedule
+	if err := c.do(ctx, httpRequest{
+		method:         http.MethodGet,
+		path:           path,
+		query:          url.Values{"weekOffset": {strconv.Itoa(weekOffset)}},
+		telegramUserID: telegramUserID,
+	}, &out); err != nil {
+		return Schedule{}, err
 	}
 	return out, nil
 }

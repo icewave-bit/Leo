@@ -78,7 +78,7 @@ export function useLessonActions() {
     id: string,
     day: number,
     start: number,
-    opts?: { restoreBalance?: boolean },
+    opts?: { restoreBalance?: boolean; moveSeries?: boolean },
   ): Promise<void> => {
     const tutor = store.get(tutorAtom);
     const weekStart = store.get(weekStartAtom);
@@ -90,6 +90,7 @@ export function useLessonActions() {
       const updated = await api.patchLesson(id, {
         startUtc,
         restoreBalance: opts?.restoreBalance,
+        moveSeries: opts?.moveSeries,
       });
       const view = lessonToView(updated, weekStart, tz);
       setLessons((prev) =>

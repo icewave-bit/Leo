@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   occurrenceDatesForSchedule,
   RECURRING_HORIZON_WEEKS,
+  shiftWeekdays,
+  weekdayIndexForDate,
 } from '../recurringSchedule.js';
 import { addDaysToDateOnly } from '../scheduleSlots.js';
 
@@ -59,5 +61,19 @@ describe('recurringSchedule', () => {
     );
     expect(dates).toHaveLength(RECURRING_HORIZON_WEEKS + 1);
     expect(dates[0]).toBe(start);
+  });
+
+  it('shifts weekdays forward, backward, and wrapping Sunday/Monday', () => {
+    expect(shiftWeekdays([1], 2)).toEqual([3]);
+    expect(shiftWeekdays([3], -2)).toEqual([1]);
+    expect(shiftWeekdays([6], 1)).toEqual([0]);
+    expect(shiftWeekdays([0], -1)).toEqual([6]);
+    expect(shiftWeekdays([0, 2], 1)).toEqual([1, 3]);
+  });
+
+  it('maps a date-only key to the tutor grid weekday', () => {
+    expect(weekdayIndexForDate('2030-06-03', 'monday')).toBe(0);
+    expect(weekdayIndexForDate('2030-06-06', 'monday')).toBe(3);
+    expect(weekdayIndexForDate('2030-06-09', 'monday')).toBe(6);
   });
 });

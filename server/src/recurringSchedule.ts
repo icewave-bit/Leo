@@ -1,8 +1,11 @@
 import type { PoolClient } from 'pg';
 import { query } from './db.js';
+import { AppError } from './errors.js';
 import {
   addDaysToDateOnly,
   dateKeyInTz,
+  dateOnlyDiffDays,
+  localStartMinutes,
   parseDateOnly,
   startOfWeekUTC,
   wallClockToUtc,
@@ -29,6 +32,10 @@ function compareDateOnly(a: string, b: string): number {
 
 export { compareDateOnly };
 
+export function shiftWeekdays(weekdays: number[], dayDelta: number): number[] {
+  return [...new Set(weekdays.map((d) => ((d + dayDelta) % 7 + 7) % 7))].sort((a, b) => a - b);
+}
+
 function weekStartForDate(startDate: string, weekStartsOn: WeekStartsOn): string {
   const [y, m, d] = startDate.split('-').map(Number);
   const anchor = new Date(Date.UTC(y!, m! - 1, d!));
@@ -37,6 +44,10 @@ function weekStartForDate(startDate: string, weekStartsOn: WeekStartsOn): string
   const month = String(ws.getUTCMonth() + 1).padStart(2, '0');
   const day = String(ws.getUTCDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+export function weekdayIndexForDate(dateKey: string, weekStartsOn: WeekStartsOn): number {
+  return dateOnlyDiffDays(weekStartForDate(dateKey, weekStartsOn), dateKey);
 }
 
 export function occurrenceDatesForSchedule(
@@ -186,6 +197,245 @@ export async function skipRecurringOccurrence(
      ON CONFLICT DO NOTHING`,
     [recurringScheduleId, iso],
   );
+}
+
+function toUtcDate(value: Date | string): Date {
+  return typeof value === 'string' ? new Date(value) : value;
+}
+
+const RECURRING_SCHEDULE_ROW = `id, tutor_id, student_id, weekdays, start_minutes, duration_min,
+            academic_units, type, notes, interval_weeks,
+            start_date::text AS start_date, end_date::text AS end_date,
+            active, created_at, updated_at`;
+
+function weekdayOfOccurrence(
+  startUtc: Date,
+  prefs: TutorSchedulePrefs,
+): number {
+  return weekdayIndexForDate(dateKeyInTz(startUtc, prefs.timezone), prefs.week_starts_on);
+}
+
+function shiftedOccurrenceUtc(
+  startUtc: Date,
+  dayDelta: number,
+  newStartMinutes: number,
+  prefs: TutorSchedulePrefs,
+): string {
+  const shiftedDate = addDaysToDateOnly(dateKeyInTz(startUtc, prefs.timezone), dayDelta);
+  return startUtcForOccurrence(shiftedDate, { start_minutes: newStartMinutes }, prefs);
+}
+
+async function fetchScheduleRow(
+  client: PoolClient,
+  id: string,
+): Promise<RecurringScheduleRow> {
+  const result = await client.query<RecurringScheduleRow>(
+    `SELECT ${RECURRING_SCHEDULE_ROW}
+     FROM recurring_schedules
+     WHERE id = $1`,
+    [id],
+  );
+  const row = result.rows[0];
+  if (!row) {
+    throw new AppError('NOT_FOUND', 404, 'Recurring schedule not found');
+  }
+  return row;
+}
+
+async function rematerializeSchedule(
+  client: PoolClient,
+  scheduleId: string,
+  prefs: TutorSchedulePrefs,
+): Promise<void> {
+  const schedule = await fetchScheduleRow(client, scheduleId);
+  const horizon = resolveMaterializeHorizon(schedule, horizonEndDateFromNow(prefs.timezone));
+  await materializeRecurringSchedule(client, schedule, prefs, horizon);
+}
+
+async function retimeLessons(
+  client: PoolClient,
+  moved: Array<{ id: string; newUtc: string }>,
+  newScheduleId?: string,
+): Promise<void> {
+  if (moved.length === 0) return;
+
+  const ids = moved.map((lesson) => lesson.id);
+  if (newScheduleId) {
+    await client.query(
+      `UPDATE lessons SET recurring_schedule_id = $1, updated_at = now() WHERE id = ANY($2::uuid[])`,
+      [newScheduleId, ids],
+    );
+  }
+  await client.query(
+    `UPDATE lessons
+     SET start_utc = start_utc + INTERVAL '50 years'
+     WHERE id = ANY($1::uuid[])`,
+    [ids],
+  );
+  for (const lesson of moved) {
+    await client.query(`UPDATE lessons SET start_utc = $1, updated_at = now() WHERE id = $2`, [
+      lesson.newUtc,
+      lesson.id,
+    ]);
+  }
+  const { clearSentRemindersForEntity } = await import('./botReminders.js');
+  for (const lesson of moved) {
+    await clearSentRemindersForEntity(client, 'lesson', lesson.id);
+  }
+}
+
+async function remapSkips(opts: {
+  client: PoolClient;
+  fromScheduleId: string;
+  toScheduleId: string;
+  oldTimes: string[];
+  newTimes: string[];
+}): Promise<void> {
+  if (opts.oldTimes.length === 0) return;
+  await opts.client.query(
+    `DELETE FROM recurring_schedule_skips
+     WHERE recurring_schedule_id = $1 AND start_utc = ANY($2::timestamptz[])`,
+    [opts.fromScheduleId, opts.oldTimes],
+  );
+  for (const skipUtc of opts.newTimes) {
+    await skipRecurringOccurrence(opts.client, opts.toScheduleId, skipUtc);
+  }
+}
+
+export async function moveRecurringSeriesFromAnchor(
+  client: PoolClient,
+  input: {
+    tutorId: string;
+    scheduleId: string;
+    anchorStartUtc: Date | string;
+    newStartUtc: Date | string;
+  },
+): Promise<void> {
+  const prefs = await getTutorSchedulePrefs(input.tutorId);
+  const tz = prefs.timezone;
+  const anchor = toUtcDate(input.anchorStartUtc);
+  const newStart = toUtcDate(input.newStartUtc);
+  const anchorIso = anchor.toISOString();
+  const dayDelta = dateOnlyDiffDays(dateKeyInTz(anchor, tz), dateKeyInTz(newStart, tz));
+  const newStartMinutes = localStartMinutes(newStart, tz);
+  const newDate = dateKeyInTz(newStart, tz);
+  const sourceWeekday = weekdayOfOccurrence(anchor, prefs);
+  const movedWeekdays = shiftWeekdays([sourceWeekday], dayDelta);
+
+  const scheduleResult = await client.query<RecurringScheduleRow>(
+    `SELECT ${RECURRING_SCHEDULE_ROW}
+     FROM recurring_schedules
+     WHERE id = $1 AND tutor_id = $2
+     FOR UPDATE`,
+    [input.scheduleId, input.tutorId],
+  );
+  const schedule = scheduleResult.rows[0];
+  if (!schedule) {
+    throw new AppError('NOT_FOUND', 404, 'Recurring schedule not found');
+  }
+
+  const leftoverWeekdays = schedule.weekdays.filter((day) => day !== sourceWeekday);
+  const nextEndDate = schedule.end_date
+    ? addDaysToDateOnly(formatDateOnly(schedule.end_date), dayDelta)
+    : null;
+
+  const lessons = await client.query<{ id: string; start_utc: Date }>(
+    `SELECT id, start_utc
+     FROM lessons
+     WHERE recurring_schedule_id = $1
+       AND tutor_id = $2
+       AND start_utc >= $3
+     FOR UPDATE`,
+    [input.scheduleId, input.tutorId, anchorIso],
+  );
+  const streamLessons = lessons.rows.filter(
+    (lesson) => weekdayOfOccurrence(lesson.start_utc, prefs) === sourceWeekday,
+  );
+  const moved = streamLessons.map((lesson) => ({
+    id: lesson.id,
+    newUtc: shiftedOccurrenceUtc(lesson.start_utc, dayDelta, newStartMinutes, prefs),
+  }));
+
+  const skips = await client.query<{ start_utc: Date }>(
+    `SELECT start_utc
+     FROM recurring_schedule_skips
+     WHERE recurring_schedule_id = $1 AND start_utc >= $2`,
+    [input.scheduleId, anchorIso],
+  );
+  const streamSkips = skips.rows.filter(
+    (row) => weekdayOfOccurrence(row.start_utc, prefs) === sourceWeekday,
+  );
+  const oldSkipTimes = streamSkips.map((row) => row.start_utc.toISOString());
+  const newSkipTimes = streamSkips.map((row) =>
+    shiftedOccurrenceUtc(row.start_utc, dayDelta, newStartMinutes, prefs),
+  );
+
+  if (leftoverWeekdays.length === 0) {
+    await retimeLessons(client, moved);
+    await remapSkips({
+      client,
+      fromScheduleId: schedule.id,
+      toScheduleId: schedule.id,
+      oldTimes: oldSkipTimes,
+      newTimes: newSkipTimes,
+    });
+    await client.query(
+      `UPDATE recurring_schedules
+       SET weekdays = $1,
+           start_minutes = $2,
+           start_date = $3,
+           end_date = $4,
+           updated_at = now()
+       WHERE id = $5 AND tutor_id = $6`,
+      [movedWeekdays, newStartMinutes, newDate, nextEndDate, input.scheduleId, input.tutorId],
+    );
+    await rematerializeSchedule(client, schedule.id, prefs);
+    return;
+  }
+
+  const inserted = await client.query<RecurringScheduleRow>(
+    `INSERT INTO recurring_schedules (
+       tutor_id, student_id, weekdays, start_minutes, duration_min, academic_units,
+       type, notes, interval_weeks, start_date, end_date, active
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     RETURNING ${RECURRING_SCHEDULE_ROW}`,
+    [
+      schedule.tutor_id,
+      schedule.student_id,
+      movedWeekdays,
+      newStartMinutes,
+      schedule.duration_min,
+      schedule.academic_units,
+      schedule.type,
+      schedule.notes,
+      schedule.interval_weeks,
+      newDate,
+      nextEndDate,
+      schedule.active,
+    ],
+  );
+  const split = inserted.rows[0];
+  if (!split) {
+    throw new AppError('NOT_FOUND', 404, 'Recurring schedule not found');
+  }
+
+  await retimeLessons(client, moved, split.id);
+  await remapSkips({
+    client,
+    fromScheduleId: schedule.id,
+    toScheduleId: split.id,
+    oldTimes: oldSkipTimes,
+    newTimes: newSkipTimes,
+  });
+  await client.query(
+    `UPDATE recurring_schedules
+     SET weekdays = $1, updated_at = now()
+     WHERE id = $2 AND tutor_id = $3`,
+    [leftoverWeekdays, schedule.id, input.tutorId],
+  );
+  await rematerializeSchedule(client, schedule.id, prefs);
+  await rematerializeSchedule(client, split.id, prefs);
 }
 
 export async function topUpRecurringSchedules(tutorId: string): Promise<void> {

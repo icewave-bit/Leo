@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { startUtcForOccurrence } from '../recurringSchedule.js';
 import {
   dateKeyInTz,
+  dateOnlyDiffDays,
   slotToStartUtc,
   weekdayIndexInWeek,
   zonedWeekOffsetRangeUtc,
@@ -48,6 +49,12 @@ describe('scheduleSlots timezone', () => {
     expect(current.from.toISOString()).toBe('2026-08-30T21:00:00.000Z');
     expect(next.from.toISOString()).toBe('2026-09-06T21:00:00.000Z');
     expect(next.to.toISOString()).toBe('2026-09-13T21:00:00.000Z');
+  });
+
+  it('counts calendar days between date-only keys including negatives', () => {
+    expect(dateOnlyDiffDays('2030-06-04', '2030-06-06')).toBe(2);
+    expect(dateOnlyDiffDays('2030-06-06', '2030-06-04')).toBe(-2);
+    expect(dateOnlyDiffDays('2030-06-04', '2030-06-04')).toBe(0);
   });
 
   it('builds recurring occurrence UTC from the local wall clock on that date', () => {

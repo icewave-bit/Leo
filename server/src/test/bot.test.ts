@@ -530,4 +530,25 @@ describe('telegram bot api', () => {
       .set('X-Telegram-User-Id', telegramUserId)
       .expect(400);
   });
+
+  it('GET /api/bot/week weekOffset shifts the returned week window', async () => {
+    const { agent } = await registerTutor(app, { timezone: 'UTC' });
+    const telegramUserId = await linkTelegram(agent, app, '555013');
+
+    const current = await request(app)
+      .get('/api/bot/week')
+      .set('Authorization', `Bearer ${botToken()}`)
+      .set('X-Telegram-User-Id', telegramUserId)
+      .expect(200);
+    const next = await request(app)
+      .get('/api/bot/week')
+      .query({ weekOffset: 1 })
+      .set('Authorization', `Bearer ${botToken()}`)
+      .set('X-Telegram-User-Id', telegramUserId)
+      .expect(200);
+
+    expect(next.body.from).not.toBe(current.body.from);
+    expect(new Date(next.body.from).getTime()).toBeGreaterThan(new Date(current.body.from).getTime());
+  });
 });
+

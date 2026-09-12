@@ -35,7 +35,8 @@ const nowSplitLabel = "— сейчас —"
 
 type scheduleItem struct {
 	startUTC string
-	line     string
+	dateKey  string
+	cell     string
 }
 
 func (b *Bot) formatSchedule(title string, schedule tutorapi.Schedule, now time.Time, splitNow bool) string {
@@ -43,13 +44,15 @@ func (b *Bot) formatSchedule(title string, schedule tutorapi.Schedule, now time.
 	for _, lesson := range schedule.Lessons {
 		items = append(items, scheduleItem{
 			startUTC: lesson.StartUTC,
-			line:     b.formatLessonLine(lesson, schedule.Timezone),
+			dateKey:  scheduleDateKey(lesson.StartUTC, schedule.Timezone),
+			cell:     b.formatLessonCell(lesson, schedule.Timezone),
 		})
 	}
 	for _, event := range schedule.Events {
 		items = append(items, scheduleItem{
 			startUTC: event.StartUTC,
-			line:     b.formatPersonalEventLine(event, schedule.Timezone),
+			dateKey:  scheduleDateKey(event.StartUTC, schedule.Timezone),
+			cell:     b.formatPersonalEventCell(event, schedule.Timezone),
 		})
 	}
 	if len(items) == 0 {
@@ -58,41 +61,63 @@ func (b *Bot) formatSchedule(title string, schedule tutorapi.Schedule, now time.
 	sort.SliceStable(items, func(i, j int) bool {
 		return items[i].startUTC < items[j].startUTC
 	})
-	return mdHeading(title) + "\n" + renderScheduleItems(items, now, splitNow)
+	return mdHeading(title) + formatScheduleTable(items, schedule.Timezone, now, splitNow)
 }
 
-func (b *Bot) formatLessonLine(lesson tutorapi.Lesson, timezone string) string {
-	when := mdDateTime(lesson.StartUTC, timezone, "Mon 02.01 15:04", "wdt")
-	line := fmt.Sprintf("- %s — **%s**", when, mdEscape(lesson.StudentName))
+func (b *Bot) formatLessonCell(lesson tutorapi.Lesson, timezone string) string {
+	when := mdDateTime(lesson.StartUTC, timezone, "15:04", "t")
+	cell := when + " **" + mdEscape(lesson.StudentName) + "**"
 	if lesson.Status == "cancelled" || lesson.Status == "no_show" {
-		return "~~" + strings.TrimPrefix(line, "- ") + "~~"
+		return "~~" + cell + "~~"
 	}
-	return line
+	return cell
 }
 
-func (b *Bot) formatPersonalEventLine(event tutorapi.PersonalEvent, timezone string) string {
-	when := mdDateTime(event.StartUTC, timezone, "Mon 02.01 15:04", "wdt")
-	group := strings.TrimSpace(event.GroupName)
-	if group == "" {
-		return fmt.Sprintf("- %s — **%s**", when, mdEscape(event.Title))
+func (b *Bot) formatPersonalEventCell(event tutorapi.PersonalEvent, timezone string) string {
+	when := mdDateTime(event.StartUTC, timezone, "15:04", "t")
+	cell := when + " **" + mdEscape(event.Title) + "**"
+	if group := strings.TrimSpace(event.GroupName); group != "" {
+		cell += " (" + mdEscape(group) + ")"
 	}
-	return fmt.Sprintf("- %s — **%s** (%s)", when, mdEscape(event.Title), mdEscape(group))
+	return cell
 }
 
-func renderScheduleItems(items []scheduleItem, now time.Time, splitNow bool) string {
+func formatScheduleTable(items []scheduleItem, timezone string, now time.Time, splitNow bool) string {
 	var buf strings.Builder
-	split := splitNow && !now.IsZero() && scheduleHasPastAndFuture(items, now)
-	pastDone := false
-	for _, it := range items {
-		if split && !pastDone && !scheduleItemPast(it.startUTC, now) {
-			buf.WriteString("\n\n")
-			buf.WriteString(nowSplitLabel)
-			pastDone = true
+	buf.WriteString("\n\n| День | События |\n|:-----|:---------|")
+	for i := 0; i < len(items); {
+		key := items[i].dateKey
+		j := i + 1
+		for j < len(items) && items[j].dateKey == key {
+			j++
 		}
-		buf.WriteByte('\n')
-		buf.WriteString(it.line)
+		dayItems := items[i:j]
+		cells := make([]string, 0, len(dayItems)+1)
+		split := splitNow && !now.IsZero() && scheduleHasPastAndFuture(dayItems, now)
+		inserted := false
+		for _, it := range dayItems {
+			if split && !inserted && !scheduleItemPast(it.startUTC, now) {
+				cells = append(cells, nowSplitLabel)
+				inserted = true
+			}
+			cells = append(cells, it.cell)
+		}
+		buf.WriteString(fmt.Sprintf("\n| %s | %s |", formatDateLabel(key, timezone), strings.Join(cells, ", ")))
+		i = j
 	}
 	return buf.String()
+}
+
+func scheduleDateKey(startUTC, timezone string) string {
+	t, err := time.Parse(time.RFC3339Nano, startUTC)
+	if err != nil {
+		return startUTC
+	}
+	loc, err := time.LoadLocation(timezone)
+	if err != nil {
+		loc = time.UTC
+	}
+	return t.In(loc).Format("2006-01-02")
 }
 
 func scheduleHasPastAndFuture(items []scheduleItem, now time.Time) bool {
@@ -147,6 +172,7 @@ func (b *Bot) formatDebts(students []tutorapi.Student) string {
 		buf.WriteByte('\n')
 		buf.WriteString(fmt.Sprintf("| %s | %s |", mdEscape(s.Name), formatSignedAmount(net, s.BalanceKind, s.Currency)))
 	}
+	buf.WriteString(fmt.Sprintf("\n| **Итого** | **%s** |", formatDebtTotal(debtors)))
 	return buf.String()
 }
 
@@ -188,6 +214,40 @@ func studentDebtMoneyNet(s tutorapi.Student) float64 {
 		return math.Round(net*(*s.Rate)*100) / 100
 	}
 	return net
+}
+
+func formatDebtTotal(debtors []tutorapi.Student) string {
+	money := map[string]float64{}
+	lessons := map[string]float64{}
+	for _, s := range debtors {
+		net := studentBalanceNet(s.Prepaid, s.Debt, s.BalanceKind)
+		if s.BalanceKind == "lessons" {
+			if s.Rate != nil && *s.Rate > 0 {
+				money[s.Currency] += math.Round(net*(*s.Rate)*100) / 100
+			} else {
+				lessons[s.Currency] += net
+			}
+			continue
+		}
+		money[s.Currency] += net
+	}
+	parts := make([]string, 0, len(money)+len(lessons))
+	for _, cur := range sortedKeys(money) {
+		parts = append(parts, formatSignedAmount(money[cur], "money", cur))
+	}
+	for _, cur := range sortedKeys(lessons) {
+		parts = append(parts, formatSignedAmount(lessons[cur], "lessons", cur))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func sortedKeys(m map[string]float64) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func formatStudentBalanceLabel(s tutorapi.Student, students []tutorapi.Student) string {
@@ -272,14 +332,18 @@ func (b *Bot) formatStudentSchedule(title string, schedule tutorapi.Schedule, no
 
 	items := make([]scheduleItem, 0, len(schedule.Lessons))
 	for _, lesson := range schedule.Lessons {
-		when := mdDateTime(lesson.StartUTC, schedule.Timezone, "Mon 02.01 15:04", "wdt")
-		line := "- " + when
+		when := mdDateTime(lesson.StartUTC, schedule.Timezone, "15:04", "t")
+		cell := when
 		if lesson.Status == "cancelled" || lesson.Status == "no_show" {
-			line = "~~" + when + "~~"
+			cell = "~~" + when + "~~"
 		}
-		items = append(items, scheduleItem{startUTC: lesson.StartUTC, line: line})
+		items = append(items, scheduleItem{
+			startUTC: lesson.StartUTC,
+			dateKey:  scheduleDateKey(lesson.StartUTC, schedule.Timezone),
+			cell:     cell,
+		})
 	}
-	return mdHeading(title) + "\n" + renderScheduleItems(items, now, splitNow)
+	return mdHeading(title) + formatScheduleTable(items, schedule.Timezone, now, splitNow)
 }
 
 func (b *Bot) formatOpenSlots(slots tutorapi.OpenSlots, weekOffset int) string {
@@ -316,13 +380,25 @@ func (b *Bot) formatOpenSlots(slots tutorapi.OpenSlots, weekOffset int) string {
 }
 
 func slotsWeekTitle(weekOffset int) string {
+	return "Свободные слоты — " + weekScopeLabel(weekOffset)
+}
+
+func scheduleWeekTitle(weekOffset int, forStudent bool) string {
+	base := "На неделю"
+	if forStudent {
+		base = "Уроки на неделю"
+	}
+	return base + " — " + weekScopeLabel(weekOffset)
+}
+
+func weekScopeLabel(weekOffset int) string {
 	switch weekOffset {
 	case 0:
-		return "Свободные слоты — эта неделя"
+		return "эта неделя"
 	case 1:
-		return "Свободные слоты — следующая неделя"
+		return "следующая неделя"
 	default:
-		return fmt.Sprintf("Свободные слоты — через %d нед.", weekOffset)
+		return fmt.Sprintf("через %d нед.", weekOffset)
 	}
 }
 
@@ -359,9 +435,61 @@ func (b *Bot) formatLessonReschedule(move tutorapi.LessonReschedule, timezone st
 	buf.WriteString(from)
 	buf.WriteString("~~ → ")
 	buf.WriteString(to)
+	if series := formatRescheduleSeries(move.Series); series != "" {
+		buf.WriteString("\n\nВсе последующие уроки будут проходить ")
+		buf.WriteString(series)
+	}
 	buf.WriteString("\n\n")
 	buf.WriteString(charge)
 	return buf.String()
+}
+
+var weekdayShortRU = []string{"Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"}
+
+func formatRescheduleSeries(slots []tutorapi.LessonRescheduleSlot) string {
+	groups := make([]string, 0, len(slots))
+	for _, slot := range slots {
+		days := formatWeekdayList(slot.Weekdays)
+		if days == "" {
+			continue
+		}
+		groups = append(groups, days+" в "+formatMinutesClock(slot.StartMinutes))
+	}
+	if len(groups) == 0 {
+		return ""
+	}
+	return "по " + joinRussian(groups)
+}
+
+func formatWeekdayList(days []int) string {
+	labels := make([]string, 0, len(days))
+	for _, day := range days {
+		if day < 0 || day >= len(weekdayShortRU) {
+			continue
+		}
+		labels = append(labels, weekdayShortRU[day])
+	}
+	return joinRussian(labels)
+}
+
+func joinRussian(items []string) string {
+	switch len(items) {
+	case 0:
+		return ""
+	case 1:
+		return items[0]
+	case 2:
+		return items[0] + " и " + items[1]
+	default:
+		return strings.Join(items[:len(items)-1], ", ") + " и " + items[len(items)-1]
+	}
+}
+
+func formatMinutesClock(minutes int) string {
+	if minutes < 0 {
+		minutes = 0
+	}
+	return fmt.Sprintf("%02d:%02d", minutes/60, minutes%60)
 }
 
 func formatInZone(startUTC, timezone, layout string) string {

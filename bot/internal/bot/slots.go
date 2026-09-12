@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	telegram "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -25,6 +26,9 @@ func (b *Bot) handleCallbackQuery(ctx context.Context, q *models.CallbackQuery) 
 	case q.Data == cbSlotsPick:
 		_, _ = b.api.AnswerCallbackQuery(ctx, &telegram.AnswerCallbackQueryParams{CallbackQueryID: q.ID})
 		return b.editMessage(ctx, msg.Chat.ID, msg.ID, slotsPickerText, slotsWeekKeyboard())
+	case q.Data == cbWeekPick:
+		_, _ = b.api.AnswerCallbackQuery(ctx, &telegram.AnswerCallbackQueryParams{CallbackQueryID: q.ID})
+		return b.editMessage(ctx, msg.Chat.ID, msg.ID, weekPickerText, scheduleWeekKeyboard())
 	case strings.HasPrefix(q.Data, cbSlotsPrefix):
 		offset, err := strconv.Atoi(strings.TrimPrefix(q.Data, cbSlotsPrefix))
 		if err != nil || offset < 0 || offset > 8 {
@@ -32,6 +36,23 @@ func (b *Bot) handleCallbackQuery(ctx context.Context, q *models.CallbackQuery) 
 			return nil
 		}
 		text, markup, err := b.slotsForWeek(ctx, q.From.ID, offset)
+		if err != nil {
+			_, _ = b.api.AnswerCallbackQuery(ctx, &telegram.AnswerCallbackQueryParams{
+				CallbackQueryID: q.ID,
+				Text:            userFacingError(err),
+				ShowAlert:       true,
+			})
+			return nil
+		}
+		_, _ = b.api.AnswerCallbackQuery(ctx, &telegram.AnswerCallbackQueryParams{CallbackQueryID: q.ID})
+		return b.editMessage(ctx, msg.Chat.ID, msg.ID, text, markup)
+	case strings.HasPrefix(q.Data, cbWeekPrefix):
+		offset, err := strconv.Atoi(strings.TrimPrefix(q.Data, cbWeekPrefix))
+		if err != nil || offset < 0 || offset > 8 {
+			_, _ = b.api.AnswerCallbackQuery(ctx, &telegram.AnswerCallbackQueryParams{CallbackQueryID: q.ID})
+			return nil
+		}
+		text, markup, err := b.scheduleForWeek(ctx, q.From.ID, offset)
 		if err != nil {
 			_, _ = b.api.AnswerCallbackQuery(ctx, &telegram.AnswerCallbackQueryParams{
 				CallbackQueryID: q.ID,
@@ -63,6 +84,25 @@ func (b *Bot) slotsForWeek(ctx context.Context, telegramUserID int64, weekOffset
 		return "", nil, err
 	}
 	return b.formatOpenSlots(slots, weekOffset), slotsResultKeyboard(weekOffset), nil
+}
+
+func (b *Bot) scheduleForWeek(ctx context.Context, telegramUserID int64, weekOffset int) (string, *models.InlineKeyboardMarkup, error) {
+	role, err := b.resolveRole(ctx, telegramUserID)
+	if err != nil {
+		return "", nil, err
+	}
+	if role == roleStudent {
+		schedule, err := b.monitor.StudentWeek(ctx, telegramUserID, weekOffset)
+		if err != nil {
+			return "", nil, err
+		}
+		return b.formatStudentSchedule(scheduleWeekTitle(weekOffset, true), schedule, time.Time{}, false), scheduleWeekResultKeyboard(weekOffset), nil
+	}
+	schedule, err := b.monitor.Week(ctx, telegramUserID, weekOffset)
+	if err != nil {
+		return "", nil, err
+	}
+	return b.formatSchedule(scheduleWeekTitle(weekOffset, false), schedule, time.Time{}, false), scheduleWeekResultKeyboard(weekOffset), nil
 }
 
 func (b *Bot) editMessage(ctx context.Context, chatID int64, messageID int, text string, markup *models.InlineKeyboardMarkup) error {

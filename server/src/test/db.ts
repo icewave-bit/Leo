@@ -16,6 +16,7 @@ export async function setupTestDb(): Promise<pg.Pool> {
     migrationsApplied = true;
   }
 
+  await closePool();
   const pool = new pg.Pool({ connectionString: url });
   setPoolForTests(pool);
   await truncateAll(pool);

@@ -18,7 +18,7 @@ import { toLesson, type LessonRow } from '../mappers.js';
 import type { AcademicUnits } from '../types.js';
 import { validate } from '../validate.js';
 import { requireAuth } from '../middleware/requireAuth.js';
-import { skipRecurringOccurrence } from '../recurringSchedule.js';
+import { moveRecurringSeriesFromAnchor, skipRecurringOccurrence } from '../recurringSchedule.js';
 import { assertActiveStudentOwned, assertStudentOwned } from '../studentAccess.js';
 
 const lessonStatusEnum = z.enum(['planned', 'completed', 'cancelled', 'no_show']);
@@ -54,9 +54,13 @@ const patchLessonSchema = z
     notes: z.string().nullable().optional(),
     studentId: z.string().uuid().optional(),
     restoreBalance: z.boolean().optional(),
+    moveSeries: z.boolean().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field is required',
+  })
+  .refine((data) => data.moveSeries !== true || data.startUtc !== undefined, {
+    message: 'startUtc is required when moveSeries is true',
   });
 
 const deleteLessonQuerySchema = z.object({
@@ -186,6 +190,10 @@ lessonsRouter.patch('/:id', async (req, res, next) => {
     const startChanged =
       body.startUtc !== undefined &&
       new Date(body.startUtc).toISOString() !== row.start_utc.toISOString();
+    const applyMoveSeries = body.moveSeries === true && startChanged;
+    if (applyMoveSeries && !row.recurring_schedule_id) {
+      throw new AppError('VALIDATION', 400, 'Lesson is not part of a recurring series');
+    }
     const movingToFuture = startChanged && new Date(body.startUtc!) > new Date();
     const nextStatus =
       body.status ?? (movingToFuture && row.status !== 'planned' ? 'planned' : undefined);
@@ -196,7 +204,14 @@ lessonsRouter.patch('/:id', async (req, res, next) => {
 
     if (startChanged) {
       await clearSentRemindersForEntity(client, 'lesson', row.id);
-      if (row.recurring_schedule_id) {
+      if (applyMoveSeries && row.recurring_schedule_id) {
+        await moveRecurringSeriesFromAnchor(client, {
+          tutorId: req.tutorId!,
+          scheduleId: row.recurring_schedule_id,
+          anchorStartUtc: row.start_utc,
+          newStartUtc: body.startUtc!,
+        });
+      } else if (row.recurring_schedule_id) {
         await skipRecurringOccurrence(client, row.recurring_schedule_id, row.start_utc);
       }
     }
@@ -290,6 +305,7 @@ lessonsRouter.patch('/:id', async (req, res, next) => {
         fromStartUtc: row.start_utc,
         toStartUtc: updated.start_utc,
         charged: updated.balance_charged,
+        includeSeries: applyMoveSeries,
       });
     }
 

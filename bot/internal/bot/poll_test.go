@@ -146,15 +146,50 @@ func TestPollOnce_sendsRescheduleNotice(t *testing.T) {
 	assert.Contains(t, out.RichMessage.Markdown, "перенесён")
 	assert.Contains(t, out.RichMessage.Markdown, "без списания")
 	assert.NotContains(t, out.RichMessage.Markdown, meet)
-	kb, ok := out.ReplyMarkup.(*models.InlineKeyboardMarkup)
-	require.True(t, ok)
-	assert.Equal(t, meet, kb.InlineKeyboard[0][0].URL)
+	assert.Nil(t, out.ReplyMarkup)
 	require.Len(t, mon.markedSent, 1)
 	assert.Equal(t, "reschedule", mon.markedSent[0].Kind)
 	assert.Equal(t, "11111111-1111-4111-8111-111111111111", mon.markedSent[0].EntityID)
 
 	require.NoError(t, b.pollOnce(context.Background()))
 	assert.Len(t, msg.messages(), 1)
+}
+
+func TestPollOnce_rescheduleNearIncludesJoinButton(t *testing.T) {
+	meet := "https://meet.google.com/abc-defg-hij"
+	start := time.Now().UTC().Add(20 * time.Minute).Truncate(time.Second)
+	msg := &mockMessenger{}
+	b, err := New(Config{
+		TelegramClient: msg,
+		Monitor: &mockMonitor{
+			due: []tutorapi.DueReminder{{
+				Kind:           "reschedule",
+				TelegramUserID: 42,
+				Role:           "student",
+				Timezone:       "UTC",
+				Reschedule: &tutorapi.LessonReschedule{
+					ID:           "11111111-1111-4111-8111-111111111111",
+					LessonID:     "lesson-1",
+					FromStartUTC: start.Add(-time.Hour).Format(time.RFC3339),
+					ToStartUTC:   start.Format(time.RFC3339),
+					StudentName:  "Leo",
+					MeetURL:      &meet,
+				},
+			}},
+		},
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PollInterval: time.Minute,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, b.pollOnce(context.Background()))
+	require.Len(t, msg.messages(), 1)
+	out := msg.messages()[0]
+	assert.NotContains(t, out.RichMessage.Markdown, meet)
+	kb, ok := out.ReplyMarkup.(*models.InlineKeyboardMarkup)
+	require.True(t, ok)
+	assert.Equal(t, "Подключиться", kb.InlineKeyboard[0][0].Text)
+	assert.Equal(t, meet, kb.InlineKeyboard[0][0].URL)
 }
 
 func TestPollOnce_emptyDueDoesNotSend(t *testing.T) {

@@ -21,7 +21,7 @@ type Monitor interface {
 	Me(ctx context.Context, telegramUserID int64) (tutorapi.Tutor, error)
 	Today(ctx context.Context, telegramUserID int64) (tutorapi.Schedule, error)
 	Tomorrow(ctx context.Context, telegramUserID int64) (tutorapi.Schedule, error)
-	Week(ctx context.Context, telegramUserID int64) (tutorapi.Schedule, error)
+	Week(ctx context.Context, telegramUserID int64, weekOffset int) (tutorapi.Schedule, error)
 	OpenSlots(ctx context.Context, telegramUserID int64, weekOffset int) (tutorapi.OpenSlots, error)
 	Students(ctx context.Context, telegramUserID int64) ([]tutorapi.Student, error)
 	Debt(ctx context.Context, telegramUserID int64) ([]tutorapi.Student, error)
@@ -30,7 +30,7 @@ type Monitor interface {
 
 	RegisterStudent(ctx context.Context, in tutorapi.StudentRegisterInput) (tutorapi.BotStudent, error)
 	StudentMe(ctx context.Context, telegramUserID int64) (tutorapi.BotStudent, error)
-	StudentWeek(ctx context.Context, telegramUserID int64) (tutorapi.Schedule, error)
+	StudentWeek(ctx context.Context, telegramUserID int64, weekOffset int) (tutorapi.Schedule, error)
 	StudentToday(ctx context.Context, telegramUserID int64) (tutorapi.Schedule, error)
 	StudentBalance(ctx context.Context, telegramUserID int64) (tutorapi.StudentBalance, error)
 	StudentOpenSlots(ctx context.Context, telegramUserID int64, weekOffset int) (tutorapi.OpenSlots, error)
@@ -260,7 +260,7 @@ func (b *Bot) dispatch(ctx context.Context, req commandRequest) (botReply, error
 	case "/tomorrow":
 		return wrapReply(b.tomorrow(ctx, req))
 	case "/week":
-		return wrapReply(b.week(ctx, req))
+		return b.weekMenu(ctx, req)
 	case "/balance":
 		return wrapReply(b.studentBalance(ctx, req))
 	case "/slots":
@@ -420,23 +420,11 @@ func (b *Bot) tomorrow(ctx context.Context, req commandRequest) (string, error) 
 	return b.formatSchedule("На завтра", schedule, time.Time{}, false), nil
 }
 
-func (b *Bot) week(ctx context.Context, req commandRequest) (string, error) {
-	role, err := b.resolveRole(ctx, req.telegramUserID)
-	if err != nil {
-		return "", err
+func (b *Bot) weekMenu(ctx context.Context, req commandRequest) (botReply, error) {
+	if _, err := b.resolveRole(ctx, req.telegramUserID); err != nil {
+		return botReply{}, err
 	}
-	if role == roleStudent {
-		schedule, err := b.monitor.StudentWeek(ctx, req.telegramUserID)
-		if err != nil {
-			return "", err
-		}
-		return b.formatStudentSchedule("Уроки на неделю", schedule, time.Time{}, false), nil
-	}
-	schedule, err := b.monitor.Week(ctx, req.telegramUserID)
-	if err != nil {
-		return "", err
-	}
-	return b.formatSchedule("На неделю", schedule, time.Time{}, false), nil
+	return botReply{text: weekPickerText, inline: scheduleWeekKeyboard(), skipDetect: true}, nil
 }
 
 func (b *Bot) studentBalance(ctx context.Context, req commandRequest) (string, error) {
@@ -503,7 +491,7 @@ type helpCommand struct {
 var tutorHelpCommands = []helpCommand{
 	{"/today", "расписание на сегодня"},
 	{"/tomorrow", "расписание на завтра"},
-	{"/week", "расписание на неделю"},
+	{"/week", "расписание на неделю (эта или следующая)"},
 	{"/slots", "свободные слоты (эта или следующая неделя)"},
 	{"/students", "ученики и балансы"},
 	{"/debt", "отрицательный баланс"},
@@ -513,7 +501,7 @@ var tutorHelpCommands = []helpCommand{
 
 var studentHelpCommands = []helpCommand{
 	{"/today", "уроки на сегодня"},
-	{"/week", "уроки на неделю"},
+	{"/week", "уроки на неделю (эта или следующая)"},
 	{"/slots", "свободные слоты репетитора (эта или следующая неделя)"},
 	{"/balance", "баланс"},
 	{"/me", "профиль"},

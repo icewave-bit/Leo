@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react';
 import { useAtomValue } from 'jotai';
 import { tutorAtom } from '../../atoms/auth';
 import { lessonsAtom, personalEventsAtom, weekStartAtom } from '../../atoms/schedule';
@@ -41,21 +42,39 @@ export function AgendaList({
   const { full: daysFull } = weekDayNames(weekStartsOn);
   const dates = weekDates(weekStart, tz);
   const todayIdx = todayDayIndex(weekStart, tz);
+  const todayGroupRef = useRef<HTMLElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const visibleDays = visibleGridDays(weekStartsOn, tutor?.hiddenWeekdays ?? []);
 
+  useLayoutEffect(() => {
+    const todayEl = todayGroupRef.current;
+    if (todayEl) {
+      todayEl.scrollIntoView({ block: 'start', behavior: 'auto' });
+      return;
+    }
+    const scroller = rootRef.current?.parentElement;
+    if (scroller) scroller.scrollTop = 0;
+  }, [weekStart, todayIdx]);
+
   return (
-    <div className="ag">
+    <div ref={rootRef} className="ag">
       {visibleDays.map((di) => {
         const items = dayScheduleItems(lessons, personalEvents, di);
-        return items.length === 0 ? null : (
-          <section key={di} className="ag__group">
+        const isToday = di === todayIdx;
+        return items.length === 0 && !isToday ? null : (
+          <section
+            key={di}
+            ref={isToday ? todayGroupRef : undefined}
+            className="ag__group"
+          >
             <div className="ag__date">
-              <span className={'ag__num' + (di === todayIdx ? ' is-today' : '')}>{dates[di]}</span>
+              <span className={'ag__num' + (isToday ? ' is-today' : '')}>{dates[di]}</span>
               <span className="ag__dow">{daysFull[di]}</span>
               <span className="ag__line" />
               <span className="ag__count">{items.length}</span>
             </div>
+            {items.length === 0 ? null : (
             <div className="ag__cards">
               {items.map((item) => {
                 if (item.kind === 'lesson') {
@@ -130,6 +149,7 @@ export function AgendaList({
                 );
               })}
             </div>
+            )}
           </section>
         );
       })}

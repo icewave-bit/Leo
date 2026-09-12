@@ -11,7 +11,7 @@ import {
   type StudentRow,
 } from '../mappers.js';
 import { requireBotBearer, requireBotStudentAuth } from '../middleware/requireBotAuth.js';
-import { zonedDayRangeUtc, zonedWeekRangeUtc } from '../scheduleSlots.js';
+import { zonedDayRangeUtc, zonedWeekOffsetRangeUtc } from '../scheduleSlots.js';
 import { normalizeTelegramUsername } from '../telegramUsername.js';
 import type { BalanceKind, WeekStartsOn } from '../types.js';
 import { validate } from '../validate.js';
@@ -250,7 +250,13 @@ async function listStudentLessonsInRange(
 botStudentRouter.get('/week', async (req, res, next) => {
   try {
     const tutor = await loadTutorPrefs(req.tutorId!);
-    const { from, to } = zonedWeekRangeUtc(new Date(), tutor.timezone, tutor.week_starts_on);
+    const { weekOffset } = validate(openSlotsQuerySchema, req.query);
+    const { from, to } = zonedWeekOffsetRangeUtc(
+      new Date(),
+      tutor.timezone,
+      tutor.week_starts_on,
+      weekOffset,
+    );
     const lessons = await listStudentLessonsInRange(req.tutorId!, req.studentId!, from, to);
     res.json({
       timezone: tutor.timezone,

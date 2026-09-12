@@ -99,11 +99,7 @@ func (b *Bot) sendDueReminder(ctx context.Context, reminder tutorapi.DueReminder
 			return fmt.Errorf("due reschedule reminder missing reschedule")
 		}
 		text := b.formatLessonReschedule(*reminder.Reschedule, reminder.Timezone, reminder.Role == "student")
-		meetURL := ""
-		if reminder.Reschedule.MeetURL != nil {
-			meetURL = strings.TrimSpace(*reminder.Reschedule.MeetURL)
-		}
-		return b.sendReminder(ctx, reminder.TelegramUserID, text, reminder.Silent, meetJoinKeyboard(meetURL))
+		return b.sendReminder(ctx, reminder.TelegramUserID, text, reminder.Silent, meetJoinKeyboard(rescheduleJoinURL(*reminder.Reschedule, time.Now())))
 	default:
 		return fmt.Errorf("unknown reminder kind %q", reminder.Kind)
 	}
@@ -188,6 +184,23 @@ func meetJoinKeyboard(meetURL string) *models.InlineKeyboardMarkup {
 			Style: "primary",
 		}}},
 	}
+}
+
+const rescheduleJoinLead = 30 * time.Minute
+
+func rescheduleJoinURL(move tutorapi.LessonReschedule, now time.Time) string {
+	if move.MeetURL == nil {
+		return ""
+	}
+	to, err := time.Parse(time.RFC3339Nano, move.ToStartUTC)
+	if err != nil {
+		return ""
+	}
+	remaining := to.Sub(now)
+	if remaining <= 0 || remaining > rescheduleJoinLead {
+		return ""
+	}
+	return strings.TrimSpace(*move.MeetURL)
 }
 
 func (b *Bot) formatLessonReminder(lesson tutorapi.Lesson, timezone string, lead time.Duration, forStudent bool) string {

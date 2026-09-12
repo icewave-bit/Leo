@@ -4,7 +4,7 @@ import { computeWalletChargeAmount } from './lessonBalance.js';
 import { toBotPersonalEvent, type LessonRow, type PersonalEventRow } from './mappers.js';
 import { topUpRecurringPersonalSchedules } from './personalRecurringSchedule.js';
 import { topUpRecurringSchedules } from './recurringSchedule.js';
-import type { AcademicUnits, BalanceKind } from './types.js';
+import type { AcademicUnits, BalanceKind, WeekStartsOn } from './types.js';
 
 export const STUDENT_REMINDER_LEAD_MINUTES = 30;
 
@@ -31,6 +31,11 @@ export type DuePersonalEvent = {
   durationMin: number;
 };
 
+export type RescheduleSeriesSlot = {
+  weekdays: number[];
+  startMinutes: number;
+};
+
 export type DueReschedule = {
   id: string;
   lessonId: string;
@@ -39,6 +44,7 @@ export type DueReschedule = {
   studentName: string;
   charged: boolean;
   meetUrl: string | null;
+  series?: RescheduleSeriesSlot[];
 };
 
 export type DueReminder = {
@@ -61,6 +67,7 @@ type ReschedulePayload = {
   meetUrl: string | null;
   timezone: string;
   silent: boolean;
+  series?: RescheduleSeriesSlot[];
 };
 
 type OutboxRecipient = {
@@ -296,7 +303,7 @@ export async function listDueReminders(now = new Date()): Promise<DueReminder[]>
     listDueTutorLessons(now),
     listDueStudentLessons(now),
     listDuePersonalEvents(now),
-    listDueReschedules(),
+    listDueReschedules(now),
   ]);
   const timed = [...tutorLessons, ...studentLessons, ...personal].sort((a, b) => {
     const aStart = a.lesson?.startUtc ?? a.event?.startUtc ?? '';
@@ -336,6 +343,64 @@ export async function clearSentRemindersForEntity(
   ]);
 }
 
+function isRescheduleJoinWindow(toStartUtc: Date, now: Date): boolean {
+  const remainingMs = toStartUtc.getTime() - now.getTime();
+  return remainingMs > 0 && remainingMs <= STUDENT_REMINDER_LEAD_MINUTES * 60_000;
+}
+
+function toMondayWeekdays(weekdays: number[], weekStartsOn: WeekStartsOn): number[] {
+  const shift = weekStartsOn === 'sunday' ? 6 : 0;
+  return [...new Set(weekdays.map((day) => (day + shift) % 7))].sort((a, b) => a - b);
+}
+
+function mergeSeriesSlots(
+  rows: Array<{ weekdays: number[]; start_minutes: number; week_starts_on: WeekStartsOn }>,
+): RescheduleSeriesSlot[] {
+  const byTime = new Map<number, Set<number>>();
+  for (const row of rows) {
+    let days = byTime.get(row.start_minutes);
+    if (!days) {
+      days = new Set();
+      byTime.set(row.start_minutes, days);
+    }
+    for (const day of toMondayWeekdays(row.weekdays, row.week_starts_on)) {
+      days.add(day);
+    }
+  }
+  return [...byTime.entries()]
+    .map(([startMinutes, days]) => ({
+      startMinutes,
+      weekdays: [...days].sort((a, b) => a - b),
+    }))
+    .sort(
+      (a, b) =>
+        (a.weekdays[0] ?? 0) - (b.weekdays[0] ?? 0) || a.startMinutes - b.startMinutes,
+    );
+}
+
+async function loadStudentSeriesSlots(
+  client: PoolClient,
+  lessonId: string,
+): Promise<RescheduleSeriesSlot[]> {
+  const result = await client.query<{
+    weekdays: number[];
+    start_minutes: number;
+    week_starts_on: WeekStartsOn;
+  }>(
+    `SELECT rs.weekdays, rs.start_minutes, t.week_starts_on
+     FROM lessons l
+     JOIN tutors t ON t.id = l.tutor_id
+     JOIN recurring_schedules rs
+       ON rs.tutor_id = l.tutor_id AND rs.student_id = l.student_id
+     WHERE l.id = $1
+       AND rs.active = true
+       AND (rs.end_date IS NULL OR rs.end_date >= (now() AT TIME ZONE t.timezone)::date)
+     ORDER BY rs.start_minutes, rs.id`,
+    [lessonId],
+  );
+  return mergeSeriesSlots(result.rows);
+}
+
 export async function enqueueLessonRescheduleNotices(
   client: PoolClient,
   input: {
@@ -343,6 +408,7 @@ export async function enqueueLessonRescheduleNotices(
     fromStartUtc: Date;
     toStartUtc: Date;
     charged: boolean;
+    includeSeries?: boolean;
   },
 ): Promise<void> {
   const loaded = await client.query<OutboxRecipient>(
@@ -364,6 +430,7 @@ export async function enqueueLessonRescheduleNotices(
   const row = loaded.rows[0];
   if (!row) return;
 
+  const series = input.includeSeries ? await loadStudentSeriesSlots(client, input.lessonId) : [];
   const payload: ReschedulePayload = {
     fromStartUtc: input.fromStartUtc.toISOString(),
     toStartUtc: input.toStartUtc.toISOString(),
@@ -372,6 +439,7 @@ export async function enqueueLessonRescheduleNotices(
     meetUrl: row.meetUrl,
     timezone: row.timezone,
     silent: row.silent,
+    ...(series.length > 0 ? { series } : {}),
   };
 
   const recipients: Array<{ telegramUserId: string; role: DueReminderRole; silent: boolean }> = [];
@@ -386,6 +454,7 @@ export async function enqueueLessonRescheduleNotices(
     });
   }
 
+  const markJoinSent = isRescheduleJoinWindow(input.toStartUtc, new Date());
   const seen = new Set<string>();
   for (const recipient of recipients) {
     if (seen.has(recipient.telegramUserId)) continue;
@@ -400,6 +469,14 @@ export async function enqueueLessonRescheduleNotices(
         JSON.stringify({ ...payload, silent: recipient.silent }),
       ],
     );
+    if (markJoinSent) {
+      await client.query(
+        `INSERT INTO telegram_sent_reminders (telegram_user_id, kind, entity_id)
+         VALUES ($1, 'lesson', $2)
+         ON CONFLICT DO NOTHING`,
+        [recipient.telegramUserId, input.lessonId],
+      );
+    }
   }
 }
 
@@ -411,7 +488,7 @@ type OutboxRow = {
   payload: ReschedulePayload;
 };
 
-async function listDueReschedules(): Promise<DueReminder[]> {
+async function listDueReschedules(now: Date): Promise<DueReminder[]> {
   const result = await query<OutboxRow>(
     `SELECT id, telegram_user_id::text AS telegram_user_id, role, entity_id, payload
      FROM telegram_notification_outbox
@@ -420,6 +497,8 @@ async function listDueReschedules(): Promise<DueReminder[]> {
   );
   return result.rows.map((row) => {
     const payload = row.payload;
+    const toStart = new Date(payload.toStartUtc);
+    const series = payload.series && payload.series.length > 0 ? payload.series : undefined;
     return {
       kind: 'reschedule' as const,
       telegramUserId: parseTelegramUserId(row.telegram_user_id),
@@ -434,7 +513,8 @@ async function listDueReschedules(): Promise<DueReminder[]> {
         toStartUtc: payload.toStartUtc,
         studentName: payload.studentName,
         charged: payload.charged,
-        meetUrl: payload.meetUrl,
+        meetUrl: isRescheduleJoinWindow(toStart, now) ? payload.meetUrl : null,
+        ...(series ? { series } : {}),
       },
     };
   });

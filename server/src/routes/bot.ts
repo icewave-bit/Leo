@@ -9,7 +9,7 @@ import { syncTutorLessonState } from '../lessonBalance.js';
 import { toBotPersonalEvent, toLesson, toStudent, toTutor, type LessonRow, type PersonalEventRow, type StudentRow, type TutorRow } from '../mappers.js';
 import { requireBotAuth, requireBotBearer } from '../middleware/requireBotAuth.js';
 import { topUpRecurringPersonalSchedules } from '../personalRecurringSchedule.js';
-import { zonedDayOffsetRangeUtc, zonedDayRangeUtc, zonedWeekRangeUtc } from '../scheduleSlots.js';
+import { zonedDayOffsetRangeUtc, zonedDayRangeUtc, zonedWeekOffsetRangeUtc } from '../scheduleSlots.js';
 import type { Student, WeekStartsOn } from '../types.js';
 import { validate } from '../validate.js';
 
@@ -273,7 +273,13 @@ botRouter.get('/personal-events/today', async (req, res, next) => {
 botRouter.get('/week', async (req, res, next) => {
   try {
     const prefs = await loadTutorPrefs(req.tutorId!);
-    const { from, to } = zonedWeekRangeUtc(new Date(), prefs.timezone, prefs.weekStartsOn);
+    const { weekOffset } = validate(openSlotsQuerySchema, req.query);
+    const { from, to } = zonedWeekOffsetRangeUtc(
+      new Date(),
+      prefs.timezone,
+      prefs.weekStartsOn,
+      weekOffset,
+    );
     const [lessons, events] = await Promise.all([
       listLessonsInRange(req.tutorId!, from, to),
       listPersonalEventsInRange(req.tutorId!, from, to, []),

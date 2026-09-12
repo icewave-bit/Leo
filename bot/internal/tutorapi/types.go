@@ -71,14 +71,20 @@ type PersonalEvent struct {
 	DurationMin int    `json:"durationMin"`
 }
 
+type LessonRescheduleSlot struct {
+	Weekdays     []int `json:"weekdays"`
+	StartMinutes int   `json:"startMinutes"`
+}
+
 type LessonReschedule struct {
-	ID           string  `json:"id"`
-	LessonID     string  `json:"lessonId"`
-	FromStartUTC string  `json:"fromStartUtc"`
-	ToStartUTC   string  `json:"toStartUtc"`
-	StudentName  string  `json:"studentName"`
-	Charged      bool    `json:"charged"`
-	MeetURL      *string `json:"meetUrl"`
+	ID           string                 `json:"id"`
+	LessonID     string                 `json:"lessonId"`
+	FromStartUTC string                 `json:"fromStartUtc"`
+	ToStartUTC   string                 `json:"toStartUtc"`
+	StudentName  string                 `json:"studentName"`
+	Charged      bool                   `json:"charged"`
+	MeetURL      *string                `json:"meetUrl"`
+	Series       []LessonRescheduleSlot `json:"series,omitempty"`
 }
 
 type DueReminder struct {

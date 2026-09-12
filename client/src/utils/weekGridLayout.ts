@@ -77,18 +77,48 @@ export function layoutDayLessons(
 
 const WG_COL_INSET_PX = 3;
 const WG_COL_GAP_PX = 2;
+/** Gap under a timed block so the next hour’s event does not touch it. */
+export const WG_EVENT_TAIL_GAP_PX = 4;
+
+/** Desktop splits overlaps side-by-side; compact (phone) stacks them in the time cell. */
+export type WeekGridOverlapAxis = 'columns' | 'rows';
+
+export function weekGridOverlapAxis(compact?: boolean): WeekGridOverlapAxis {
+  return compact ? 'rows' : 'columns';
+}
 
 export function weekGridLessonPositionStyle(
   layout: WeekGridLessonLayout | undefined,
+  opts: {
+    start: number;
+    dur: number;
+    pxPerHour: number;
+    axis?: WeekGridOverlapAxis;
+  },
 ): CSSProperties {
-  if (!layout || layout.columnCount <= 1) return {};
+  const { start, dur, pxPerHour, axis = 'columns' } = opts;
+  const top = start * pxPerHour;
+  const height = dur * pxPerHour - WG_EVENT_TAIL_GAP_PX;
+
+  if (!layout || layout.columnCount <= 1) return { top, height };
 
   const { column, columnCount } = layout;
+
+  if (axis === 'rows') {
+    const rowH = height / columnCount;
+    return {
+      top: top + rowH * column,
+      height: rowH,
+    };
+  }
+
   const gaps = WG_COL_GAP_PX * (columnCount - 1);
   const widthExpr = `(100% - ${WG_COL_INSET_PX * 2}px - ${gaps}px) / ${columnCount}`;
   const leftExpr = `${WG_COL_INSET_PX}px + (${widthExpr}) * ${column} + ${WG_COL_GAP_PX * column}px`;
 
   return {
+    top,
+    height,
     left: `calc(${leftExpr})`,
     width: `calc(${widthExpr})`,
     right: 'auto',
@@ -97,8 +127,15 @@ export function weekGridLessonPositionStyle(
 
 export function weekGridLessonLayoutClass(
   layout: WeekGridLessonLayout | undefined,
+  axis: WeekGridOverlapAxis = 'columns',
 ): string {
   if (!layout || layout.columnCount <= 1) return '';
+  const first = layout.column === 0;
   const last = layout.column === layout.columnCount - 1;
+  if (axis === 'rows') {
+    return ['ev--stack', first ? 'ev--stack-first' : '', last ? 'ev--stack-last' : '', last ? '' : 'ev--stack-div']
+      .filter(Boolean)
+      .join(' ');
+  }
   return ['ev--cols', last ? '' : 'ev--cols-div'].filter(Boolean).join(' ');
 }

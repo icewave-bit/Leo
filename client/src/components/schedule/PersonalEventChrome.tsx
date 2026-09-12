@@ -8,6 +8,7 @@ import { hexToOklchHue } from '../../utils/colorHue';
 import {
   weekGridLessonLayoutClass,
   weekGridLessonPositionStyle,
+  weekGridOverlapAxis,
   type WeekGridLessonLayout,
 } from '../../utils/weekGridLayout';
 import { LessonCardRotatingLabel, LessonRecurrenceMark, lessonNameClass } from './LessonChrome';
@@ -77,10 +78,16 @@ export function PersonalEventCard({
   const outline = tutor?.personalEventOutline ?? 'tab';
   const color = group?.color ?? '#64748b';
   const slotStart = start ?? event.start;
-  const top = slotStart * pxPerHour;
-  const height = event.dur * pxPerHour - 4;
+  const axis = weekGridOverlapAxis(compact);
+  const pos = weekGridLessonPositionStyle(layout, {
+    start: slotStart,
+    dur: event.dur,
+    pxPerHour,
+    axis,
+  });
+  const height = typeof pos.height === 'number' ? pos.height : 0;
   const tight = height < pxPerHour * 0.72;
-  const colsClass = weekGridLessonLayoutClass(layout);
+  const colsClass = weekGridLessonLayoutClass(layout, axis);
 
   return (
     <button
@@ -95,10 +102,8 @@ export function PersonalEventCard({
         (colsClass ? ` ${colsClass}` : '')
       }
       style={{
-        top,
-        height,
         ...personalEventCardVars(color),
-        ...weekGridLessonPositionStyle(layout),
+        ...pos,
       }}
       title={
         `${event.title} · ${fmtTime(slotStart)}–${fmtTime(slotStart + event.dur)}` +
