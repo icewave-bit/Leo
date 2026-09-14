@@ -102,7 +102,7 @@ func formatScheduleTable(items []scheduleItem, timezone string, now time.Time, s
 			}
 			cells = append(cells, it.cell)
 		}
-		buf.WriteString(fmt.Sprintf("\n| %s | %s |", formatDateLabel(key, timezone), strings.Join(cells, ", ")))
+		buf.WriteString(fmt.Sprintf("\n| %s | %s |", formatDateLabel(key, timezone), strings.Join(cells, "<br>")))
 		i = j
 	}
 	return buf.String()

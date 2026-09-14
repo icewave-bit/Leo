@@ -69,6 +69,8 @@ func TestFormatSchedule_interleavesPersonalEvents(t *testing.T) {
 	yogaIdx := strings.Index(text, "Yoga")
 	leoIdx := strings.Index(text, "Leo")
 	assert.Greater(t, leoIdx, yogaIdx)
+	assert.Contains(t, text, "Yoga** (Здоровье)<br>")
+	assert.NotContains(t, text, ", ")
 }
 
 func TestFormatSchedule_groupsEventsByDay(t *testing.T) {
@@ -104,6 +106,8 @@ func TestFormatSchedule_splitsTodayAroundNow(t *testing.T) {
 	assert.Contains(t, text, nowSplitLabel)
 	assert.Greater(t, strings.Index(text, nowSplitLabel), strings.Index(text, "Yoga"))
 	assert.Greater(t, strings.Index(text, "Leo"), strings.Index(text, nowSplitLabel))
+	assert.Contains(t, text, "Yoga** (Здоровье)<br>"+nowSplitLabel+"<br>")
+	assert.NotContains(t, text, ", ")
 
 	allFuture := b.formatSchedule("На сегодня", tutorapi.Schedule{
 		Timezone: "UTC",
@@ -261,6 +265,9 @@ func TestFormatLessonCell_cancelledStaysInTable(t *testing.T) {
 	leo := strings.Index(text, "Leo")
 	require.Greater(t, ivan, anna)
 	require.Greater(t, leo, ivan)
+	assert.Contains(t, text, "Anna**<br>")
+	assert.Contains(t, text, "**Ivan**~~<br>")
+	assert.NotContains(t, text, ", ")
 }
 
 func TestMdDateTime_usesUnixAndTutorLabel(t *testing.T) {
