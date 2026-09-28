@@ -87,6 +87,24 @@ type LessonReschedule struct {
 	Series       []LessonRescheduleSlot `json:"series,omitempty"`
 }
 
+type LessonCreated struct {
+	ID          string                 `json:"id"`
+	LessonID    string                 `json:"lessonId"`
+	StartUTC    string                 `json:"startUtc"`
+	StudentName string                 `json:"studentName"`
+	MeetURL     *string                `json:"meetUrl"`
+	Series      []LessonRescheduleSlot `json:"series,omitempty"`
+}
+
+type LessonDeleted struct {
+	ID              string `json:"id"`
+	LessonID        string `json:"lessonId"`
+	StartUTC        string `json:"startUtc"`
+	StudentName     string `json:"studentName"`
+	Charged         bool   `json:"charged"`
+	CancelFollowing bool   `json:"cancelFollowing,omitempty"`
+}
+
 type DueReminder struct {
 	Kind           string            `json:"kind"`
 	TelegramUserID int64             `json:"telegramUserId"`
@@ -97,6 +115,8 @@ type DueReminder struct {
 	Lesson         *Lesson           `json:"lesson,omitempty"`
 	Event          *PersonalEvent    `json:"event,omitempty"`
 	Reschedule     *LessonReschedule `json:"reschedule,omitempty"`
+	Created        *LessonCreated    `json:"created,omitempty"`
+	Deleted        *LessonDeleted    `json:"deleted,omitempty"`
 }
 
 type SentReminder struct {

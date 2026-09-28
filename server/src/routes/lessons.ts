@@ -5,7 +5,7 @@ import {
   getTutorAcademicHourMin,
   inferAcademicUnits,
 } from '../academicHour.js';
-import { clearSentRemindersForEntity, enqueueLessonRescheduleNotices } from '../botReminders.js';
+import { clearSentRemindersForEntity, enqueueLessonCreatedNotices, enqueueLessonDeletedNotices, enqueueLessonRescheduleNotices } from '../botReminders.js';
 import { getPool, query } from '../db.js';
 import { AppError } from '../errors.js';
 import {
@@ -141,13 +141,15 @@ lessonsRouter.get('/', async (req, res, next) => {
 });
 
 lessonsRouter.post('/', async (req, res, next) => {
+  const client = await getPool().connect();
   try {
     const body = validate(createLessonSchema, req.body);
     await assertActiveStudentOwned(req.tutorId!, body.studentId);
     const startUtc = new Date(body.startUtc);
     const timing = await resolveLessonTiming(req.tutorId!, body);
 
-    const inserted = await query<LessonRow>(
+    await client.query('BEGIN');
+    const inserted = await client.query<LessonRow>(
       `INSERT INTO lessons (tutor_id, student_id, start_utc, duration_min, academic_units, status, type, paid, notes)
        VALUES ($1, $2, $3, $4, $5, 'planned', $6, false, $7)
        RETURNING ${LESSON_COLUMNS}`,
@@ -161,9 +163,15 @@ lessonsRouter.post('/', async (req, res, next) => {
         body.notes ?? null,
       ],
     );
-    res.status(201).json(toLesson(inserted.rows[0]!));
+    const row = inserted.rows[0]!;
+    await enqueueLessonCreatedNotices(client, { lessonId: row.id });
+    await client.query('COMMIT');
+    res.status(201).json(toLesson(row));
   } catch (err) {
+    await client.query('ROLLBACK');
     next(err);
+  } finally {
+    client.release();
   }
 });
 
@@ -344,6 +352,10 @@ lessonsRouter.delete('/:id', async (req, res, next) => {
       await skipRecurringOccurrence(client, row.recurring_schedule_id, row.start_utc);
     }
 
+    await enqueueLessonDeletedNotices(client, {
+      lessonId: row.id,
+      charged: row.balance_charged && !q.restoreBalance,
+    });
     await client.query('DELETE FROM lessons WHERE id = $1 AND tutor_id = $2', [
       req.params.id,
       req.tutorId,

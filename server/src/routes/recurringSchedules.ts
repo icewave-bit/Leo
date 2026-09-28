@@ -6,6 +6,7 @@ import {
   getTutorAcademicHourMin,
   inferAcademicUnits,
 } from '../academicHour.js';
+import { enqueueLessonCreatedNotices, enqueueLessonDeletedNotices } from '../botReminders.js';
 import { getPool, query } from '../db.js';
 import { AppError } from '../errors.js';
 import { assertActiveStudentOwned } from '../studentAccess.js';
@@ -166,6 +167,20 @@ recurringSchedulesRouter.post('/', async (req, res, next) => {
     const horizonEndDate = resolveMaterializeHorizon(schedule, rollingHorizon);
     await materializeRecurringSchedule(client, schedule, prefs, horizonEndDate);
 
+    const first = await client.query<{ id: string }>(
+      `SELECT id FROM lessons
+       WHERE recurring_schedule_id = $1 AND start_utc > now()
+       ORDER BY start_utc
+       LIMIT 1`,
+      [schedule.id],
+    );
+    if (first.rows[0]) {
+      await enqueueLessonCreatedNotices(client, {
+        lessonId: first.rows[0].id,
+        includeSeries: true,
+      });
+    }
+
     await client.query('COMMIT');
     res.status(201).json(toRecurringSchedule(schedule));
   } catch (err) {
@@ -264,6 +279,21 @@ recurringSchedulesRouter.delete('/:id', async (req, res, next) => {
       });
     }
 
+    const chargedRow = await client.query<{ charged: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM lessons
+         WHERE recurring_schedule_id = $1
+           AND tutor_id = $2
+           AND start_utc >= $3
+           AND balance_charged = true
+       ) AS charged`,
+      [req.params.id, req.tutorId, anchor.start_utc],
+    );
+    await enqueueLessonDeletedNotices(client, {
+      lessonId: q.fromLessonId,
+      includeSeries: true,
+      charged: chargedRow.rows[0]?.charged === true,
+    });
     const deletedLessons = await deleteLessonsFromScheduleAnchor(
       client,
       req.params.id,

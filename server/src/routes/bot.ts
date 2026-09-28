@@ -95,7 +95,7 @@ const markSentSchema = z.object({
       telegramUserId: z
         .union([z.number().int().positive(), z.string().regex(/^\d+$/)])
         .transform(Number),
-      kind: z.enum(['lesson', 'personal', 'reschedule']),
+      kind: z.enum(['lesson', 'personal', 'reschedule', 'created', 'deleted']),
       entityId: z.string().uuid(),
     }),
   ),

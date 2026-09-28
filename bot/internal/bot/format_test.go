@@ -199,6 +199,79 @@ func TestFormatLessonReschedule_tutorAndStudent(t *testing.T) {
 	assert.NotContains(t, studentText, "**Leo**")
 }
 
+func TestFormatLessonCreated_tutorAndStudent(t *testing.T) {
+	b := &Bot{}
+	notice := tutorapi.LessonCreated{
+		StartUTC:    "2026-09-15T13:30:00.000Z",
+		StudentName: "Leo",
+	}
+	tutorText := b.formatLessonCreated(notice, "Europe/Moscow", false)
+	assert.Contains(t, tutorText, "Новый урок")
+	assert.Contains(t, tutorText, "**Leo**")
+	assert.Contains(t, tutorText, "tg://time?unix=")
+	assert.NotContains(t, tutorText, "перенесён")
+	assert.NotContains(t, tutorText, "списан")
+
+	studentText := b.formatLessonCreated(notice, "Europe/Moscow", true)
+	assert.Contains(t, studentText, "Новый урок")
+	assert.NotContains(t, studentText, "**Leo**")
+}
+
+func TestFormatLessonCreated_series(t *testing.T) {
+	b := &Bot{}
+	text := b.formatLessonCreated(tutorapi.LessonCreated{
+		StartUTC:    "2030-06-03T06:00:00.000Z",
+		StudentName: "Leo",
+		Series: []tutorapi.LessonRescheduleSlot{{
+			Weekdays:     []int{0, 3},
+			StartMinutes: 360,
+		}},
+	}, "UTC", false)
+	assert.Contains(t, text, "Уроки будут проходить по Пн и Чт в 06:00")
+	assert.NotContains(t, text, "последующие")
+}
+
+func TestFormatLessonDeleted_tutorAndStudent(t *testing.T) {
+	b := &Bot{}
+	notice := tutorapi.LessonDeleted{
+		StartUTC:    "2026-09-15T13:30:00.000Z",
+		StudentName: "Leo",
+	}
+	tutorText := b.formatLessonDeleted(notice, "Europe/Moscow", false)
+	assert.Contains(t, tutorText, "Урок отменён")
+	assert.Contains(t, tutorText, "**Leo**")
+	assert.Contains(t, tutorText, "tg://time?unix=")
+	assert.Contains(t, tutorText, "~~")
+	assert.NotContains(t, tutorText, "последующие")
+	assert.NotContains(t, tutorText, "списан")
+
+	studentText := b.formatLessonDeleted(notice, "Europe/Moscow", true)
+	assert.Contains(t, studentText, "Урок отменён")
+	assert.NotContains(t, studentText, "**Leo**")
+}
+
+func TestFormatLessonDeleted_charged(t *testing.T) {
+	b := &Bot{}
+	text := b.formatLessonDeleted(tutorapi.LessonDeleted{
+		StartUTC:    "2026-09-15T13:30:00.000Z",
+		StudentName: "Leo",
+		Charged:     true,
+	}, "UTC", true)
+	assert.Contains(t, text, "со списанием")
+	assert.NotContains(t, text, "без списания")
+}
+
+func TestFormatLessonDeleted_series(t *testing.T) {
+	b := &Bot{}
+	text := b.formatLessonDeleted(tutorapi.LessonDeleted{
+		StartUTC:        "2030-06-03T06:00:00.000Z",
+		StudentName:     "Leo",
+		CancelFollowing: true,
+	}, "UTC", false)
+	assert.Contains(t, text, "Урок отменён")
+	assert.Contains(t, text, "Все последующие уроки отменены")
+}
+
 func TestFormatLessonReschedule_seriesSameTimeAndSplitTimes(t *testing.T) {
 	b := &Bot{}
 	sameTime := tutorapi.LessonReschedule{

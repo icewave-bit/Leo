@@ -416,6 +416,47 @@ func formatDateLabel(date, timezone string) string {
 	return t.Format("Mon 02.01")
 }
 
+func (b *Bot) formatLessonDeleted(notice tutorapi.LessonDeleted, timezone string, forStudent bool) string {
+	when := mdDateTime(notice.StartUTC, timezone, "02.01 15:04", "Dt")
+	var buf strings.Builder
+	buf.WriteString(mdHeading("Урок отменён"))
+	buf.WriteByte('\n')
+	if !forStudent {
+		buf.WriteString("\nс **")
+		buf.WriteString(mdEscape(notice.StudentName))
+		buf.WriteString("**\n")
+	}
+	buf.WriteString("\n~~")
+	buf.WriteString(when)
+	buf.WriteString("~~")
+	if notice.CancelFollowing {
+		buf.WriteString("\n\nВсе последующие уроки отменены")
+	}
+	if notice.Charged {
+		buf.WriteString("\n\nсо списанием")
+	}
+	return buf.String()
+}
+
+func (b *Bot) formatLessonCreated(notice tutorapi.LessonCreated, timezone string, forStudent bool) string {
+	when := mdDateTime(notice.StartUTC, timezone, "02.01 15:04", "Dt")
+	var buf strings.Builder
+	buf.WriteString(mdHeading("Новый урок"))
+	buf.WriteByte('\n')
+	if !forStudent {
+		buf.WriteString("\nс **")
+		buf.WriteString(mdEscape(notice.StudentName))
+		buf.WriteString("**\n")
+	}
+	buf.WriteString("\n")
+	buf.WriteString(when)
+	if series := formatRescheduleSeries(notice.Series); series != "" {
+		buf.WriteString("\n\nУроки будут проходить ")
+		buf.WriteString(series)
+	}
+	return buf.String()
+}
+
 func (b *Bot) formatLessonReschedule(move tutorapi.LessonReschedule, timezone string, forStudent bool) string {
 	from := mdDateTime(move.FromStartUTC, timezone, "02.01 15:04", "Dt")
 	to := mdDateTime(move.ToStartUTC, timezone, "02.01 15:04", "Dt")

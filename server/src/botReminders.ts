@@ -8,9 +8,10 @@ import type { AcademicUnits, BalanceKind, WeekStartsOn } from './types.js';
 
 export const STUDENT_REMINDER_LEAD_MINUTES = 30;
 
-export type DueReminderKind = 'lesson' | 'personal' | 'reschedule';
+export type DueReminderKind = 'lesson' | 'personal' | 'reschedule' | 'created' | 'deleted';
 export type DueReminderRole = 'tutor' | 'student';
 export type SentReminderKind = 'lesson' | 'personal';
+export type OutboxKind = 'reschedule' | 'created' | 'deleted';
 
 export type DueLesson = {
   id: string;
@@ -47,6 +48,24 @@ export type DueReschedule = {
   series?: RescheduleSeriesSlot[];
 };
 
+export type DueCreated = {
+  id: string;
+  lessonId: string;
+  startUtc: string;
+  studentName: string;
+  meetUrl: string | null;
+  series?: RescheduleSeriesSlot[];
+};
+
+export type DueDeleted = {
+  id: string;
+  lessonId: string;
+  startUtc: string;
+  studentName: string;
+  charged: boolean;
+  cancelFollowing?: boolean;
+};
+
 export type DueReminder = {
   kind: DueReminderKind;
   telegramUserId: number;
@@ -57,6 +76,8 @@ export type DueReminder = {
   lesson?: DueLesson;
   event?: DuePersonalEvent;
   reschedule?: DueReschedule;
+  created?: DueCreated;
+  deleted?: DueDeleted;
 };
 
 type ReschedulePayload = {
@@ -70,12 +91,33 @@ type ReschedulePayload = {
   series?: RescheduleSeriesSlot[];
 };
 
+type CreatedPayload = {
+  startUtc: string;
+  studentName: string;
+  meetUrl: string | null;
+  timezone: string;
+  silent: boolean;
+  series?: RescheduleSeriesSlot[];
+};
+
+type DeletedPayload = {
+  startUtc: string;
+  studentName: string;
+  timezone: string;
+  silent: boolean;
+  charged: boolean;
+  cancelFollowing?: boolean;
+};
+
 type OutboxRecipient = {
   telegramUserId: string | null;
   notifyEnabled: boolean;
   notifyLessons: boolean;
   silent: boolean;
   timezone: string;
+  leadMinutes: number;
+  startUtc: Date;
+  recurringScheduleId: string | null;
   studentTelegramUserId: string | null;
   studentName: string;
   meetUrl: string | null;
@@ -299,27 +341,27 @@ async function listDuePersonalEvents(now: Date): Promise<DueReminder[]> {
 
 export async function listDueReminders(now = new Date()): Promise<DueReminder[]> {
   await topUpForDueReminders();
-  const [tutorLessons, studentLessons, personal, reschedules] = await Promise.all([
+  const [tutorLessons, studentLessons, personal, outbox] = await Promise.all([
     listDueTutorLessons(now),
     listDueStudentLessons(now),
     listDuePersonalEvents(now),
-    listDueReschedules(now),
+    listDueOutbox(now),
   ]);
   const timed = [...tutorLessons, ...studentLessons, ...personal].sort((a, b) => {
     const aStart = a.lesson?.startUtc ?? a.event?.startUtc ?? '';
     const bStart = b.lesson?.startUtc ?? b.event?.startUtc ?? '';
     return aStart.localeCompare(bStart);
   });
-  return [...reschedules, ...timed];
+  return [...outbox, ...timed];
 }
 
 export async function markRemindersSent(items: SentReminder[]): Promise<void> {
   for (const item of items) {
-    if (item.kind === 'reschedule') {
+    if (item.kind === 'reschedule' || item.kind === 'created' || item.kind === 'deleted') {
       await query(
         `DELETE FROM telegram_notification_outbox
-         WHERE id = $1 AND telegram_user_id = $2 AND kind = 'reschedule'`,
-        [item.entityId, item.telegramUserId],
+         WHERE id = $1 AND telegram_user_id = $2 AND kind = $3`,
+        [item.entityId, item.telegramUserId, item.kind],
       );
       continue;
     }
@@ -401,6 +443,136 @@ async function loadStudentSeriesSlots(
   return mergeSeriesSlots(result.rows);
 }
 
+async function loadOutboxContext(
+  client: PoolClient,
+  lessonId: string,
+): Promise<OutboxRecipient | undefined> {
+  const loaded = await client.query<OutboxRecipient>(
+    `SELECT t.telegram_user_id::text AS "telegramUserId",
+            t.telegram_notify_enabled AS "notifyEnabled",
+            t.telegram_notify_lessons AS "notifyLessons",
+            t.telegram_notify_silent AS silent,
+            t.timezone,
+            t.telegram_notify_lead_minutes AS "leadMinutes",
+            l.start_utc AS "startUtc",
+            l.recurring_schedule_id::text AS "recurringScheduleId",
+            s.telegram_user_id::text AS "studentTelegramUserId",
+            s.name AS "studentName",
+            s.meet_url AS "meetUrl",
+            (s.archived_at IS NOT NULL) AS archived
+     FROM lessons l
+     JOIN tutors t ON t.id = l.tutor_id
+     JOIN students s ON s.id = l.student_id
+     WHERE l.id = $1`,
+    [lessonId],
+  );
+  return loaded.rows[0];
+}
+
+function outboxRecipients(
+  row: OutboxRecipient,
+): Array<{ telegramUserId: string; role: DueReminderRole; silent: boolean; leadMinutes: number }> {
+  const recipients: Array<{
+    telegramUserId: string;
+    role: DueReminderRole;
+    silent: boolean;
+    leadMinutes: number;
+  }> = [];
+  if (row.telegramUserId && row.notifyEnabled && row.notifyLessons) {
+    recipients.push({
+      telegramUserId: row.telegramUserId,
+      role: 'tutor',
+      silent: row.silent,
+      leadMinutes: row.leadMinutes,
+    });
+  }
+  if (row.studentTelegramUserId && !row.archived) {
+    recipients.push({
+      telegramUserId: row.studentTelegramUserId,
+      role: 'student',
+      silent: false,
+      leadMinutes: STUDENT_REMINDER_LEAD_MINUTES,
+    });
+  }
+  return recipients;
+}
+
+function inLeadWindow(startUtc: Date, now: Date, leadMinutes: number): boolean {
+  const remainingMs = startUtc.getTime() - now.getTime();
+  return remainingMs > 0 && remainingMs <= leadMinutes * 60_000;
+}
+
+async function insertOutboxNotices(
+  client: PoolClient,
+  input: {
+    kind: OutboxKind;
+    lessonId: string;
+    payload: Record<string, unknown>;
+    markLessonSent: (recipientLeadMinutes: number) => boolean;
+    recipients: Array<{
+      telegramUserId: string;
+      role: DueReminderRole;
+      silent: boolean;
+      leadMinutes: number;
+    }>;
+  },
+): Promise<void> {
+  const seen = new Set<string>();
+  for (const recipient of input.recipients) {
+    if (seen.has(recipient.telegramUserId)) continue;
+    seen.add(recipient.telegramUserId);
+    await client.query(
+      `INSERT INTO telegram_notification_outbox (kind, telegram_user_id, role, entity_id, payload)
+       VALUES ($1, $2, $3, $4, $5::jsonb)`,
+      [
+        input.kind,
+        recipient.telegramUserId,
+        recipient.role,
+        input.lessonId,
+        JSON.stringify({ ...input.payload, silent: recipient.silent }),
+      ],
+    );
+    if (input.markLessonSent(recipient.leadMinutes)) {
+      await client.query(
+        `INSERT INTO telegram_sent_reminders (telegram_user_id, kind, entity_id)
+         VALUES ($1, 'lesson', $2)
+         ON CONFLICT DO NOTHING`,
+        [recipient.telegramUserId, input.lessonId],
+      );
+    }
+  }
+}
+
+export async function enqueueLessonCreatedNotices(
+  client: PoolClient,
+  input: {
+    lessonId: string;
+    includeSeries?: boolean;
+  },
+): Promise<void> {
+  const row = await loadOutboxContext(client, input.lessonId);
+  if (!row) return;
+  const now = new Date();
+  if (row.startUtc.getTime() <= now.getTime()) return;
+
+  const series = input.includeSeries ? await loadStudentSeriesSlots(client, input.lessonId) : [];
+  const payload: CreatedPayload = {
+    startUtc: row.startUtc.toISOString(),
+    studentName: row.studentName,
+    meetUrl: row.meetUrl,
+    timezone: row.timezone,
+    silent: row.silent,
+    ...(series.length > 0 ? { series } : {}),
+  };
+  await insertOutboxNotices(client, {
+    kind: 'created',
+    lessonId: input.lessonId,
+    payload,
+    markLessonSent: (leadMinutes) => inLeadWindow(row.startUtc, now, leadMinutes),
+    recipients: outboxRecipients(row),
+  });
+}
+
 export async function enqueueLessonRescheduleNotices(
   client: PoolClient,
   input: {
@@ -411,24 +583,13 @@ export async function enqueueLessonRescheduleNotices(
     includeSeries?: boolean;
   },
 ): Promise<void> {
-  const loaded = await client.query<OutboxRecipient>(
-    `SELECT t.telegram_user_id::text AS "telegramUserId",
-            t.telegram_notify_enabled AS "notifyEnabled",
-            t.telegram_notify_lessons AS "notifyLessons",
-            t.telegram_notify_silent AS silent,
-            t.timezone,
-            s.telegram_user_id::text AS "studentTelegramUserId",
-            s.name AS "studentName",
-            s.meet_url AS "meetUrl",
-            (s.archived_at IS NOT NULL) AS archived
-     FROM lessons l
-     JOIN tutors t ON t.id = l.tutor_id
-     JOIN students s ON s.id = l.student_id
-     WHERE l.id = $1`,
+  const row = await loadOutboxContext(client, input.lessonId);
+  if (!row) return;
+
+  await client.query(
+    `DELETE FROM telegram_notification_outbox WHERE kind = 'created' AND entity_id = $1`,
     [input.lessonId],
   );
-  const row = loaded.rows[0];
-  if (!row) return;
 
   const series = input.includeSeries ? await loadStudentSeriesSlots(client, input.lessonId) : [];
   const payload: ReschedulePayload = {
@@ -441,62 +602,142 @@ export async function enqueueLessonRescheduleNotices(
     silent: row.silent,
     ...(series.length > 0 ? { series } : {}),
   };
+  const now = new Date();
+  await insertOutboxNotices(client, {
+    kind: 'reschedule',
+    lessonId: input.lessonId,
+    payload,
+    markLessonSent: () => isRescheduleJoinWindow(input.toStartUtc, now),
+    recipients: outboxRecipients(row),
+  });
+}
 
-  const recipients: Array<{ telegramUserId: string; role: DueReminderRole; silent: boolean }> = [];
-  if (row.telegramUserId && row.notifyEnabled && row.notifyLessons) {
-    recipients.push({ telegramUserId: row.telegramUserId, role: 'tutor', silent: row.silent });
-  }
-  if (row.studentTelegramUserId && !row.archived) {
-    recipients.push({
-      telegramUserId: row.studentTelegramUserId,
-      role: 'student',
-      silent: false,
-    });
-  }
+export async function enqueueLessonDeletedNotices(
+  client: PoolClient,
+  input: {
+    lessonId: string;
+    includeSeries?: boolean;
+    charged: boolean;
+  },
+): Promise<void> {
+  const row = await loadOutboxContext(client, input.lessonId);
+  if (!row) return;
+  const now = new Date();
 
-  const markJoinSent = isRescheduleJoinWindow(input.toStartUtc, new Date());
-  const seen = new Set<string>();
-  for (const recipient of recipients) {
-    if (seen.has(recipient.telegramUserId)) continue;
-    seen.add(recipient.telegramUserId);
-    await client.query(
-      `INSERT INTO telegram_notification_outbox (kind, telegram_user_id, role, entity_id, payload)
-       VALUES ('reschedule', $1, $2, $3, $4::jsonb)`,
-      [
-        recipient.telegramUserId,
-        recipient.role,
-        input.lessonId,
-        JSON.stringify({ ...payload, silent: recipient.silent }),
-      ],
+  const relatedIds = [input.lessonId];
+  if (input.includeSeries && row.recurringScheduleId) {
+    const related = await client.query<{ id: string }>(
+      `SELECT id FROM lessons
+       WHERE recurring_schedule_id = $1 AND start_utc >= $2`,
+      [row.recurringScheduleId, row.startUtc.toISOString()],
     );
-    if (markJoinSent) {
-      await client.query(
-        `INSERT INTO telegram_sent_reminders (telegram_user_id, kind, entity_id)
-         VALUES ($1, 'lesson', $2)
-         ON CONFLICT DO NOTHING`,
-        [recipient.telegramUserId, input.lessonId],
-      );
+    for (const lesson of related.rows) {
+      if (!relatedIds.includes(lesson.id)) relatedIds.push(lesson.id);
     }
   }
+
+  const displayStart = input.includeSeries
+    ? await firstFutureDeletedStart(client, relatedIds, now, row.startUtc)
+    : row.startUtc;
+  if (displayStart.getTime() <= now.getTime() && !input.charged) return;
+
+  await client.query(
+    `DELETE FROM telegram_notification_outbox
+     WHERE kind IN ('created', 'reschedule') AND entity_id = ANY($1::uuid[])`,
+    [relatedIds],
+  );
+
+  const payload: DeletedPayload = {
+    startUtc: displayStart.toISOString(),
+    studentName: row.studentName,
+    timezone: row.timezone,
+    silent: row.silent,
+    charged: input.charged,
+    ...(input.includeSeries ? { cancelFollowing: true } : {}),
+  };
+  await insertOutboxNotices(client, {
+    kind: 'deleted',
+    lessonId: input.lessonId,
+    payload,
+    markLessonSent: () => false,
+    recipients: outboxRecipients(row),
+  });
+}
+
+async function firstFutureDeletedStart(
+  client: PoolClient,
+  lessonIds: string[],
+  now: Date,
+  fallback: Date,
+): Promise<Date> {
+  const result = await client.query<{ start_utc: Date }>(
+    `SELECT start_utc FROM lessons
+     WHERE id = ANY($1::uuid[]) AND start_utc > $2
+     ORDER BY start_utc
+     LIMIT 1`,
+    [lessonIds, now.toISOString()],
+  );
+  return result.rows[0]?.start_utc ?? fallback;
 }
 
 type OutboxRow = {
   id: string;
+  kind: OutboxKind;
   telegram_user_id: string;
   role: DueReminderRole;
   entity_id: string;
-  payload: ReschedulePayload;
+  payload: ReschedulePayload | CreatedPayload | DeletedPayload;
 };
 
-async function listDueReschedules(now: Date): Promise<DueReminder[]> {
+async function listDueOutbox(now: Date): Promise<DueReminder[]> {
   const result = await query<OutboxRow>(
-    `SELECT id, telegram_user_id::text AS telegram_user_id, role, entity_id, payload
+    `SELECT id, kind, telegram_user_id::text AS telegram_user_id, role, entity_id, payload
      FROM telegram_notification_outbox
-     WHERE kind = 'reschedule'
+     WHERE kind IN ('reschedule', 'created', 'deleted')
      ORDER BY created_at, id`,
   );
   return result.rows.map((row) => {
-    const payload = row.payload;
+    if (row.kind === 'created') {
+      const payload = row.payload as CreatedPayload;
+      const start = new Date(payload.startUtc);
+      const series = payload.series && payload.series.length > 0 ? payload.series : undefined;
+      return {
+        kind: 'created' as const,
+        telegramUserId: parseTelegramUserId(row.telegram_user_id),
+        role: row.role,
+        timezone: payload.timezone,
+        leadMinutes: 0,
+        silent: payload.silent,
+        created: {
+          id: row.id,
+          lessonId: row.entity_id,
+          startUtc: payload.startUtc,
+          studentName: payload.studentName,
+          meetUrl: isRescheduleJoinWindow(start, now) ? payload.meetUrl : null,
+          ...(series ? { series } : {}),
+        },
+      };
+    }
+    if (row.kind === 'deleted') {
+      const payload = row.payload as DeletedPayload;
+      return {
+        kind: 'deleted' as const,
+        telegramUserId: parseTelegramUserId(row.telegram_user_id),
+        role: row.role,
+        timezone: payload.timezone,
+        leadMinutes: 0,
+        silent: payload.silent,
+        deleted: {
+          id: row.id,
+          lessonId: row.entity_id,
+          startUtc: payload.startUtc,
+          studentName: payload.studentName,
+          charged: payload.charged,
+          ...(payload.cancelFollowing ? { cancelFollowing: true } : {}),
+        },
+      };
+    }
+    const payload = row.payload as ReschedulePayload;
     const toStart = new Date(payload.toStartUtc);
     const series = payload.series && payload.series.length > 0 ? payload.series : undefined;
     return {

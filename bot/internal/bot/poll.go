@@ -100,6 +100,18 @@ func (b *Bot) sendDueReminder(ctx context.Context, reminder tutorapi.DueReminder
 		}
 		text := b.formatLessonReschedule(*reminder.Reschedule, reminder.Timezone, reminder.Role == "student")
 		return b.sendReminder(ctx, reminder.TelegramUserID, text, reminder.Silent, meetJoinKeyboard(rescheduleJoinURL(*reminder.Reschedule, time.Now())))
+	case "created":
+		if reminder.Created == nil {
+			return fmt.Errorf("due created reminder missing created")
+		}
+		text := b.formatLessonCreated(*reminder.Created, reminder.Timezone, reminder.Role == "student")
+		return b.sendReminder(ctx, reminder.TelegramUserID, text, reminder.Silent, meetJoinKeyboard(createdJoinURL(*reminder.Created, time.Now())))
+	case "deleted":
+		if reminder.Deleted == nil {
+			return fmt.Errorf("due deleted reminder missing deleted")
+		}
+		text := b.formatLessonDeleted(*reminder.Deleted, reminder.Timezone, reminder.Role == "student")
+		return b.sendReminder(ctx, reminder.TelegramUserID, text, reminder.Silent, nil)
 	default:
 		return fmt.Errorf("unknown reminder kind %q", reminder.Kind)
 	}
@@ -123,6 +135,14 @@ func dueStartUTC(reminder tutorapi.DueReminder) string {
 		if reminder.Reschedule != nil {
 			return reminder.Reschedule.ToStartUTC
 		}
+	case "created":
+		if reminder.Created != nil {
+			return reminder.Created.StartUTC
+		}
+	case "deleted":
+		if reminder.Deleted != nil {
+			return reminder.Deleted.StartUTC
+		}
 	default:
 		if reminder.Lesson != nil {
 			return reminder.Lesson.StartUTC
@@ -140,6 +160,14 @@ func dueEntityID(reminder tutorapi.DueReminder) string {
 	case "reschedule":
 		if reminder.Reschedule != nil {
 			return reminder.Reschedule.ID
+		}
+	case "created":
+		if reminder.Created != nil {
+			return reminder.Created.ID
+		}
+	case "deleted":
+		if reminder.Deleted != nil {
+			return reminder.Deleted.ID
 		}
 	default:
 		if reminder.Lesson != nil {
@@ -192,15 +220,26 @@ func rescheduleJoinURL(move tutorapi.LessonReschedule, now time.Time) string {
 	if move.MeetURL == nil {
 		return ""
 	}
-	to, err := time.Parse(time.RFC3339Nano, move.ToStartUTC)
+	return joinURLIfSoon(*move.MeetURL, move.ToStartUTC, now)
+}
+
+func createdJoinURL(notice tutorapi.LessonCreated, now time.Time) string {
+	if notice.MeetURL == nil {
+		return ""
+	}
+	return joinURLIfSoon(*notice.MeetURL, notice.StartUTC, now)
+}
+
+func joinURLIfSoon(meetURL, startUTC string, now time.Time) string {
+	start, err := time.Parse(time.RFC3339Nano, startUTC)
 	if err != nil {
 		return ""
 	}
-	remaining := to.Sub(now)
+	remaining := start.Sub(now)
 	if remaining <= 0 || remaining > rescheduleJoinLead {
 		return ""
 	}
-	return strings.TrimSpace(*move.MeetURL)
+	return strings.TrimSpace(meetURL)
 }
 
 func (b *Bot) formatLessonReminder(lesson tutorapi.Lesson, timezone string, lead time.Duration, forStudent bool) string {
