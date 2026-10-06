@@ -12,6 +12,7 @@ import { topUpRecurringPersonalSchedules } from '../personalRecurringSchedule.js
 import { zonedDayOffsetRangeUtc, zonedDayRangeUtc, zonedWeekOffsetRangeUtc } from '../scheduleSlots.js';
 import type { Student, WeekStartsOn } from '../types.js';
 import { validate } from '../validate.js';
+import { loadOpenStudentVacationEmbeds } from '../vacations.js';
 
 const linkSchema = z.object({
   code: z
@@ -95,7 +96,15 @@ const markSentSchema = z.object({
       telegramUserId: z
         .union([z.number().int().positive(), z.string().regex(/^\d+$/)])
         .transform(Number),
-      kind: z.enum(['lesson', 'personal', 'reschedule', 'created', 'deleted']),
+      kind: z.enum([
+        'lesson',
+        'personal',
+        'reschedule',
+        'created',
+        'deleted',
+        'vacation',
+        'vacation_cancelled',
+      ]),
       entityId: z.string().uuid(),
     }),
   ),
@@ -317,7 +326,10 @@ botRouter.get('/students', async (req, res, next) => {
       req.tutorId!,
       result.rows.map((r) => r.id),
     );
-    const students = result.rows.map((row) => toStudent(row, openDebts.get(row.id) ?? 0));
+    const vacations = await loadOpenStudentVacationEmbeds(req.tutorId!);
+    const students = result.rows.map((row) =>
+      toStudent(row, openDebts.get(row.id) ?? 0, vacations.get(row.id) ?? null),
+    );
     const names = new Map(students.map((s) => [s.id, s.name]));
     res.json({
       students: students.map((s) => ({

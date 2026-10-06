@@ -22,6 +22,7 @@ export type ActivityEntityType =
   | 'tax'
   | 'schedule'
   | 'auth'
+  | 'vacation'
   | 'other';
 
 export type ActivitySnapshot = {
@@ -320,6 +321,33 @@ export async function prefetchSnapshot(req: Request): Promise<ActivitySnapshot |
         },
       };
     }
+    if (path.startsWith('/api/vacations')) {
+      const result = await getPool().query<{
+        student_id: string | null;
+        student_name: string | null;
+        start_date: string;
+        end_date: string;
+      }>(
+        `SELECT v.student_id, s.name AS student_name,
+                v.start_date::text AS start_date, v.end_date::text AS end_date
+         FROM vacations v
+         LEFT JOIN students s ON s.id = v.student_id
+         WHERE v.id = $1 AND v.tutor_id = $2`,
+        [id, tutorId],
+      );
+      const row = result.rows[0];
+      if (!row) return undefined;
+      return {
+        studentId: row.student_id ?? undefined,
+        studentName: row.student_name ?? undefined,
+        entityLabel: row.student_name ?? 'Снеговичок устал',
+        fields: {
+          studentId: row.student_id,
+          startDate: row.start_date,
+          endDate: row.end_date,
+        },
+      };
+    }
   } catch {
     return undefined;
   }
@@ -355,6 +383,9 @@ function classifyRead(
   }
   if (path.startsWith('/api/balance-movements')) {
     return { action: 'other', entityType: 'balance', summary: withStudent('Загрузка баланса', name) };
+  }
+  if (path.startsWith('/api/vacations')) {
+    return { action: 'other', entityType: 'vacation', summary: withStudent('Загрузка отпуска', name) };
   }
   if (path.startsWith('/api/auth')) {
     return { action: 'other', entityType: 'auth', summary: 'Загрузка сессии' };
@@ -459,6 +490,23 @@ function classify(
       return { action: 'delete', entityType: 'personal_event', summary: 'Удалено повторяющееся событие' };
     }
     return { action: 'update', entityType: 'personal_event', summary: 'Изменено повторяющееся событие' };
+  }
+
+  if (p.startsWith('/api/vacations')) {
+    if (p.endsWith('/return') && method === 'POST') {
+      return { action: 'restore', entityType: 'vacation', summary: withStudent('Возврат из отпуска', name) };
+    }
+    if (method === 'POST') {
+      const studentId = asRecord(body).studentId;
+      if (studentId) {
+        return { action: 'create', entityType: 'vacation', summary: withStudent('Отпуск ученика', name) };
+      }
+      return { action: 'create', entityType: 'vacation', summary: 'Снеговичок устал' };
+    }
+    if (method === 'PATCH') {
+      return { action: 'update', entityType: 'vacation', summary: withStudent('Изменён отпуск', name) };
+    }
+    return { action: 'other', entityType: 'vacation', summary: withStudent(`Изменение ${p}`, name) };
   }
 
   if (p.startsWith('/api/schedule-slot-overrides')) {
@@ -683,6 +731,23 @@ async function loadEntityAfter(
         startUtc: row.start_utc.toISOString(),
         durationMin: row.duration_min,
         notes: row.notes,
+      };
+    }
+    if (path.startsWith('/api/vacations')) {
+      const result = await getPool().query<{
+        start_date: string;
+        end_date: string;
+      }>(
+        `SELECT v.start_date::text AS start_date, v.end_date::text AS end_date
+         FROM vacations v
+         WHERE v.id = $1 AND v.tutor_id = $2`,
+        [entityId, tutorId],
+      );
+      const row = result.rows[0];
+      if (!row) return null;
+      return {
+        startDate: row.start_date,
+        endDate: row.end_date,
       };
     }
   } catch {

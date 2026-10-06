@@ -10,6 +10,7 @@ export const ENTITY_LABELS: Record<ActivityEntityType, string> = {
   tax: 'Налоги',
   schedule: 'Расписание',
   auth: 'Вход',
+  vacation: 'Отпуск',
   other: 'Другое',
 };
 
@@ -104,6 +105,9 @@ export function collapsedLogPreview(entry: ActivityLogEntry, timezone: string): 
     lines.push(
       change.from ? `${change.label}: ${change.from} → ${change.to}` : `${change.label}: ${change.to}`,
     );
+  } else {
+    const period = story.facts.find((fact) => fact.label === 'Период');
+    if (period) lines.push(period.value);
   }
   if (story.effects.length === 1) {
     lines.push(formatEffectSummary(story.effects[0], timezone));
@@ -229,6 +233,21 @@ function looksLikeIso(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}T/.test(value);
 }
 
+function looksLikeDateOnly(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function fmtDateOnly(value: string): string {
+  const [y, m, d] = value.split('-');
+  return `${d}.${m}.${y}`;
+}
+
+function vacationPeriod(start: unknown, end: unknown): string | null {
+  if (typeof start !== 'string' || typeof end !== 'string') return null;
+  if (!looksLikeDateOnly(start) || !looksLikeDateOnly(end)) return null;
+  return `${fmtDateOnly(start)} — ${fmtDateOnly(end)}`;
+}
+
 function formatValue(value: unknown, timezone: string): string {
   if (value === null || value === undefined || value === '') return '—';
   if (value === '[redacted]') return 'скрыто';
@@ -237,6 +256,7 @@ function formatValue(value: unknown, timezone: string): string {
   if (typeof value === 'string') {
     if (LESSON_STATUS[value]) return LESSON_STATUS[value];
     if (looksLikeIso(value)) return fmtCompactWhen(value, timezone);
+    if (looksLikeDateOnly(value)) return fmtDateOnly(value);
     return value;
   }
   return JSON.stringify(value);
@@ -247,6 +267,17 @@ function fieldLabel(key: string): string {
 }
 
 const HIDDEN_FIELDS = new Set(['recurringScheduleId', 'studentId']);
+const VACATION_SKIP_FIELDS = new Set([
+  'startDate',
+  'endDate',
+  'personalGroupIds',
+  'notifyAt',
+  'notifiedAt',
+  'cancelledAt',
+  'removedLessonStarts',
+  'nextLessonStartUtc',
+  'id',
+]);
 
 function formatField(key: string, value: unknown, timezone: string): string {
   if (key === 'durationMin' && typeof value === 'number') return `${value} мин`;
@@ -322,6 +353,18 @@ export function buildLogStory(entry: ActivityLogEntry, timezone: string): LogSto
     facts.push({ label: 'Событие', value: title.trim() });
   }
 
+  const vacationBefore = vacationPeriod(before.startDate, before.endDate);
+  const vacationAfter = vacationPeriod(after.startDate, after.endDate);
+  const vacationRangeChanged = Boolean(
+    entry.entityType === 'vacation' && vacationBefore && vacationAfter && vacationBefore !== vacationAfter,
+  );
+  if (entry.entityType === 'vacation' && !vacationRangeChanged && (vacationAfter || vacationBefore)) {
+    facts.push({ label: 'Период', value: vacationAfter ?? vacationBefore! });
+  }
+
+  const skipKey = (key: string) =>
+    HIDDEN_FIELDS.has(key) || (entry.entityType === 'vacation' && VACATION_SKIP_FIELDS.has(key));
+
   const startBefore = typeof before.startUtc === 'string' ? before.startUtc : null;
   const startAfter = typeof after.startUtc === 'string' ? after.startUtc : null;
   const moved = Boolean(startBefore && startAfter && startBefore !== startAfter);
@@ -358,18 +401,22 @@ export function buildLogStory(entry: ActivityLogEntry, timezone: string): LogSto
 
   if (createLike) {
     for (const [key, val] of Object.entries(after)) {
-      if (HIDDEN_FIELDS.has(key) || key === 'studentName' || key === 'startUtc') continue;
+      if (skipKey(key) || key === 'studentName' || key === 'startUtc') continue;
       if (key === 'durationMin' && whenIso) continue;
       if (val === undefined || val === null || val === '') continue;
+      if (Array.isArray(val) && val.length === 0) continue;
       if (facts.some((fact) => fact.label === fieldLabel(key))) continue;
       facts.push({ label: fieldLabel(key), value: formatField(key, val, timezone) });
     }
   }
 
   const changes: LogStoryChange[] = [];
+  if (vacationRangeChanged && vacationBefore && vacationAfter) {
+    changes.push({ label: 'Период', from: vacationBefore, to: vacationAfter });
+  }
   const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])];
   for (const key of keys) {
-    if (HIDDEN_FIELDS.has(key)) continue;
+    if (skipKey(key)) continue;
     if (key === 'studentName' && JSON.stringify(before[key]) === JSON.stringify(after[key])) continue;
     if (key === 'startUtc' && (relocation || whenIso)) continue;
     if (key === 'durationMin' && (relocation || whenIso) && JSON.stringify(before[key]) === JSON.stringify(after[key])) {

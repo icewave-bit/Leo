@@ -1,9 +1,10 @@
 import { atom } from 'jotai';
-import type { BalanceKind } from '../api/types';
+import type { BalanceKind, Vacation } from '../api/types';
 import type { PersonalEventGroup, RecurringPersonalSchedule, RecurringSchedule } from '../api/types';
 import type { LessonDraft, PersonalEventDraft, ViewLesson, ViewPersonalEvent, ViewStudent } from '../utils/schedule';
 
 export const studentsAtom = atom<ViewStudent[]>([]);
+export const vacationsAtom = atom<Vacation[]>([]);
 export const lessonsAtom = atom<ViewLesson[]>([]);
 export const personalEventsAtom = atom<ViewPersonalEvent[]>([]);
 export const personalEventGroupsAtom = atom<PersonalEventGroup[]>([]);

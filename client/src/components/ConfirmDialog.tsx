@@ -7,8 +7,8 @@ export interface ConfirmDialogProps {
   description: string;
   children?: ReactNode;
   confirmLabel?: string;
-  cancelLabel?: string;
-  variant?: 'danger' | 'default';
+  cancelLabel?: string | null;
+  variant?: 'danger' | 'default' | 'success';
   loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -42,6 +42,9 @@ export function ConfirmDialog({
 
   if (!open) return null;
 
+  const toneClass =
+    variant === 'danger' ? ' confirm--danger' : variant === 'success' ? ' confirm--success' : '';
+
   return (
     <div className="confirm-layer" role="presentation">
       <button
@@ -52,7 +55,7 @@ export function ConfirmDialog({
         onClick={onCancel}
       />
       <div
-        className={'confirm' + (variant === 'danger' ? ' confirm--danger' : '')}
+        className={'confirm' + toneClass}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -61,6 +64,8 @@ export function ConfirmDialog({
         <div className="confirm__icon" aria-hidden="true">
           {variant === 'danger' ? (
             <Icon icon="alert" size={22} />
+          ) : variant === 'success' ? (
+            <Icon icon="confirm" size={22} />
           ) : (
             <Icon icon="alert-circle" size={22} />
           )}
@@ -73,9 +78,11 @@ export function ConfirmDialog({
         </p>
         {children}
         <div className="confirm__actions">
-          <button type="button" className="btn btn--ghost" onClick={onCancel} disabled={loading}>
-            {cancelLabel}
-          </button>
+          {cancelLabel ? (
+            <button type="button" className="btn btn--ghost" onClick={onCancel} disabled={loading}>
+              {cancelLabel}
+            </button>
+          ) : null}
           <button
             ref={confirmRef}
             type="button"

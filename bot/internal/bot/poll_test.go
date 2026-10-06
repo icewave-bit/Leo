@@ -312,6 +312,94 @@ func TestPollOnce_sendsDeletedNotice(t *testing.T) {
 	assert.Len(t, msg.messages(), 1)
 }
 
+func TestPollOnce_sendsVacationNotice(t *testing.T) {
+	next := "2026-10-21T12:00:00Z"
+	msg := &mockMessenger{}
+	mon := &mockMonitor{
+		due: []tutorapi.DueReminder{{
+			Kind:           "vacation",
+			TelegramUserID: 42,
+			Role:           "tutor",
+			Timezone:       "Europe/Moscow",
+			Silent:         false,
+			Vacation: &tutorapi.Vacation{
+				ID:            "22222222-2222-4222-8222-222222222222",
+				VacationID:    "vacation-entity-id",
+				Scope:         "student",
+				StudentName:   "Leo",
+				StartDate:     "2026-10-07",
+				EndDate:       "2026-10-20",
+				RemovedStarts: []string{"2026-10-07T12:00:00Z"},
+				NextStartUTC:  &next,
+			},
+		}},
+	}
+	b, err := New(Config{
+		TelegramClient: msg,
+		Monitor:        mon,
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PollInterval:   time.Minute,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, b.pollOnce(context.Background()))
+	require.Len(t, msg.messages(), 1)
+	out := msg.messages()[0]
+	assert.Equal(t, int64(42), out.ChatID)
+	assert.Contains(t, out.RichMessage.Markdown, "Отпуск ученика")
+	assert.Contains(t, out.RichMessage.Markdown, "**Leo**")
+	assert.Nil(t, out.ReplyMarkup)
+	require.Len(t, mon.markedSent, 1)
+	assert.Equal(t, "vacation", mon.markedSent[0].Kind)
+	assert.Equal(t, "22222222-2222-4222-8222-222222222222", mon.markedSent[0].EntityID)
+	assert.NotEqual(t, "vacation-entity-id", mon.markedSent[0].EntityID)
+
+	require.NoError(t, b.pollOnce(context.Background()))
+	assert.Len(t, msg.messages(), 1)
+}
+
+func TestPollOnce_sendsVacationCancelledNotice(t *testing.T) {
+	msg := &mockMessenger{}
+	mon := &mockMonitor{
+		due: []tutorapi.DueReminder{{
+			Kind:           "vacation_cancelled",
+			TelegramUserID: 99,
+			Role:           "student",
+			Timezone:       "Europe/Moscow",
+			Silent:         true,
+			VacationCancelled: &tutorapi.VacationCancelled{
+				ID:               "33333333-3333-4333-8333-333333333333",
+				VacationID:       "vacation-entity-id",
+				Scope:            "tutor",
+				RestoredFromDate: "2026-10-05",
+			},
+		}},
+	}
+	b, err := New(Config{
+		TelegramClient: msg,
+		Monitor:        mon,
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PollInterval:   time.Minute,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, b.pollOnce(context.Background()))
+	require.Len(t, msg.messages(), 1)
+	out := msg.messages()[0]
+	assert.Equal(t, int64(99), out.ChatID)
+	assert.True(t, out.DisableNotification)
+	assert.Contains(t, out.RichMessage.Markdown, "Отпуск отменён")
+	assert.Contains(t, out.RichMessage.Markdown, "Занятия с 05.10 снова в расписании.")
+	assert.Nil(t, out.ReplyMarkup)
+	require.Len(t, mon.markedSent, 1)
+	assert.Equal(t, "vacation_cancelled", mon.markedSent[0].Kind)
+	assert.Equal(t, "33333333-3333-4333-8333-333333333333", mon.markedSent[0].EntityID)
+	assert.NotEqual(t, "vacation-entity-id", mon.markedSent[0].EntityID)
+
+	require.NoError(t, b.pollOnce(context.Background()))
+	assert.Len(t, msg.messages(), 1)
+}
+
 func TestPollOnce_emptyDueDoesNotSend(t *testing.T) {
 	msg := &mockMessenger{}
 	mon := &mockMonitor{}

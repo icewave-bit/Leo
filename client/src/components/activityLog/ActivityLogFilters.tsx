@@ -40,6 +40,7 @@ const ENTITY_FILTERS: { id: ActivityEntityType | 'all'; label: string }[] = [
   { id: 'tax', label: ENTITY_LABELS.tax },
   { id: 'schedule', label: ENTITY_LABELS.schedule },
   { id: 'auth', label: ENTITY_LABELS.auth },
+  { id: 'vacation', label: ENTITY_LABELS.vacation },
 ];
 
 function SegFilter<T extends string>({

@@ -1,7 +1,7 @@
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { tutorAtom } from '../atoms/auth';
-import { lessonsAtom, scheduleLoadErrorAtom, studentsAtom } from '../atoms/schedule';
+import { lessonsAtom, scheduleLoadErrorAtom, studentsAtom, vacationsAtom } from '../atoms/schedule';
 import { resolvedThemeAtom, themeAtom } from '../atoms/theme';
 import type { ResolvedTheme, ThemePreference } from '../atoms/theme';
 import { api } from '../api/client';
@@ -71,12 +71,14 @@ function SidebarNav({ mobile }: { mobile: boolean }) {
   const setTutor = useSetAtom(tutorAtom);
   const setStudents = useSetAtom(studentsAtom);
   const setLessons = useSetAtom(lessonsAtom);
+  const setVacations = useSetAtom(vacationsAtom);
 
   const logout = async () => {
     await api.logout();
     setTutor(null);
     setStudents([]);
     setLessons([]);
+    setVacations([]);
     navigate('/login', { replace: true });
   };
 

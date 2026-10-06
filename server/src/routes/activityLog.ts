@@ -21,6 +21,7 @@ const listQuerySchema = z.object({
       'tax',
       'schedule',
       'auth',
+      'vacation',
       'other',
     ])
     .optional(),

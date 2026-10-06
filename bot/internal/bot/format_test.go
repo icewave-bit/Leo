@@ -272,6 +272,123 @@ func TestFormatLessonDeleted_series(t *testing.T) {
 	assert.Contains(t, text, "Все последующие уроки отменены")
 }
 
+func TestFormatVacation_studentOwn(t *testing.T) {
+	b := &Bot{}
+	next := "2026-10-21T12:00:00Z"
+	text := b.formatVacation(tutorapi.Vacation{
+		Scope:         "student",
+		StudentName:   "Leo",
+		StartDate:     "2026-10-07",
+		EndDate:       "2026-10-20",
+		RemovedStarts: []string{"2026-10-09T12:00:00Z", "2026-10-07T12:00:00Z"},
+		NextStartUTC:  &next,
+	}, "Europe/Moscow", "student")
+	assert.Contains(t, text, "# Хорошего отдыха")
+	assert.Contains(t, text, "Уроки сняты:")
+	assert.Contains(t, text, "~~")
+	assert.Contains(t, text, "07.10 15:00")
+	assert.Contains(t, text, "09.10 15:00")
+	assert.Greater(t, strings.Index(text, "09.10 15:00"), strings.Index(text, "07.10 15:00"))
+	assert.Contains(t, text, "Следующий урок по расписанию:")
+	assert.Contains(t, text, "21.10 15:00")
+	assert.Contains(t, text, "tg://time?unix=")
+	assert.NotContains(t, text, "Отпуск ученика")
+	assert.NotContains(t, text, "Снеговичок")
+	assert.NotContains(t, text, "**Leo**")
+}
+
+func TestFormatVacation_tutorSeesStudent(t *testing.T) {
+	b := &Bot{}
+	next := "2026-10-21T12:00:00Z"
+	text := b.formatVacation(tutorapi.Vacation{
+		Scope:         "student",
+		StudentName:   "Leo",
+		StartDate:     "2026-10-07",
+		EndDate:       "2026-10-20",
+		RemovedStarts: []string{"2026-10-07T12:00:00Z"},
+		NextStartUTC:  &next,
+	}, "Europe/Moscow", "tutor")
+	assert.Contains(t, text, "# Отпуск ученика")
+	assert.Contains(t, text, "**Leo** отдыхает с 07.10 по 20.10.")
+	assert.Contains(t, text, "Уроки сняты:")
+	assert.Contains(t, text, "~~")
+	assert.Contains(t, text, "07.10 15:00")
+	assert.Contains(t, text, "Следующий урок:")
+	assert.NotContains(t, text, "по расписанию")
+	assert.NotContains(t, text, "пройдёт")
+	assert.NotContains(t, text, "Хорошего отдыха")
+	assert.NotContains(t, text, "Снеговичок")
+}
+
+func TestFormatVacation_teacherVacationToStudent(t *testing.T) {
+	b := &Bot{}
+	next := "2026-10-21T12:00:00Z"
+	text := b.formatVacation(tutorapi.Vacation{
+		Scope:         "tutor",
+		StartDate:     "2026-10-07",
+		EndDate:       "2026-10-20",
+		RemovedStarts: []string{"2026-10-07T12:00:00Z"},
+		NextStartUTC:  &next,
+	}, "Europe/Moscow", "student")
+	assert.Contains(t, text, "# ⛄ Снеговичок устал и будет отдыхать")
+	assert.Contains(t, text, "Уроки сняты:")
+	assert.Contains(t, text, "~~")
+	assert.Contains(t, text, "07.10 15:00")
+	assert.Contains(t, text, "Следующий урок пройдёт")
+	assert.Contains(t, text, "21.10 15:00")
+	assert.NotContains(t, text, "Хорошего отдыха")
+	assert.NotContains(t, text, "Отпуск ученика")
+	assert.NotContains(t, text, "по расписанию")
+}
+
+func TestFormatVacation_emptyRemovedStarts(t *testing.T) {
+	b := &Bot{}
+	next := "2026-10-21T12:00:00Z"
+	text := b.formatVacation(tutorapi.Vacation{
+		Scope:         "student",
+		StartDate:     "2026-10-07",
+		EndDate:       "2026-10-20",
+		RemovedStarts: []string{},
+		NextStartUTC:  &next,
+	}, "Europe/Moscow", "student")
+	assert.Contains(t, text, "Уроки сняты: нет запланированных занятий в этом периоде")
+	assert.NotContains(t, text, "~~")
+	assert.Contains(t, text, "Следующий урок по расписанию:")
+}
+
+func TestFormatVacation_noNextLesson(t *testing.T) {
+	b := &Bot{}
+	text := b.formatVacation(tutorapi.Vacation{
+		Scope:         "student",
+		StartDate:     "2026-10-07",
+		EndDate:       "2026-10-20",
+		RemovedStarts: []string{"2026-10-07T12:00:00Z"},
+	}, "Europe/Moscow", "student")
+	assert.Contains(t, text, "Следующий урок пока не назначен")
+	assert.NotContains(t, text, "по расписанию")
+	assert.Contains(t, text, "~~")
+}
+
+func TestFormatVacationCancelled_studentAndTutor(t *testing.T) {
+	b := &Bot{}
+	studentText := b.formatVacationCancelled(tutorapi.VacationCancelled{
+		Scope:            "student",
+		StudentName:      "Leo",
+		RestoredFromDate: "2026-10-05",
+	}, "student")
+	assert.Contains(t, studentText, "# Отпуск отменён")
+	assert.Contains(t, studentText, "Занятия с 05.10 снова в расписании.")
+	assert.NotContains(t, studentText, "**Leo**")
+
+	tutorText := b.formatVacationCancelled(tutorapi.VacationCancelled{
+		Scope:            "student",
+		StudentName:      "Leo",
+		RestoredFromDate: "2026-10-05",
+	}, "tutor")
+	assert.Contains(t, tutorText, "# Отпуск отменён")
+	assert.Contains(t, tutorText, "Занятия **Leo** с 05.10 снова в расписании.")
+}
+
 func TestFormatLessonReschedule_seriesSameTimeAndSplitTimes(t *testing.T) {
 	b := &Bot{}
 	sameTime := tutorapi.LessonReschedule{

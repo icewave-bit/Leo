@@ -73,6 +73,13 @@ export interface Student {
   telegramUsername: string | null;
   archivedAt: string | null;
   createdAt: string;
+  vacation: StudentVacation | null;
+}
+
+export interface StudentVacation {
+  id: UUID;
+  startDate: string;
+  endDate: string;
 }
 
 export interface Lesson {
@@ -156,6 +163,19 @@ export interface ScheduleSlotOverride {
   weekday: number;
   startMinutes: number;
   blocked: boolean;
+}
+
+export interface Vacation {
+  id: UUID;
+  studentId: UUID | null;
+  startDate: string;
+  endDate: string;
+  personalGroupIds: UUID[];
+  notifyAt: string;
+  notifiedAt: string | null;
+  cancelledAt: string | null;
+  removedLessonStarts: string[];
+  nextLessonStartUtc: string | null;
 }
 
 export type ErrorCode =

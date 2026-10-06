@@ -13,6 +13,7 @@ import {
   studentsAtom,
   weekStartAtom,
   scheduleSlotOverridesAtom,
+  vacationsAtom,
 } from '../atoms/schedule';
 import {
   lessonToView,
@@ -80,13 +81,14 @@ export async function loadSchedule(
       return;
     }
 
-    const [students, recurringSchedules, recurringPersonalSchedules, groups, slotOverrides] =
+    const [students, recurringSchedules, recurringPersonalSchedules, groups, slotOverrides, vacationPage] =
       await Promise.all([
         api.students(),
         api.recurringSchedules(),
         api.recurringPersonalSchedules(),
         api.personalEventGroups(),
         api.scheduleSlotOverrides(),
+        api.vacations(),
       ]);
     if (seq !== loadScheduleSeq) return;
 
@@ -95,6 +97,7 @@ export async function loadSchedule(
     set(recurringPersonalSchedulesAtom, recurringPersonalSchedules);
     set(personalEventGroupsAtom, groups);
     set(scheduleSlotOverridesAtom, slotOverrides);
+    set(vacationsAtom, vacationPage.vacations);
     applyWeekEvents(get, set, weekStart, lessons, personalEvents, tutor.timezone);
   } catch (err) {
     if (seq !== loadScheduleSeq) return;

@@ -105,18 +105,39 @@ type LessonDeleted struct {
 	CancelFollowing bool   `json:"cancelFollowing,omitempty"`
 }
 
+type Vacation struct {
+	ID            string   `json:"id"`
+	VacationID    string   `json:"vacationId"`
+	Scope         string   `json:"scope"`
+	StudentName   string   `json:"studentName"`
+	StartDate     string   `json:"startDate"`
+	EndDate       string   `json:"endDate"`
+	RemovedStarts []string `json:"removedStarts"`
+	NextStartUTC  *string  `json:"nextStartUtc"`
+}
+
+type VacationCancelled struct {
+	ID               string `json:"id"`
+	VacationID       string `json:"vacationId"`
+	Scope            string `json:"scope"`
+	StudentName      string `json:"studentName"`
+	RestoredFromDate string `json:"restoredFromDate"`
+}
+
 type DueReminder struct {
-	Kind           string            `json:"kind"`
-	TelegramUserID int64             `json:"telegramUserId"`
-	Role           string            `json:"role"`
-	Timezone       string            `json:"timezone"`
-	LeadMinutes    int               `json:"leadMinutes"`
-	Silent         bool              `json:"silent"`
-	Lesson         *Lesson           `json:"lesson,omitempty"`
-	Event          *PersonalEvent    `json:"event,omitempty"`
-	Reschedule     *LessonReschedule `json:"reschedule,omitempty"`
-	Created        *LessonCreated    `json:"created,omitempty"`
-	Deleted        *LessonDeleted    `json:"deleted,omitempty"`
+	Kind              string             `json:"kind"`
+	TelegramUserID    int64              `json:"telegramUserId"`
+	Role              string             `json:"role"`
+	Timezone          string             `json:"timezone"`
+	LeadMinutes       int                `json:"leadMinutes"`
+	Silent            bool               `json:"silent"`
+	Lesson            *Lesson            `json:"lesson,omitempty"`
+	Event             *PersonalEvent     `json:"event,omitempty"`
+	Reschedule        *LessonReschedule  `json:"reschedule,omitempty"`
+	Created           *LessonCreated     `json:"created,omitempty"`
+	Deleted           *LessonDeleted     `json:"deleted,omitempty"`
+	Vacation          *Vacation          `json:"vacation,omitempty"`
+	VacationCancelled *VacationCancelled `json:"vacationCancelled,omitempty"`
 }
 
 type SentReminder struct {

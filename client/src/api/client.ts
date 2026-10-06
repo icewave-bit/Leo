@@ -13,6 +13,7 @@ import type {
   PatchTutorBody,
   Tutor,
   UpdateStudentBody,
+  Vacation,
 } from './types';
 import { getViteMergedEnv } from '../lib/runtimeEnv';
 
@@ -279,4 +280,18 @@ export const api = {
 
   activityLogRelated: (id: string) =>
     request<ActivityLogRelated>(`/api/activity-log/${id}/related`),
+
+  vacations: () => request<{ vacations: Vacation[] }>('/api/vacations'),
+  createVacation: (body: {
+    studentId?: string | null;
+    startDate: string;
+    endDate: string;
+    personalGroupIds?: string[];
+  }) => request<Vacation>('/api/vacations', { method: 'POST', json: body }),
+  patchVacation: (
+    id: string,
+    body: { startDate?: string; endDate?: string; personalGroupIds?: string[] },
+  ) => request<Vacation>(`/api/vacations/${id}`, { method: 'PATCH', json: body }),
+  returnFromVacation: (id: string) =>
+    request<Vacation>(`/api/vacations/${id}/return`, { method: 'POST' }),
 };

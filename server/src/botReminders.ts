@@ -8,10 +8,17 @@ import type { AcademicUnits, BalanceKind, WeekStartsOn } from './types.js';
 
 export const STUDENT_REMINDER_LEAD_MINUTES = 30;
 
-export type DueReminderKind = 'lesson' | 'personal' | 'reschedule' | 'created' | 'deleted';
+export type DueReminderKind =
+  | 'lesson'
+  | 'personal'
+  | 'reschedule'
+  | 'created'
+  | 'deleted'
+  | 'vacation'
+  | 'vacation_cancelled';
 export type DueReminderRole = 'tutor' | 'student';
 export type SentReminderKind = 'lesson' | 'personal';
-export type OutboxKind = 'reschedule' | 'created' | 'deleted';
+export type OutboxKind = 'reschedule' | 'created' | 'deleted' | 'vacation' | 'vacation_cancelled';
 
 export type DueLesson = {
   id: string;
@@ -66,6 +73,25 @@ export type DueDeleted = {
   cancelFollowing?: boolean;
 };
 
+export type DueVacation = {
+  id: string;
+  vacationId: string;
+  scope: 'student' | 'tutor';
+  studentName: string | null;
+  startDate: string;
+  endDate: string;
+  removedStarts: string[];
+  nextStartUtc: string | null;
+};
+
+export type DueVacationCancelled = {
+  id: string;
+  vacationId: string;
+  scope: 'student' | 'tutor';
+  studentName: string | null;
+  restoredFromDate: string;
+};
+
 export type DueReminder = {
   kind: DueReminderKind;
   telegramUserId: number;
@@ -78,6 +104,8 @@ export type DueReminder = {
   reschedule?: DueReschedule;
   created?: DueCreated;
   deleted?: DueDeleted;
+  vacation?: DueVacation;
+  vacationCancelled?: DueVacationCancelled;
 };
 
 type ReschedulePayload = {
@@ -107,6 +135,25 @@ type DeletedPayload = {
   silent: boolean;
   charged: boolean;
   cancelFollowing?: boolean;
+};
+
+type VacationPayload = {
+  scope: 'student' | 'tutor';
+  studentName: string | null;
+  startDate: string;
+  endDate: string;
+  removedStarts: string[];
+  nextStartUtc: string | null;
+  timezone: string;
+  silent: boolean;
+};
+
+type VacationCancelledPayload = {
+  scope: 'student' | 'tutor';
+  studentName: string | null;
+  restoredFromDate: string;
+  timezone: string;
+  silent: boolean;
 };
 
 type OutboxRecipient = {
@@ -357,7 +404,21 @@ export async function listDueReminders(now = new Date()): Promise<DueReminder[]>
 
 export async function markRemindersSent(items: SentReminder[]): Promise<void> {
   for (const item of items) {
-    if (item.kind === 'reschedule' || item.kind === 'created' || item.kind === 'deleted') {
+    if (
+      item.kind === 'reschedule' ||
+      item.kind === 'created' ||
+      item.kind === 'deleted' ||
+      item.kind === 'vacation' ||
+      item.kind === 'vacation_cancelled'
+    ) {
+      if (item.kind === 'vacation') {
+        await query(
+          `UPDATE vacations
+           SET notified_at = COALESCE(notified_at, now()), updated_at = now()
+           WHERE id = (SELECT entity_id FROM telegram_notification_outbox WHERE id = $1)`,
+          [item.entityId],
+        );
+      }
       await query(
         `DELETE FROM telegram_notification_outbox
          WHERE id = $1 AND telegram_user_id = $2 AND kind = $3`,
@@ -686,15 +747,22 @@ type OutboxRow = {
   telegram_user_id: string;
   role: DueReminderRole;
   entity_id: string;
-  payload: ReschedulePayload | CreatedPayload | DeletedPayload;
+  payload:
+    | ReschedulePayload
+    | CreatedPayload
+    | DeletedPayload
+    | VacationPayload
+    | VacationCancelledPayload;
 };
 
 async function listDueOutbox(now: Date): Promise<DueReminder[]> {
   const result = await query<OutboxRow>(
     `SELECT id, kind, telegram_user_id::text AS telegram_user_id, role, entity_id, payload
      FROM telegram_notification_outbox
-     WHERE kind IN ('reschedule', 'created', 'deleted')
+     WHERE kind IN ('reschedule', 'created', 'deleted', 'vacation', 'vacation_cancelled')
+       AND available_at <= $1::timestamptz
      ORDER BY created_at, id`,
+    [now.toISOString()],
   );
   return result.rows.map((row) => {
     if (row.kind === 'created') {
@@ -734,6 +802,45 @@ async function listDueOutbox(now: Date): Promise<DueReminder[]> {
           studentName: payload.studentName,
           charged: payload.charged,
           ...(payload.cancelFollowing ? { cancelFollowing: true } : {}),
+        },
+      };
+    }
+    if (row.kind === 'vacation') {
+      const payload = row.payload as VacationPayload;
+      return {
+        kind: 'vacation' as const,
+        telegramUserId: parseTelegramUserId(row.telegram_user_id),
+        role: row.role,
+        timezone: payload.timezone,
+        leadMinutes: 0,
+        silent: payload.silent,
+        vacation: {
+          id: row.id,
+          vacationId: row.entity_id,
+          scope: payload.scope,
+          studentName: payload.studentName,
+          startDate: payload.startDate,
+          endDate: payload.endDate,
+          removedStarts: payload.removedStarts,
+          nextStartUtc: payload.nextStartUtc,
+        },
+      };
+    }
+    if (row.kind === 'vacation_cancelled') {
+      const payload = row.payload as VacationCancelledPayload;
+      return {
+        kind: 'vacation_cancelled' as const,
+        telegramUserId: parseTelegramUserId(row.telegram_user_id),
+        role: row.role,
+        timezone: payload.timezone,
+        leadMinutes: 0,
+        silent: payload.silent,
+        vacationCancelled: {
+          id: row.id,
+          vacationId: row.entity_id,
+          scope: payload.scope,
+          studentName: payload.studentName,
+          restoredFromDate: payload.restoredFromDate,
         },
       };
     }

@@ -1235,4 +1235,22 @@ describe('bot due reminders', () => {
     });
     expect(deleted[0]?.deleted).not.toHaveProperty('cancelFollowing');
   });
+
+  it('does not return outbox rows whose available_at is in the future', async () => {
+    const { agent } = await registerTutor(app, { timezone: 'UTC' });
+    await linkTelegram(agent, app, '424321');
+    const student = await createStudent(agent);
+    const startUtc = new Date(Date.now() + 2 * 3_600_000).toISOString();
+    await agent
+      .post('/api/lessons')
+      .send({ studentId: student.id, startUtc, durationMin: 60 })
+      .expect(201);
+
+    expect((await listDueReminders(new Date())).filter((r) => r.kind === 'created')).toHaveLength(1);
+
+    await query(
+      `UPDATE telegram_notification_outbox SET available_at = now() + interval '10 minutes'`,
+    );
+    expect((await listDueReminders(new Date())).filter((r) => r.kind === 'created')).toEqual([]);
+  });
 });

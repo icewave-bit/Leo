@@ -61,8 +61,8 @@ function RelatedTree({
               </div>
               {nested.length > 0 ? (
                 <ul className="alog-tree alog-tree--nested">
-                  {nested.map((effect) => (
-                    <li key={effect.type + effect.summary + (effect.startUtc ?? '')}>
+                  {nested.map((effect, i) => (
+                    <li key={`${effect.type}-${effect.summary}-${effect.startUtc ?? ''}-${i}`}>
                       {formatEffectSummary(effect, timezone)}
                     </li>
                   ))}
@@ -118,8 +118,8 @@ export function ActivityLogDetail({
 
       {facts.length > 0 ? (
         <dl className="alog-dl">
-          {facts.map((fact) => (
-            <div key={fact.label} className="alog-dl__row">
+            {facts.map((fact, i) => (
+            <div key={`${fact.label}-${i}`} className="alog-dl__row">
               <dt>{fact.label}</dt>
               <dd>{fact.value}</dd>
             </div>
@@ -131,8 +131,8 @@ export function ActivityLogDetail({
         <section className="alog-detail__section">
           <h3>Что изменилось</h3>
           <StoryTree>
-            {story.changes.map((change) => (
-              <li key={change.label}>
+            {story.changes.map((change, i) => (
+              <li key={`${change.label}-${i}`}>
                 <div className="alog-change">
                   <span className="alog-change__lbl">{change.label}</span>
                   <span className="alog-change__vals">
@@ -159,8 +159,8 @@ export function ActivityLogDetail({
         <section className="alog-detail__section">
           <h3>Сразу после этого</h3>
           <StoryTree>
-            {story.effects.map((effect) => (
-              <li key={effect.type + effect.summary + (effect.startUtc ?? '')}>
+            {story.effects.map((effect, i) => (
+              <li key={`${effect.type}-${effect.summary}-${effect.startUtc ?? ''}-${i}`}>
                 {formatEffectSummary(effect, timezone)}
               </li>
             ))}

@@ -1,4 +1,5 @@
 import { addCollection } from '@iconify/react';
+import fluentMdl2 from './fluentMdl2Subset.json';
 import lineMd from './lineMdSubset.json';
 import mdiLight from './mdiLightSubset.json';
 
@@ -38,6 +39,7 @@ export function registerLineMdIcons() {
   registered = true;
   addCollection(lineMd);
   addCollection(mdiLight);
+  addCollection(fluentMdl2);
 }
 
 export function lineMdIcon(name: LineMdIconName): string {

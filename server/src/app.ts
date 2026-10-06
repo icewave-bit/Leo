@@ -19,6 +19,7 @@ import { taxesRouter } from './routes/taxes.js';
 import { activityLogRouter } from './routes/activityLog.js';
 import { botRouter } from './routes/bot.js';
 import { botStudentRouter } from './routes/botStudent.js';
+import { vacationsRouter } from './routes/vacations.js';
 import { activityLogMiddleware } from './middleware/activityLog.js';
 import { rememberActivityError } from './activityLog.js';
 
@@ -74,6 +75,7 @@ export async function createApp(): Promise<express.Express> {
   app.use('/api/schedule-slot-overrides', scheduleSlotOverridesRouter);
   app.use('/api/balance-movements', balanceMovementsRouter);
   app.use('/api/taxes', taxesRouter);
+  app.use('/api/vacations', vacationsRouter);
 
   app.use(
     (

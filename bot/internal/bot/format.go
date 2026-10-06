@@ -438,6 +438,100 @@ func (b *Bot) formatLessonDeleted(notice tutorapi.LessonDeleted, timezone string
 	return buf.String()
 }
 
+func (b *Bot) formatVacation(notice tutorapi.Vacation, timezone, role string) string {
+	var buf strings.Builder
+	buf.WriteString(mdHeading(vacationHeading(notice.Scope, role)))
+	buf.WriteByte('\n')
+	if notice.Scope == "student" && role != "student" {
+		buf.WriteString("\n**")
+		buf.WriteString(mdEscape(notice.StudentName))
+		buf.WriteString("** отдыхает с ")
+		buf.WriteString(formatCalendarDate(notice.StartDate))
+		buf.WriteString(" по ")
+		buf.WriteString(formatCalendarDate(notice.EndDate))
+		buf.WriteString(".\n")
+	}
+	buf.WriteByte('\n')
+	buf.WriteString(formatRemovedStarts(notice.RemovedStarts, timezone))
+	buf.WriteString("\n\n")
+	buf.WriteString(formatVacationNext(notice, timezone, role))
+	return buf.String()
+}
+
+func (b *Bot) formatVacationCancelled(notice tutorapi.VacationCancelled, role string) string {
+	when := formatCalendarDate(notice.RestoredFromDate)
+	var buf strings.Builder
+	buf.WriteString(mdHeading("Отпуск отменён"))
+	buf.WriteString("\n\n")
+	if notice.Scope == "student" && role != "student" && strings.TrimSpace(notice.StudentName) != "" {
+		buf.WriteString("Занятия **")
+		buf.WriteString(mdEscape(notice.StudentName))
+		buf.WriteString("** с ")
+		buf.WriteString(when)
+		buf.WriteString(" снова в расписании.")
+		return buf.String()
+	}
+	buf.WriteString("Занятия с ")
+	buf.WriteString(when)
+	buf.WriteString(" снова в расписании.")
+	return buf.String()
+}
+
+func vacationHeading(scope, role string) string {
+	if scope == "tutor" {
+		return "⛄ Снеговичок устал и будет отдыхать"
+	}
+	if role == "student" {
+		return "Хорошего отдыха"
+	}
+	return "Отпуск ученика"
+}
+
+func formatRemovedStarts(starts []string, timezone string) string {
+	if len(starts) == 0 {
+		return "Уроки сняты: нет запланированных занятий в этом периоде"
+	}
+	sorted := append([]string(nil), starts...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		ui, oki := unixUTC(sorted[i])
+		uj, okj := unixUTC(sorted[j])
+		if oki && okj && ui != uj {
+			return ui < uj
+		}
+		return sorted[i] < sorted[j]
+	})
+	var buf strings.Builder
+	buf.WriteString("Уроки сняты:\n")
+	for _, start := range sorted {
+		buf.WriteString("\n~~")
+		buf.WriteString(mdDateTime(start, timezone, "02.01 15:04", "Dt"))
+		buf.WriteString("~~")
+	}
+	return buf.String()
+}
+
+func formatVacationNext(notice tutorapi.Vacation, timezone, role string) string {
+	if notice.NextStartUTC == nil || strings.TrimSpace(*notice.NextStartUTC) == "" {
+		return "Следующий урок пока не назначен"
+	}
+	when := mdDateTime(*notice.NextStartUTC, timezone, "02.01 15:04", "Dt")
+	if notice.Scope == "tutor" {
+		return "Следующий урок пройдёт " + when
+	}
+	if role == "student" {
+		return "Следующий урок по расписанию: " + when
+	}
+	return "Следующий урок: " + when
+}
+
+func formatCalendarDate(date string) string {
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return date
+	}
+	return t.Format("02.01")
+}
+
 func (b *Bot) formatLessonCreated(notice tutorapi.LessonCreated, timezone string, forStudent bool) string {
 	when := mdDateTime(notice.StartUTC, timezone, "02.01 15:04", "Dt")
 	var buf strings.Builder

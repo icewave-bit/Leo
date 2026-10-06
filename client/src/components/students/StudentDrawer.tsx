@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { BalanceKind, CreateStudentBody, Lesson, UpdateStudentBody } from '../../api/types';
+import type {
+  BalanceKind,
+  BalanceMovement,
+  BillingDebtBreakdown,
+  CreateStudentBody,
+  Lesson,
+  StudentVacation,
+  UpdateStudentBody,
+  Vacation,
+} from '../../api/types';
 import { api } from '../../api/client';
 import { tutorAtom } from '../../atoms/auth';
 import { useAtomValue, useSetAtom } from 'jotai';
@@ -37,14 +46,16 @@ import { ColorPalettePicker } from '../ColorPalettePicker';
 import { DrawerSpoiler } from '../DrawerSpoiler';
 import { useAppStore } from '../../hooks/useAppStore';
 import { loadSchedule } from '../../state/loadSchedule';
-import type { BalanceMovement, BillingDebtBreakdown } from '../../api/types';
 import { JournalEntryCard } from '../payments/JournalEntryCard';
 import {
   balanceCorrectionStudentIdAtom,
   balanceReplenishStudentIdAtom,
   studentLessonsBumpAtom,
   studentsAtom,
+  vacationsAtom,
 } from '../../atoms/schedule';
+import { VacationDrawer } from '../VacationDrawer';
+import { VacationRange } from '../VacationRange';
 import { BalanceKindSeg } from '../BalanceKindSeg';
 import { BillingFamilyDebt } from './BillingFamilyDebt';
 import { BillingPayerLink } from './BillingPayerLink';
@@ -207,6 +218,27 @@ function clearBillingForm(form: StudentFormValues): StudentFormValues {
 
 const AUTOSAVE_MS = 500;
 
+function vacationFromEmbed(
+  studentId: string,
+  embed: StudentVacation,
+  vacations: Vacation[],
+): Vacation {
+  return (
+    vacations.find((v) => v.id === embed.id) ?? {
+      id: embed.id,
+      studentId,
+      startDate: embed.startDate,
+      endDate: embed.endDate,
+      personalGroupIds: [],
+      notifyAt: '',
+      notifiedAt: null,
+      cancelledAt: null,
+      removedLessonStarts: [],
+      nextLessonStartUtc: null,
+    }
+  );
+}
+
 interface StudentDrawerProps {
   mode?: 'create' | 'edit';
   variant?: 'active' | 'archive';
@@ -256,6 +288,7 @@ export function StudentDrawer({
 
   const tutor = useAtomValue(tutorAtom);
   const allStudents = useAtomValue(studentsAtom);
+  const vacations = useAtomValue(vacationsAtom);
   const activeStudent = useStudent(isArchive ? undefined : studentId);
   const [archivedStudent, setArchivedStudent] = useState<ViewStudent | null>(null);
   const existing = isArchive ? archivedStudent : activeStudent;
@@ -279,6 +312,7 @@ export function StudentDrawer({
   const [deleting, setDeleting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [vacationOpen, setVacationOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loadedStudentIdRef = useRef<string | null>(null);
   const userEditedRef = useRef(false);
@@ -407,6 +441,7 @@ export function StudentDrawer({
       openLessonDebt: 0,
       telegramLinked: false,
       telegramUsername: null,
+      vacation: null,
       ...balancePartsFromForm(form),
     };
     const rateRaw = form.rate.trim() ? Number(form.rate) : null;
@@ -893,6 +928,13 @@ export function StudentDrawer({
                 </button>
               </div>
             )}
+            {existing?.vacation ? (
+              <VacationRange
+                className="student-drawer__vacation"
+                startDate={existing.vacation.startDate}
+                endDate={existing.vacation.endDate}
+              />
+            ) : null}
           </div>
           <button type="button" className="iconbtn student-drawer__close" onClick={onClose} aria-label="Закрыть">
             ✕
@@ -1175,19 +1217,42 @@ export function StudentDrawer({
                   </button>
                 </>
               ) : (
-                <button
-                  type="button"
-                  className="btn btn--ghost btn--danger"
-                  onClick={() => setConfirmOpen(true)}
-                  disabled={saving || deleting}
-                >
-                  В архив
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={() => setVacationOpen(true)}
+                    disabled={saving || deleting}
+                  >
+                    {existing?.vacation ? 'Вернуть из отпуска' : 'В отпуск'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--danger"
+                    onClick={() => setConfirmOpen(true)}
+                    disabled={saving || deleting}
+                  >
+                    В архив
+                  </button>
+                </>
               )}
             </footer>
           ) : null}
         </div>
       </aside>
+      {vacationOpen && studentId ? (
+        <VacationDrawer
+          variant="student"
+          existing={
+            existing?.vacation
+              ? vacationFromEmbed(studentId, existing.vacation, vacations)
+              : null
+          }
+          studentId={studentId}
+          studentName={existing?.name}
+          onClose={() => setVacationOpen(false)}
+        />
+      ) : null}
     </>
   );
 }

@@ -1291,6 +1291,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 /* ---------- drawer ---------- */
 .scrim { position: fixed; inset: 0; background: oklch(0.2 0.02 70 / 0.42); z-index: 40; }
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 400px; max-width: 92vw; background: var(--surf); border-left: 1px solid var(--border); box-shadow: var(--sh-lg); z-index: 41; padding: 22px; overflow: auto; display: flex; flex-direction: column; gap: 20px; opacity: 1; animation: slidein .28s cubic-bezier(.2,.8,.2,1); }
+.scrim--over { z-index: 44; }
+.drawer--over { z-index: 45; }
 @keyframes slidein { from { transform: translateX(36px); } }
 .drawer__head { display: flex; align-items: center; gap: 13px; }
 .drawer__head-txt { flex: 1; min-width: 0; }
@@ -1309,6 +1311,43 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .drawer__actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
 .drawer__hint { font-size: 14px; color: var(--muted); line-height: 1.5; }
 .drawer__error { margin: 0; font-size: 13px; color: var(--c-debt); font-weight: 600; }
+
+.vacation-dates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  min-width: 0;
+}
+.vacation-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.vacation-range {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+  line-height: 1.4;
+}
+.student-drawer__vacation {
+  color: var(--muted);
+  font-weight: 600;
+}
+.vacation-groups__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.vacation-groups__check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--c-primary);
+}
 
 .field--recurrence { gap: 10px; padding: 14px; border-radius: var(--r); background: var(--surf-2); }
 .recurrence-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600; }
@@ -1530,6 +1569,11 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   padding: 14px 18px calc(14px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--border);
   background: var(--surf);
+}
+.student-drawer__footer .btn {
+  flex: 1 1 calc(50% - 12px);
+  white-space: normal;
+  text-align: center;
 }
 .student-drawer__footer-end {
   display: flex;
@@ -1823,6 +1867,10 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .confirm--danger .confirm__icon {
   background: color-mix(in oklch, var(--c-debt) 14%, var(--surf));
   color: var(--c-debt);
+}
+.confirm--success .confirm__icon {
+  background: color-mix(in oklch, var(--c-credit) 16%, var(--surf));
+  color: var(--c-credit);
 }
 .confirm__title {
   font-size: 18px;
@@ -2905,6 +2953,12 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .settings-card__seg .seg--balance-kind { width: 100%; }
 .settings-card__seg .seg--balance-kind .seg__btn { flex: 1; }
 .settings-card__foot { margin-top: auto; padding-top: 4px; }
+.settings-card__foot--split {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.settings-card__foot--split .btn { flex: 1 1 auto; }
 .settings-now-line__spoiler,
 .settings-taxes__spoiler,
 .settings-telegram__spoiler { margin-top: 14px; }

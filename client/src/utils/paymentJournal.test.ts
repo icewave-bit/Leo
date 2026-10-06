@@ -23,6 +23,7 @@ function student(partial: Partial<ViewStudent> & Pick<ViewStudent, 'id' | 'name'
     openLessonDebt: 0,
     telegramLinked: false,
     telegramUsername: null,
+    vacation: null,
     ...partial,
   };
 }

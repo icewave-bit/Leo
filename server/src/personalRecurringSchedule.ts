@@ -5,6 +5,7 @@ import type { RecurringPersonalScheduleRow } from './mappers.js';
 import {
   RECURRING_HORIZON_WEEKS,
   getTutorSchedulePrefs,
+  horizonEndDateFromNow,
   occurrenceDatesForSchedule,
   resolveMaterializeHorizon,
   startUtcForOccurrence,
@@ -28,13 +29,12 @@ export async function materializeRecurringPersonalSchedule(
        )
        SELECT $1, $2, $3, $4, $5, $6, $7
        WHERE NOT EXISTS (
-         SELECT 1 FROM personal_events
-         WHERE recurring_personal_schedule_id = $7 AND start_utc = $4
-       )
-       AND NOT EXISTS (
          SELECT 1 FROM recurring_personal_schedule_skips
          WHERE recurring_personal_schedule_id = $7 AND start_utc = $4
-       )`,
+       )
+       ON CONFLICT (recurring_personal_schedule_id, start_utc)
+         WHERE (recurring_personal_schedule_id IS NOT NULL)
+       DO NOTHING`,
       [
         schedule.tutor_id,
         schedule.group_id,
@@ -97,6 +97,36 @@ export async function skipRecurringPersonalOccurrence(
      ON CONFLICT DO NOTHING`,
     [recurringPersonalScheduleId, iso],
   );
+}
+
+export async function unskipRecurringPersonalOccurrence(
+  client: PoolClient,
+  recurringPersonalScheduleId: string,
+  startUtc: Date | string,
+): Promise<void> {
+  const iso = typeof startUtc === 'string' ? startUtc : startUtc.toISOString();
+  await client.query(
+    `DELETE FROM recurring_personal_schedule_skips
+     WHERE recurring_personal_schedule_id = $1 AND start_utc = $2::timestamptz`,
+    [recurringPersonalScheduleId, iso],
+  );
+}
+
+export async function rematerializeRecurringPersonalScheduleById(
+  client: PoolClient,
+  scheduleId: string,
+  prefs: Awaited<ReturnType<typeof getTutorSchedulePrefs>>,
+): Promise<void> {
+  const result = await client.query<RecurringPersonalScheduleRow>(
+    `SELECT ${RECURRING_PERSONAL_COLUMNS}
+     FROM recurring_personal_schedules
+     WHERE id = $1 AND active = true`,
+    [scheduleId],
+  );
+  const schedule = result.rows[0];
+  if (!schedule) return;
+  const horizon = resolveMaterializeHorizon(schedule, horizonEndDateFromNow(prefs.timezone));
+  await materializeRecurringPersonalSchedule(client, schedule, prefs, horizon);
 }
 
 const RECURRING_PERSONAL_COLUMNS = `id, tutor_id, group_id, title, weekdays, start_minutes, duration_min,

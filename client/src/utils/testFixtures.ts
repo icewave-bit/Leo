@@ -21,6 +21,7 @@ export function stubStudent(overrides: Partial<ViewStudent> = {}): ViewStudent {
     openLessonDebt: 0,
     telegramLinked: false,
     telegramUsername: null,
+    vacation: null,
     ...overrides,
   };
 }

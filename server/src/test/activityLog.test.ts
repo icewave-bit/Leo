@@ -463,4 +463,48 @@ describe('activity log', () => {
     const logs = await listLogs(agent, { actor: 'system' });
     expect(logs.total).toBe(0);
   });
+
+  it('records a student vacation with period and hidden lesson effects', async () => {
+    const { agent } = await registerTutor(app);
+    const student = await agent.post('/api/students').send({ name: 'Lea' }).expect(201);
+    const startUtc = new Date(Date.now() + 86_400_000).toISOString();
+    await agent
+      .post('/api/lessons')
+      .send({ studentId: student.body.id, startUtc, durationMin: 50 })
+      .expect(201);
+    await waitForActivityLog();
+
+    const day = startUtc.slice(0, 10);
+    await agent
+      .post('/api/vacations')
+      .send({ studentId: student.body.id, startDate: day, endDate: day })
+      .expect(201);
+
+    const logs = await listLogs(agent, { entityType: 'vacation' });
+    const created = logs.items.find((row) => row.action === 'create') as
+      | {
+          summary: string;
+          details: {
+            after?: { startDate?: string; endDate?: string };
+            effects?: Array<{ type: string; summary: string; startUtc?: string }>;
+          };
+        }
+      | undefined;
+    expect(created).toMatchObject({
+      status: 'ok',
+      action: 'create',
+      entityType: 'vacation',
+      summary: 'Отпуск ученика · Lea',
+    });
+    expect(created?.details.after).toMatchObject({ startDate: day, endDate: day });
+    expect(created?.details.effects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'lesson_hide',
+          summary: 'Снят урок',
+          startUtc,
+        }),
+      ]),
+    );
+  });
 });

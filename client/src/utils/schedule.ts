@@ -5,6 +5,7 @@ import type {
   LessonStatus,
   PersonalEvent,
   Student,
+  StudentVacation,
   WeekStartsOn,
 } from '../api/types';
 import { WG_SNAP_MINUTES } from '../constants/weekGrid';
@@ -59,6 +60,7 @@ export interface ViewStudent {
   telegramLinked: boolean;
   telegramUsername: string | null;
   archivedAt?: string | null;
+  vacation: StudentVacation | null;
 }
 
 const DAYS_MON = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const;
@@ -448,5 +450,6 @@ export function studentToView(s: Student): ViewStudent {
     telegramLinked: s.telegramLinked,
     telegramUsername: s.telegramUsername,
     archivedAt: s.archivedAt,
+    vacation: s.vacation ?? null,
   };
 }

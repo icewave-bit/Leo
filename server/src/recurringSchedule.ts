@@ -124,13 +124,12 @@ export async function materializeRecurringSchedule(
        )
        SELECT $1, $2, $3, $4, $5, 'planned', $6, false, $7, $8
        WHERE NOT EXISTS (
-         SELECT 1 FROM lessons
-         WHERE recurring_schedule_id = $8 AND start_utc = $3
-       )
-       AND NOT EXISTS (
          SELECT 1 FROM recurring_schedule_skips
          WHERE recurring_schedule_id = $8 AND start_utc = $3
-       )`,
+       )
+       ON CONFLICT (recurring_schedule_id, start_utc)
+         WHERE (recurring_schedule_id IS NOT NULL)
+       DO NOTHING`,
       [
         schedule.tutor_id,
         schedule.student_id,
@@ -199,6 +198,19 @@ export async function skipRecurringOccurrence(
   );
 }
 
+export async function unskipRecurringOccurrence(
+  client: PoolClient,
+  recurringScheduleId: string,
+  startUtc: Date | string,
+): Promise<void> {
+  const iso = typeof startUtc === 'string' ? startUtc : startUtc.toISOString();
+  await client.query(
+    `DELETE FROM recurring_schedule_skips
+     WHERE recurring_schedule_id = $1 AND start_utc = $2::timestamptz`,
+    [recurringScheduleId, iso],
+  );
+}
+
 function toUtcDate(value: Date | string): Date {
   return typeof value === 'string' ? new Date(value) : value;
 }
@@ -225,21 +237,21 @@ function shiftedOccurrenceUtc(
   return startUtcForOccurrence(shiftedDate, { start_minutes: newStartMinutes }, prefs);
 }
 
-async function fetchScheduleRow(
+export async function rematerializeRecurringScheduleById(
   client: PoolClient,
-  id: string,
-): Promise<RecurringScheduleRow> {
+  scheduleId: string,
+  prefs: TutorSchedulePrefs,
+): Promise<void> {
   const result = await client.query<RecurringScheduleRow>(
     `SELECT ${RECURRING_SCHEDULE_ROW}
      FROM recurring_schedules
-     WHERE id = $1`,
-    [id],
+     WHERE id = $1 AND active = true`,
+    [scheduleId],
   );
-  const row = result.rows[0];
-  if (!row) {
-    throw new AppError('NOT_FOUND', 404, 'Recurring schedule not found');
-  }
-  return row;
+  const schedule = result.rows[0];
+  if (!schedule) return;
+  const horizon = resolveMaterializeHorizon(schedule, horizonEndDateFromNow(prefs.timezone));
+  await materializeRecurringSchedule(client, schedule, prefs, horizon);
 }
 
 async function rematerializeSchedule(
@@ -247,9 +259,7 @@ async function rematerializeSchedule(
   scheduleId: string,
   prefs: TutorSchedulePrefs,
 ): Promise<void> {
-  const schedule = await fetchScheduleRow(client, scheduleId);
-  const horizon = resolveMaterializeHorizon(schedule, horizonEndDateFromNow(prefs.timezone));
-  await materializeRecurringSchedule(client, schedule, prefs, horizon);
+  await rematerializeRecurringScheduleById(client, scheduleId, prefs);
 }
 
 async function retimeLessons(

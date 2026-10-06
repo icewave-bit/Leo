@@ -1,15 +1,24 @@
-import { useAtom } from 'jotai';
+import { useAtom, useAtomValue } from 'jotai';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { BalanceKind, PersonalEventOutline, TaxDisplayCurrency, WeekStartsOn } from '../api/types';
 import { api } from '../api/client';
 import { tutorAtom } from '../atoms/auth';
-import { weekStartAtom, personalEventGroupsAtom, scheduleSlotOverridesAtom } from '../atoms/schedule';
+import {
+  weekStartAtom,
+  personalEventGroupsAtom,
+  scheduleSlotOverridesAtom,
+  vacationsAtom,
+} from '../atoms/schedule';
 import { themeAtom } from '../atoms/theme';
 import { useAppStore } from '../hooks/useAppStore';
 import { loadSchedule } from '../state/loadSchedule';
 import { weekRangeUtc } from '../utils/schedule';
 import { BalanceKindSeg } from '../components/BalanceKindSeg';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { VacationDrawer } from '../components/VacationDrawer';
+import { VacationRange } from '../components/VacationRange';
+import { useVacationActions } from '../hooks/useVacationActions';
 import {
   SETTINGS_CARD_ICONS,
   SettingsCardHeader,
@@ -30,6 +39,11 @@ export function SettingsPage() {
   const [theme, setTheme] = useAtom(themeAtom);
   const [groups, setGroups] = useAtom(personalEventGroupsAtom);
   const [slotOverrides] = useAtom(scheduleSlotOverridesAtom);
+  const vacations = useAtomValue(vacationsAtom);
+  const [vacationOpen, setVacationOpen] = useState(false);
+  const [vacationCancelOpen, setVacationCancelOpen] = useState(false);
+  const [vacationCanceling, setVacationCanceling] = useState(false);
+  const { returnFromVacation } = useVacationActions();
   const [custom, setCustom] = useState(false);
   const [customMin, setCustomMin] = useState(String(tutor?.academicHourMin ?? 60));
   const [saving, setSaving] = useState(false);
@@ -51,6 +65,7 @@ export function SettingsPage() {
 
   if (!tutor) return null;
 
+  const tutorVacation = vacations.find((v) => v.studentId === null) ?? null;
   const current = tutor.academicHourMin;
   const isPreset = ACADEMIC_HOUR_PRESETS.includes(current as (typeof ACADEMIC_HOUR_PRESETS)[number]);
 
@@ -206,6 +221,7 @@ export function SettingsPage() {
   };
 
   return (
+    <>
     <div className="page">
       <header className="top">
         <div className="top__l">
@@ -529,6 +545,40 @@ export function SettingsPage() {
             <TelegramConnectField tutor={tutor} groups={groups} />
           </section>
 
+          <section className="settings-card">
+            <SettingsCardHeader icon={SETTINGS_CARD_ICONS.vacation} title="⛄ Снеговичок устал" />
+            {tutorVacation ? (
+              <VacationRange
+                className="settings-card__desc"
+                startDate={tutorVacation.startDate}
+                endDate={tutorVacation.endDate}
+              />
+            ) : (
+              <p className="settings-card__desc">
+                Отпуск преподавателя — уроки учеников и выбранные личные списки снимаются на период.
+              </p>
+            )}
+            <div className={'settings-card__foot' + (tutorVacation ? ' settings-card__foot--split' : '')}>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={() => setVacationOpen(true)}
+              >
+                {tutorVacation ? 'Изменить отпуск' : 'В отпуск'}
+              </button>
+              {tutorVacation ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={vacationCanceling}
+                  onClick={() => setVacationCancelOpen(true)}
+                >
+                  Отменить отпуск
+                </button>
+              ) : null}
+            </div>
+          </section>
+
           <section className="settings-card settings-card--muted">
             <SettingsCardHeader
               icon={SETTINGS_CARD_ICONS.development}
@@ -545,5 +595,42 @@ export function SettingsPage() {
         <AppVersionFooter />
       </div>
     </div>
+    {vacationOpen ? (
+      <VacationDrawer
+        variant="tutor"
+        existing={tutorVacation}
+        onClose={() => setVacationOpen(false)}
+      />
+    ) : null}
+    <ConfirmDialog
+      open={vacationCancelOpen}
+      title="Отменить отпуск?"
+      description="Уроки учеников и личные списки снова появятся в расписании."
+      confirmLabel="Отменить отпуск"
+      cancelLabel="Назад"
+      loading={vacationCanceling}
+      onConfirm={() => {
+        void (async () => {
+          if (!tutorVacation) {
+            setVacationCancelOpen(false);
+            return;
+          }
+          setVacationCanceling(true);
+          setError(null);
+          try {
+            await returnFromVacation(tutorVacation.id);
+            setVacationCancelOpen(false);
+          } catch (e) {
+            setError(e instanceof Error ? e.message : 'Не удалось отменить отпуск');
+          } finally {
+            setVacationCanceling(false);
+          }
+        })();
+      }}
+      onCancel={() => {
+        if (!vacationCanceling) setVacationCancelOpen(false);
+      }}
+    />
+    </>
   );
 }

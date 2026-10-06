@@ -86,6 +86,26 @@ export interface Student {
   telegramUsername: string | null;
   archivedAt: string | null;
   createdAt: string;
+  vacation: StudentVacation | null;
+}
+
+export interface StudentVacation {
+  id: string;
+  startDate: string;
+  endDate: string;
+}
+
+export interface Vacation {
+  id: string;
+  studentId: string | null;
+  startDate: string;
+  endDate: string;
+  personalGroupIds: string[];
+  notifyAt: string;
+  notifiedAt: string | null;
+  cancelledAt: string | null;
+  removedLessonStarts: string[];
+  nextLessonStartUtc: string | null;
 }
 
 export interface BillingDebtEntry {
@@ -288,6 +308,7 @@ export type ActivityEntityType =
   | 'tax'
   | 'schedule'
   | 'auth'
+  | 'vacation'
   | 'other';
 
 export interface ActivityLogEntry {

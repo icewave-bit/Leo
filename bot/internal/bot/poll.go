@@ -112,6 +112,18 @@ func (b *Bot) sendDueReminder(ctx context.Context, reminder tutorapi.DueReminder
 		}
 		text := b.formatLessonDeleted(*reminder.Deleted, reminder.Timezone, reminder.Role == "student")
 		return b.sendReminder(ctx, reminder.TelegramUserID, text, reminder.Silent, nil)
+	case "vacation":
+		if reminder.Vacation == nil {
+			return fmt.Errorf("due vacation reminder missing vacation")
+		}
+		text := b.formatVacation(*reminder.Vacation, reminder.Timezone, reminder.Role)
+		return b.sendReminder(ctx, reminder.TelegramUserID, text, reminder.Silent, nil)
+	case "vacation_cancelled":
+		if reminder.VacationCancelled == nil {
+			return fmt.Errorf("due vacation_cancelled reminder missing vacationCancelled")
+		}
+		text := b.formatVacationCancelled(*reminder.VacationCancelled, reminder.Role)
+		return b.sendReminder(ctx, reminder.TelegramUserID, text, reminder.Silent, nil)
 	default:
 		return fmt.Errorf("unknown reminder kind %q", reminder.Kind)
 	}
@@ -143,6 +155,14 @@ func dueStartUTC(reminder tutorapi.DueReminder) string {
 		if reminder.Deleted != nil {
 			return reminder.Deleted.StartUTC
 		}
+	case "vacation":
+		if reminder.Vacation != nil {
+			return reminder.Vacation.StartDate
+		}
+	case "vacation_cancelled":
+		if reminder.VacationCancelled != nil {
+			return reminder.VacationCancelled.RestoredFromDate
+		}
 	default:
 		if reminder.Lesson != nil {
 			return reminder.Lesson.StartUTC
@@ -168,6 +188,14 @@ func dueEntityID(reminder tutorapi.DueReminder) string {
 	case "deleted":
 		if reminder.Deleted != nil {
 			return reminder.Deleted.ID
+		}
+	case "vacation":
+		if reminder.Vacation != nil {
+			return reminder.Vacation.ID
+		}
+	case "vacation_cancelled":
+		if reminder.VacationCancelled != nil {
+			return reminder.VacationCancelled.ID
 		}
 	default:
 		if reminder.Lesson != nil {

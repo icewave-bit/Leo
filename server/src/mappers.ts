@@ -10,6 +10,7 @@ import type {
   RecurringPersonalSchedule,
   RecurringSchedule,
   Student,
+  StudentVacation,
   TaxDisplayCurrency,
   TelegramNotifyLeadMinutes,
   Tutor,
@@ -140,7 +141,11 @@ export function toTutor(row: TutorRow): Tutor {
   };
 }
 
-export function toStudent(row: StudentRow, openLessonDebt = 0): Student {
+export function toStudent(
+  row: StudentRow,
+  openLessonDebt = 0,
+  vacation: StudentVacation | null = null,
+): Student {
   return {
     id: row.id,
     tutorId: row.tutor_id,
@@ -164,6 +169,7 @@ export function toStudent(row: StudentRow, openLessonDebt = 0): Student {
     telegramUsername: row.telegram_username,
     archivedAt: row.archived_at ? toIsoUtc(row.archived_at) : null,
     createdAt: toIsoUtc(row.created_at),
+    vacation,
   };
 }
 

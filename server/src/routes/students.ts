@@ -24,6 +24,7 @@ import {
   validateBillingStudentAssignment,
 } from '../billingStudent.js';
 import { normalizeTelegramUsername } from '../telegramUsername.js';
+import { loadOpenStudentVacationEmbeds } from '../vacations.js';
 
 const telegramUsernameSchema = z
   .string()
@@ -101,6 +102,16 @@ const STUDENT_COLUMNS = `id, tutor_id, name, initials, hue, tz, meet_url, rate, 
               is_group, members, balance_kind, prepaid, debt, exclude_from_taxes, billing_student_id,
               telegram_user_id::text, telegram_username, archived_at, created_at`;
 
+async function toStudentWithVacation(
+  tutorId: string,
+  row: StudentRow,
+  openLessonDebt = 0,
+  vacationMap?: Map<string, { id: string; startDate: string; endDate: string }>,
+) {
+  const map = vacationMap ?? (await loadOpenStudentVacationEmbeds(tutorId));
+  return toStudent(row, openLessonDebt, map.get(row.id) ?? null);
+}
+
 export const studentsRouter = Router();
 
 studentsRouter.use(requireAuth);
@@ -116,8 +127,11 @@ studentsRouter.get('/', async (req, res, next) => {
       req.tutorId!,
       result.rows.map((r) => r.id),
     );
+    const vacations = await loadOpenStudentVacationEmbeds(req.tutorId!);
     res.json(
-      result.rows.map((row) => toStudent(row, openDebts.get(row.id) ?? 0)),
+      result.rows.map((row) =>
+        toStudent(row, openDebts.get(row.id) ?? 0, vacations.get(row.id) ?? null),
+      ),
     );
   } catch (err) {
     next(err);
@@ -163,7 +177,7 @@ studentsRouter.get('/:id', async (req, res, next) => {
       throw new AppError('NOT_FOUND', 404, 'Student not found');
     }
     const openDebts = await loadOpenLessonDebts(req.tutorId!, [row.id]);
-    res.json(toStudent(row, openDebts.get(row.id) ?? 0));
+    res.json(await toStudentWithVacation(req.tutorId!, row, openDebts.get(row.id) ?? 0));
   } catch (err) {
     next(err);
   }
@@ -566,7 +580,7 @@ studentsRouter.patch('/:id', async (req, res, next) => {
       settledLessons,
     );
     const openDebts = await loadOpenLessonDebts(req.tutorId!, [row.id]);
-    res.json(toStudent(row, openDebts.get(row.id) ?? 0));
+    res.json(await toStudentWithVacation(req.tutorId!, row, openDebts.get(row.id) ?? 0));
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);
@@ -604,7 +618,7 @@ studentsRouter.post('/:id/archive', async (req, res, next) => {
       `SELECT ${STUDENT_COLUMNS} FROM students WHERE id = $1 AND tutor_id = $2`,
       [req.params.id, req.tutorId],
     );
-    res.json(toStudent(result.rows[0]!));
+    res.json(await toStudentWithVacation(req.tutorId!, result.rows[0]!));
   } catch (err) {
     next(err);
   }
@@ -617,7 +631,7 @@ studentsRouter.post('/:id/restore', async (req, res, next) => {
       `SELECT ${STUDENT_COLUMNS} FROM students WHERE id = $1 AND tutor_id = $2`,
       [req.params.id, req.tutorId],
     );
-    res.json(toStudent(result.rows[0]!));
+    res.json(await toStudentWithVacation(req.tutorId!, result.rows[0]!));
   } catch (err) {
     next(err);
   }

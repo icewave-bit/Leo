@@ -1,5 +1,4 @@
-import { Icon } from '../Icon';
-import type { LineMdIconName } from '../../icons/lineMd';
+import { Icon, VACATION_ICON, type AppIconName } from '../Icon';
 
 export const SETTINGS_CARD_ICONS = {
   theme: 'paint-drop',
@@ -14,7 +13,8 @@ export const SETTINGS_CARD_ICONS = {
   development: 'lightbulb',
   personalGroups: 'clipboard-list',
   workingHours: 'watch',
-} as const satisfies Record<string, LineMdIconName>;
+  vacation: VACATION_ICON,
+} as const satisfies Record<string, AppIconName>;
 
 export function SettingsCardHeader({
   icon,
