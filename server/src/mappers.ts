@@ -220,6 +220,7 @@ interface PersonalEventGroupRow {
   name: string;
   color: string;
   sort_order: number;
+  default_duration_min: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -261,6 +262,7 @@ export function toPersonalEventGroup(row: PersonalEventGroupRow): PersonalEventG
     name: row.name,
     color: row.color,
     sortOrder: row.sort_order,
+    defaultDurationMin: row.default_duration_min,
     createdAt: toIsoUtc(row.created_at),
     updatedAt: toIsoUtc(row.updated_at),
   };

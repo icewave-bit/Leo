@@ -104,6 +104,7 @@ export function ColorPalettePicker({
                   aria-selected={color === c}
                   className={'color-palette__swatch' + (color === c ? ' is-active' : '')}
                   style={{ background: c }}
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     onChange(c);
                     setOpen(false);
@@ -114,6 +115,7 @@ export function ColorPalettePicker({
                 type="button"
                 className="color-palette__custom"
                 aria-label="Свой цвет"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => inputRef.current?.click()}
               >
                 ···

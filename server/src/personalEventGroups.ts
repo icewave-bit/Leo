@@ -7,7 +7,7 @@ export const DEFAULT_PERSONAL_EVENT_GROUPS = [
   { name: 'Личное', color: '#10b981', sortOrder: 2 },
 ] as const;
 
-const GROUP_COLUMNS = `id, tutor_id, name, color, sort_order, created_at, updated_at`;
+const GROUP_COLUMNS = `id, tutor_id, name, color, sort_order, default_duration_min, created_at, updated_at`;
 
 export async function listPersonalEventGroups(
   tutorId: string,

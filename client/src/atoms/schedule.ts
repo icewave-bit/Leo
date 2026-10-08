@@ -7,6 +7,8 @@ export const studentsAtom = atom<ViewStudent[]>([]);
 export const vacationsAtom = atom<Vacation[]>([]);
 export const lessonsAtom = atom<ViewLesson[]>([]);
 export const personalEventsAtom = atom<ViewPersonalEvent[]>([]);
+/** Distinct personal-event titles by group, most recently used first. */
+export const personalEventTitlesAtom = atom<Record<string, string[]>>({});
 export const personalEventGroupsAtom = atom<PersonalEventGroup[]>([]);
 export const scheduleSlotOverridesAtom = atom<import('../api/types').ScheduleSlotOverride[]>([]);
 export const recurringSchedulesAtom = atom<RecurringSchedule[]>([]);

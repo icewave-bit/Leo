@@ -17,17 +17,19 @@ export function PersonalEventOutlineField({
 }) {
   return (
     <div className="pe-outline-row">
-      <span className="pe-outline-row__label">Рамка</span>
+      <span className="pe-outline-row__label">Рамка личных событий</span>
       <div className="seg pe-outline-row__seg" role="group" aria-label="Рамка личных событий">
         {OPTIONS.map((opt) => (
           <button
             key={opt.id}
             type="button"
-            className={'seg__btn' + (value === opt.id ? ' is-active' : '')}
+            className={'seg__btn pe-outline-row__btn' + (value === opt.id ? ' is-active' : '')}
             disabled={disabled}
+            aria-label={opt.label}
+            title={opt.label}
             onClick={() => onChange(opt.id)}
           >
-            {opt.label}
+            <span className={`pe-outline-preview pe-outline-preview--${opt.id}`} aria-hidden="true" />
           </button>
         ))}
       </div>

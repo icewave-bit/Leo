@@ -11,11 +11,13 @@ import {
 import { validate } from '../validate.js';
 
 const hexColorSchema = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
+const defaultDurationMinSchema = z.number().int().min(15).max(480);
 
 const createGroupSchema = z.object({
   name: z.string().trim().min(1).max(40),
   color: hexColorSchema,
   sortOrder: z.number().int().min(0).max(100).optional(),
+  defaultDurationMin: defaultDurationMinSchema.optional(),
 });
 
 const patchGroupSchema = z
@@ -23,6 +25,7 @@ const patchGroupSchema = z
     name: z.string().trim().min(1).max(40).optional(),
     color: hexColorSchema.optional(),
     sortOrder: z.number().int().min(0).max(100).optional(),
+    defaultDurationMin: defaultDurationMinSchema.optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field is required',
@@ -32,7 +35,7 @@ const deleteGroupQuerySchema = z.object({
   reassignTo: z.string().uuid().optional(),
 });
 
-const GROUP_COLUMNS = `id, tutor_id, name, color, sort_order, created_at, updated_at`;
+const GROUP_COLUMNS = `id, tutor_id, name, color, sort_order, default_duration_min, created_at, updated_at`;
 
 export const personalEventGroupsRouter = Router();
 
@@ -56,11 +59,19 @@ personalEventGroupsRouter.post('/', async (req, res, next) => {
     );
     const sortOrder = body.sortOrder ?? (maxSort.rows[0]?.max ?? -1) + 1;
 
+    const columns = ['tutor_id', 'name', 'color', 'sort_order'];
+    const values: unknown[] = [req.tutorId, body.name, body.color, sortOrder];
+    if (body.defaultDurationMin !== undefined) {
+      columns.push('default_duration_min');
+      values.push(body.defaultDurationMin);
+    }
+    const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+
     const inserted = await query<PersonalEventGroupRow>(
-      `INSERT INTO personal_event_groups (tutor_id, name, color, sort_order)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO personal_event_groups (${columns.join(', ')})
+       VALUES (${placeholders})
        RETURNING ${GROUP_COLUMNS}`,
-      [req.tutorId, body.name, body.color, sortOrder],
+      values,
     );
     res.status(201).json(toPersonalEventGroup(inserted.rows[0]!));
   } catch (err) {
@@ -88,6 +99,10 @@ personalEventGroupsRouter.patch('/:id', async (req, res, next) => {
     if (body.sortOrder !== undefined) {
       fields.push(`sort_order = $${idx++}`);
       values.push(body.sortOrder);
+    }
+    if (body.defaultDurationMin !== undefined) {
+      fields.push(`default_duration_min = $${idx++}`);
+      values.push(body.defaultDurationMin);
     }
 
     fields.push('updated_at = now()');

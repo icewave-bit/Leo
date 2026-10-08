@@ -1,13 +1,15 @@
 import { useSetAtom } from 'jotai';
 import { api } from '../api/client';
 import { tutorAtom } from '../atoms/auth';
-import { personalEventsAtom, weekStartAtom } from '../atoms/schedule';
+import { personalEventTitlesAtom, personalEventsAtom, weekStartAtom } from '../atoms/schedule';
+import { rememberPersonalEventTitle } from '../utils/personalEventTitles';
 import { loadSchedule } from '../state/loadSchedule';
 import { personalEventToView, slotToStartUtc } from '../utils/schedule';
 import { useAppStore } from './useAppStore';
 
 export function usePersonalEventActions() {
   const setPersonalEvents = useSetAtom(personalEventsAtom);
+  const setTitles = useSetAtom(personalEventTitlesAtom);
   const store = useAppStore();
 
   const reload = async () => {
@@ -36,6 +38,7 @@ export function usePersonalEventActions() {
     setPersonalEvents((prev) =>
       [...prev, view].sort((a, b) => a.day - b.day || a.start - b.start),
     );
+    setTitles((prev) => rememberPersonalEventTitle(prev, params.groupId, params.title));
     return event.id;
   };
 
@@ -61,6 +64,7 @@ export function usePersonalEventActions() {
       body.startUtc = slotToStartUtc(weekStart, patch.day, patch.start, tz);
     }
     const updated = await api.patchPersonalEvent(id, body);
+    setTitles((prev) => rememberPersonalEventTitle(prev, updated.groupId, updated.title));
     const view = personalEventToView(updated, weekStart, tz);
     setPersonalEvents((prev) =>
       prev

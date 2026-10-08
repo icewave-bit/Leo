@@ -16,6 +16,10 @@ const listQuerySchema = z.object({
   to: z.string().datetime({ offset: true }),
 });
 
+const titlesQuerySchema = z.object({
+  groupId: z.string().uuid(),
+});
+
 const createPersonalEventSchema = z.object({
   groupId: z.string().uuid(),
   title: z.string().trim().min(1).max(80),
@@ -42,6 +46,37 @@ const EVENT_COLUMNS = `id, tutor_id, group_id, title, start_utc, duration_min, n
 export const personalEventsRouter = Router();
 
 personalEventsRouter.use(requireAuth);
+
+personalEventsRouter.get('/titles', async (req, res, next) => {
+  try {
+    const q = validate(titlesQuerySchema, req.query);
+    await assertPersonalEventGroupOwned(req.tutorId!, q.groupId);
+
+    const result = await query<{ title: string }>(
+      `SELECT title
+         FROM (
+           SELECT DISTINCT ON (lower(btrim(title))) btrim(title) AS title, used_at
+             FROM (
+               SELECT title, start_utc AS used_at
+                 FROM personal_events
+                WHERE tutor_id = $1 AND group_id = $2
+               UNION ALL
+               SELECT title, updated_at AS used_at
+                 FROM recurring_personal_schedules
+                WHERE tutor_id = $1 AND group_id = $2
+             ) src
+            WHERE char_length(btrim(title)) > 0
+            ORDER BY lower(btrim(title)), used_at DESC
+         ) uniq
+        ORDER BY used_at DESC
+        LIMIT 200`,
+      [req.tutorId, q.groupId],
+    );
+    res.json(result.rows.map((row) => row.title));
+  } catch (err) {
+    next(err);
+  }
+});
 
 personalEventsRouter.get('/', async (req, res, next) => {
   try {

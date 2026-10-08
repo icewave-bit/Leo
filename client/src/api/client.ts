@@ -168,14 +168,19 @@ export const api = {
 
   personalEventGroups: () =>
     request<import('./types').PersonalEventGroup[]>('/api/personal-event-groups'),
-  createPersonalEventGroup: (body: { name: string; color: string; sortOrder?: number }) =>
+  createPersonalEventGroup: (body: {
+    name: string;
+    color: string;
+    sortOrder?: number;
+    defaultDurationMin?: number;
+  }) =>
     request<import('./types').PersonalEventGroup>('/api/personal-event-groups', {
       method: 'POST',
       json: body,
     }),
   patchPersonalEventGroup: (
     id: string,
-    body: Partial<{ name: string; color: string; sortOrder: number }>,
+    body: Partial<{ name: string; color: string; sortOrder: number; defaultDurationMin: number }>,
   ) =>
     request<import('./types').PersonalEventGroup>(`/api/personal-event-groups/${id}`, {
       method: 'PATCH',
@@ -191,6 +196,10 @@ export const api = {
     );
   },
 
+  personalEventTitles: (groupId: string) => {
+    const params = new URLSearchParams({ groupId });
+    return request<string[]>(`/api/personal-events/titles?${params}`);
+  },
   personalEvents: (from: string, to: string) => {
     const params = new URLSearchParams({ from, to });
     return request<import('./types').PersonalEvent[]>(`/api/personal-events?${params}`);

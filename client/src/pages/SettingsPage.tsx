@@ -1,5 +1,5 @@
 import { useAtom, useAtomValue } from 'jotai';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { BalanceKind, PersonalEventOutline, TaxDisplayCurrency, WeekStartsOn } from '../api/types';
 import { api } from '../api/client';
@@ -51,7 +51,6 @@ export function SettingsPage() {
   const [replenishSaving, setReplenishSaving] = useState(false);
   const [taxSaving, setTaxSaving] = useState(false);
   const [blockSaving, setBlockSaving] = useState(false);
-  const [outlineSaving, setOutlineSaving] = useState(false);
   const [taxRateCustom, setTaxRateCustom] = useState(false);
   const [taxRateDraft, setTaxRateDraft] = useState(String(tutor?.taxRatePercent ?? 10));
   const [error, setError] = useState<string | null>(null);
@@ -163,19 +162,22 @@ export function SettingsPage() {
     }
   };
 
+  const outlineSeq = useRef(0);
+
   const savePersonalEventOutline = async (personalEventOutline: PersonalEventOutline) => {
-    if (personalEventOutline === (tutor.personalEventOutline ?? 'tab')) return;
-    setOutlineSaving(true);
+    const current = store.get(tutorAtom);
+    if (!current || personalEventOutline === (current.personalEventOutline ?? 'tab')) return;
+    const previous = current.personalEventOutline ?? 'tab';
+    const seq = ++outlineSeq.current;
     setError(null);
-    setSaved(false);
+    setTutor({ ...current, personalEventOutline });
     try {
-      const { tutor: updated } = await api.patchMe({ personalEventOutline });
-      setTutor(updated);
-      setSaved(true);
+      await api.patchMe({ personalEventOutline });
     } catch (e) {
+      if (outlineSeq.current !== seq) return;
+      const latest = store.get(tutorAtom);
+      if (latest) setTutor({ ...latest, personalEventOutline: previous });
       setError(e instanceof Error ? e.message : 'Не удалось сохранить');
-    } finally {
-      setOutlineSaving(false);
     }
   };
 
@@ -236,7 +238,9 @@ export function SettingsPage() {
         <div className="settings-grid">
           <section className="settings-card">
             <SettingsCardHeader icon={SETTINGS_CARD_ICONS.theme} title="Оформление" />
-            <p className="settings-card__desc">Светлая, тёмная или как в системе.</p>
+            <p className="settings-card__desc">
+              Светлая, тёмная или как в системе. Рамка личных событий в расписании.
+            </p>
             <div className="seg settings-presets">
               <button
                 type="button"
@@ -260,6 +264,10 @@ export function SettingsPage() {
                 Авто
               </button>
             </div>
+            <PersonalEventOutlineField
+              value={tutor.personalEventOutline ?? 'tab'}
+              onChange={(outline) => void savePersonalEventOutline(outline)}
+            />
           </section>
 
           <CurrentTimeIndicatorCard />
@@ -350,14 +358,10 @@ export function SettingsPage() {
               title="Группы личных событий"
             />
             <p className="settings-card__desc">
-              Группы, цвет и рамка личных событий в расписании.
+              Группы и цвет личных событий в расписании. У каждой группы своя стандартная
+              длительность для новых событий.
             </p>
             <PersonalEventGroupsField groups={groups} onChange={setGroups} />
-            <PersonalEventOutlineField
-              value={tutor.personalEventOutline ?? 'tab'}
-              disabled={outlineSaving}
-              onChange={(outline) => void savePersonalEventOutline(outline)}
-            />
           </section>
 
           <section className="settings-card settings-card--compact">

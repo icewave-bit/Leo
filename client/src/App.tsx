@@ -37,6 +37,21 @@ const THEME_COLORS: Record<'light' | 'dark', string> = {
   dark: '#2e2e32',
 };
 
+function NumericWheelGuard() {
+  useEffect(() => {
+    const onWheel = (event: WheelEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      if (target.type !== 'number' && target.type !== 'time') return;
+      if (document.activeElement !== target) return;
+      event.preventDefault();
+    };
+    document.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    return () => document.removeEventListener('wheel', onWheel, { capture: true });
+  }, []);
+  return null;
+}
+
 function ThemeSync() {
   const resolved = useAtomValue(resolvedThemeAtom);
   const setSystemDark = useSetAtom(systemDarkAtom);
@@ -66,6 +81,7 @@ export function App({ url }: AppProps = {}) {
     <>
       <AuthBootstrap />
       <ThemeSync />
+      <NumericWheelGuard />
       <Routes>
         <Route path="/" element={<LandingRoute />} />
         <Route

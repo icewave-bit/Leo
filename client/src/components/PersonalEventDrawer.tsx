@@ -15,6 +15,8 @@ import {
 } from '../atoms/schedule';
 import { tutorAtom } from '../atoms/auth';
 import { ConfirmDialog } from './ConfirmDialog';
+import { DurationMinField, EVENT_DURATION_PRESETS } from './DurationMinField';
+import { PersonalEventTitleField } from './PersonalEventTitleField';
 import {
   LessonDeleteScopeOptions,
   type LessonDeleteScope,
@@ -188,16 +190,7 @@ export function PersonalEventDrawer({
             </p>
           ) : null}
 
-          <label className="field">
-            <span className="field__label">Название</span>
-            <input
-              className="field__control"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-              maxLength={80}
-            />
-          </label>
+          <PersonalEventTitleField groupId={groupId} value={title} onChange={setTitle} />
 
           <label className="field">
             <span className="field__label">Группа</span>
@@ -242,19 +235,11 @@ export function PersonalEventDrawer({
             />
           </label>
 
-          <label className="field">
-            <span className="field__label">Длительность (мин)</span>
-            <input
-              className="field__control"
-              type="number"
-              min={15}
-              max={480}
-              step={15}
-              value={durationMin}
-              onChange={(e) => setDurationMin(Number(e.target.value))}
-              required
-            />
-          </label>
+          <DurationMinField
+            value={durationMin}
+            presets={EVENT_DURATION_PRESETS}
+            onChange={setDurationMin}
+          />
 
           <label className="field">
             <span className="field__label">Информация</span>

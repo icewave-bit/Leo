@@ -2,13 +2,15 @@ import { useSetAtom } from 'jotai';
 import type { RecurrenceConfig } from '../api/types';
 import { api } from '../api/client';
 import { tutorAtom } from '../atoms/auth';
-import { recurringPersonalSchedulesAtom, weekStartAtom } from '../atoms/schedule';
+import { personalEventTitlesAtom, recurringPersonalSchedulesAtom, weekStartAtom } from '../atoms/schedule';
+import { rememberPersonalEventTitle } from '../utils/personalEventTitles';
 import { loadSchedule } from '../state/loadSchedule';
 import { minutesFromHours, resolveRecurrenceStartDate } from '../utils/recurrence';
 import { useAppStore } from './useAppStore';
 
 export function useRecurringPersonalActions() {
   const setRecurring = useSetAtom(recurringPersonalSchedulesAtom);
+  const setTitles = useSetAtom(personalEventTitlesAtom);
   const store = useAppStore();
 
   const reload = async () => {
@@ -48,6 +50,7 @@ export function useRecurringPersonalActions() {
     setRecurring((prev) =>
       [...prev, schedule].sort((a, b) => a.startDate.localeCompare(b.startDate)),
     );
+    setTitles((prev) => rememberPersonalEventTitle(prev, params.groupId, params.title));
     await reload();
     return schedule;
   };

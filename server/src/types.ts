@@ -125,6 +125,7 @@ export interface PersonalEventGroup {
   name: string;
   color: string;
   sortOrder: number;
+  defaultDurationMin: number;
   createdAt: string;
   updatedAt: string;
 }

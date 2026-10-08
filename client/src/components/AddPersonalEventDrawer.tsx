@@ -1,14 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAtomValue } from 'jotai';
-import type { RecurrenceConfig } from '../api/types';
+import type { PersonalEventGroup, RecurrenceConfig } from '../api/types';
 import { tutorAtom } from '../atoms/auth';
 import { personalEventGroupsAtom, weekStartAtom } from '../atoms/schedule';
 import { resolveRecurrenceStartDate } from '../utils/recurrence';
 import { visibleGridDays, weekDates, weekDayNames, type PersonalEventDraft } from '../utils/schedule';
 import { fmtTime } from '../utils/format';
+import { DrawerSpoiler } from './DrawerSpoiler';
+import { PersonalEventTitleField } from './PersonalEventTitleField';
+import { DurationMinField, EVENT_DURATION_PRESETS } from './DurationMinField';
 import { RecurrenceFields } from './RecurrenceFields';
 
-const DURATION_PRESETS = [30, 45, 60, 90, 120] as const;
+function groupDefaultDurationMin(group: PersonalEventGroup | undefined): number {
+  const value = group?.defaultDurationMin;
+  return typeof value === 'number' && Number.isFinite(value) ? value : 60;
+}
 
 function hoursToTimeValue(h: number): string {
   const hour = Math.floor(h);
@@ -63,8 +69,9 @@ export function AddPersonalEventDrawer({
   const [time, setTime] = useState(hoursToTimeValue(draft.start));
   const [groupId, setGroupId] = useState(groups[0]?.id ?? '');
   const [title, setTitle] = useState('');
-  const [durationMin, setDurationMin] = useState<number>(60);
-  const [customDuration, setCustomDuration] = useState(false);
+  const titleRef = useRef<HTMLInputElement>(null);
+  const [durationMin, setDurationMin] = useState(() => groupDefaultDurationMin(groups[0]));
+  const durationEdited = useRef(false);
   const [notes, setNotes] = useState('');
   const [repeatEnabled, setRepeatEnabled] = useState(false);
   const [recurrence, setRecurrence] = useState<RecurrenceConfig>({
@@ -76,10 +83,22 @@ export function AddPersonalEventDrawer({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (groups.length > 0 && !groups.some((g) => g.id === groupId)) {
-      setGroupId(groups[0]!.id);
-    }
+    const id = window.setTimeout(() => titleRef.current?.focus(), 0);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  useEffect(() => {
+    if (groups.length === 0 || groups.some((g) => g.id === groupId)) return;
+    const next = groups[0]!;
+    setGroupId(next.id);
+    if (!durationEdited.current) setDurationMin(groupDefaultDurationMin(next));
   }, [groups, groupId]);
+
+  const selectGroup = (nextId: string) => {
+    setGroupId(nextId);
+    if (durationEdited.current) return;
+    setDurationMin(groupDefaultDurationMin(groups.find((g) => g.id === nextId)));
+  };
 
   useEffect(() => {
     if (!repeatEnabled) return;
@@ -175,24 +194,21 @@ export function AddPersonalEventDrawer({
               void submit();
             }}
           >
-            <label className="field">
-              <span className="field__label">Название</span>
-              <input
-                className="field__control"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Спортзал, вторая работа…"
-                required
-                maxLength={80}
-              />
-            </label>
+            <PersonalEventTitleField
+              groupId={groupId}
+              value={title}
+              onChange={setTitle}
+              inputRef={titleRef}
+              autoFocus
+              placeholder="Спортзал, вторая работа…"
+            />
 
             <label className="field">
               <span className="field__label">Группа</span>
               <select
                 className="field__control"
                 value={groupId}
-                onChange={(e) => setGroupId(e.target.value)}
+                onChange={(e) => selectGroup(e.target.value)}
                 required
               >
                 {groups.map((g) => (
@@ -232,44 +248,17 @@ export function AddPersonalEventDrawer({
               />
             </label>
 
-            <div className="field">
-              <span className="field__label">Длительность</span>
-              <div className="seg">
-                {DURATION_PRESETS.map((min) => (
-                  <button
-                    key={min}
-                    type="button"
-                    className={
-                      'seg__btn' + (!customDuration && durationMin === min ? ' is-active' : '')
-                    }
-                    onClick={() => {
-                      setCustomDuration(false);
-                      setDurationMin(min);
-                    }}
-                  >
-                    {min} м
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className={'seg__btn' + (customDuration ? ' is-active' : '')}
-                  onClick={() => setCustomDuration(true)}
-                >
-                  Другое
-                </button>
-              </div>
-              {customDuration ? (
-                <input
-                  className="field__control"
-                  type="number"
-                  min={15}
-                  max={480}
-                  step={15}
-                  value={durationMin}
-                  onChange={(e) => setDurationMin(Number(e.target.value))}
-                />
-              ) : null}
-            </div>
+            <DrawerSpoiler title={`Длительность · ${durationMin} мин`}>
+              <DurationMinField
+                value={durationMin}
+                presets={EVENT_DURATION_PRESETS}
+                showLabel={false}
+                onChange={(next) => {
+                  durationEdited.current = true;
+                  setDurationMin(next);
+                }}
+              />
+            </DrawerSpoiler>
 
             {onCreateRecurring ? (
               <RecurrenceFields
