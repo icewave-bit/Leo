@@ -95,13 +95,11 @@ async function toTaxReplenishmentDto(
   apiBase: string,
 ): Promise<TaxReplenishmentDto | null> {
   const prepaidDelta = Number(row.prepaid_delta);
-  const prepaidAfter = Number(row.prepaid_after);
   const debtDelta = Number(row.debt_delta);
   if (
     !isTaxableIncomeMovement({
       kind: row.kind,
       prepaidDelta,
-      prepaidAfter,
       debtDelta,
     })
   ) {
@@ -395,7 +393,6 @@ async function assertTaxableMovement(movementId: string, tutorId: string) {
     !isTaxableIncomeMovement({
       kind: row.kind,
       prepaidDelta: Number(row.prepaid_delta),
-      prepaidAfter: Number(row.prepaid_after),
       debtDelta: Number(row.debt_delta),
     })
   ) {

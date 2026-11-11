@@ -1,5 +1,12 @@
 import { getPool } from './db.js';
 import { activityErrorFields } from './errors.js';
+import {
+  formatTaxBits,
+  lessonPaidDeltaAsMoney,
+  movementReceivedDate,
+  replenishDeltaAsMoney,
+} from './taxReplenishments.js';
+import type { BalanceKind } from './types.js';
 import type { Request, Response } from 'express';
 
 export type ActivityStatus = 'ok' | 'error';
@@ -188,9 +195,12 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function idFromJson(value: unknown): string | null {
-  const id = asRecord(value).id;
-  return typeof id === 'string' && UUID_RE.test(id) ? id : null;
+function activityEntityId(path: string, response: unknown): string | null {
+  const fromPath = lastUuid(path);
+  if (fromPath) return fromPath;
+  const rec = asRecord(response);
+  const raw = rec.id ?? (path.startsWith('/api/taxes') ? rec.movementId : undefined);
+  return typeof raw === 'string' && UUID_RE.test(raw) ? raw : null;
 }
 
 function labelFromBody(body: unknown): string | null {
@@ -321,6 +331,9 @@ export async function prefetchSnapshot(req: Request): Promise<ActivitySnapshot |
         },
       };
     }
+    if (path.startsWith('/api/taxes')) {
+      return (await loadTaxActivityFields(tutorId, id)) ?? undefined;
+    }
     if (path.startsWith('/api/vacations')) {
       const result = await getPool().query<{
         student_id: string | null;
@@ -356,6 +369,123 @@ export async function prefetchSnapshot(req: Request): Promise<ActivitySnapshot |
 
 function withStudent(text: string, name: string | null): string {
   return name ? `${text} · ${name}` : text;
+}
+
+function taxSummaryBase(method: string, body: unknown): string {
+  if (method === 'POST') return 'Запись в налогах';
+  if (method === 'DELETE') return 'Удалена налоговая запись';
+  const rec = asRecord(body);
+  if (rec.taxPaid === true) return 'Налог отмечен уплаченным';
+  if (rec.taxPaid === false) return 'Снята отметка об уплате налога';
+  if (rec.receivedOn !== undefined && rec.comment === undefined && rec.taxPaid === undefined) {
+    return 'Изменена дата в налогах';
+  }
+  if (rec.comment !== undefined && rec.taxPaid === undefined && rec.receivedOn === undefined) {
+    return 'Изменён комментарий в налогах';
+  }
+  return 'Изменена налоговая запись';
+}
+
+function taxBitsFromFields(fields: Record<string, unknown>): string {
+  const amount = typeof fields.amount === 'number' ? fields.amount : null;
+  const currency = typeof fields.currency === 'string' ? fields.currency : null;
+  const receivedOn = typeof fields.receivedOn === 'string' ? fields.receivedOn : null;
+  return formatTaxBits({
+    amount,
+    currency,
+    lessons: fields.balanceKind === 'lessons' && currency == null,
+    receivedOn,
+  });
+}
+
+function taxFieldsFromBody(body: unknown): Record<string, unknown> {
+  const rec = asRecord(body);
+  const out: Record<string, unknown> = {};
+  if (typeof rec.amount === 'number') out.amount = rec.amount;
+  if (typeof rec.currency === 'string') out.currency = rec.currency;
+  if (typeof rec.receivedOn === 'string') out.receivedOn = rec.receivedOn;
+  if (typeof rec.comment === 'string') out.comment = rec.comment;
+  if (typeof rec.taxPaid === 'boolean') out.taxPaid = rec.taxPaid;
+  return out;
+}
+
+async function loadTaxActivityFields(
+  tutorId: string,
+  movementId: string,
+): Promise<ActivitySnapshot | null> {
+  const result = await getPool().query<{
+    student_id: string;
+    student_name: string;
+    currency: string;
+    rate: string | null;
+    kind: string;
+    prepaid_delta: string;
+    debt_delta: string;
+    balance_kind: BalanceKind;
+    received_on: string | null;
+    occurred_at: Date;
+    timezone: string;
+    tax_paid: boolean | null;
+    comment: string | null;
+    manual_currency: string | null;
+    manual_amount: string | null;
+  }>(
+    `SELECT m.student_id, s.name AS student_name, s.currency, s.rate,
+            m.kind, m.prepaid_delta, m.debt_delta, m.balance_kind,
+            m.received_on::text AS received_on, m.occurred_at, tu.timezone,
+            t.tax_paid, t.comment, t.manual_currency, t.manual_amount
+     FROM balance_movements m
+     JOIN students s ON s.id = m.student_id
+     JOIN tutors tu ON tu.id = m.tutor_id
+     LEFT JOIN tax_replenishment_meta t ON t.balance_movement_id = m.id
+     WHERE m.id = $1 AND m.tutor_id = $2`,
+    [movementId, tutorId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+
+  const manualAmount = row.manual_amount != null ? Number(row.manual_amount) : null;
+  const rate = row.rate != null ? Number(row.rate) : null;
+  const prepaidDelta = Number(row.prepaid_delta);
+  const debtDelta = Number(row.debt_delta);
+  let amount: number | null = manualAmount;
+  let lessons = false;
+  if (amount == null && row.kind === 'lesson_paid') {
+    amount = lessonPaidDeltaAsMoney(debtDelta, row.balance_kind, rate);
+    if (amount == null) {
+      amount = -debtDelta;
+      lessons = row.balance_kind === 'lessons';
+    }
+  } else if (amount == null) {
+    amount = replenishDeltaAsMoney(prepaidDelta, row.balance_kind, rate);
+    if (amount == null) {
+      amount = prepaidDelta;
+      lessons = row.balance_kind === 'lessons';
+    }
+  }
+  const currency = lessons ? null : (row.manual_currency ?? row.currency);
+  const receivedOn = movementReceivedDate(
+    row.received_on,
+    row.occurred_at.toISOString(),
+    row.timezone,
+  );
+  const fields: Record<string, unknown> = {
+    studentId: row.student_id,
+    studentName: row.student_name,
+    amount,
+    receivedOn,
+    taxPaid: row.tax_paid ?? false,
+    balanceKind: lessons ? 'lessons' : 'money',
+  };
+  if (currency) fields.currency = currency;
+  if (row.comment) fields.comment = row.comment;
+
+  return {
+    studentId: row.student_id,
+    studentName: row.student_name,
+    entityLabel: row.student_name,
+    fields,
+  };
 }
 
 function classifyRead(
@@ -514,13 +644,12 @@ function classify(
   }
 
   if (p.startsWith('/api/taxes')) {
-    if (method === 'POST') {
-      return { action: 'create', entityType: 'tax', summary: withStudent('Запись в налогах', name) };
-    }
-    if (method === 'DELETE') {
-      return { action: 'delete', entityType: 'tax', summary: withStudent('Удалена налоговая запись', name) };
-    }
-    return { action: 'update', entityType: 'tax', summary: withStudent('Изменена налоговая запись', name) };
+    const action = method === 'POST' ? 'create' : method === 'DELETE' ? 'delete' : 'update';
+    return {
+      action,
+      entityType: 'tax',
+      summary: withStudent(taxSummaryBase(method, body), name),
+    };
   }
 
   if (p === '/api/auth/me' && method === 'PATCH') {
@@ -750,6 +879,10 @@ async function loadEntityAfter(
         endDate: row.end_date,
       };
     }
+    if (path.startsWith('/api/taxes')) {
+      const snap = await loadTaxActivityFields(tutorId, entityId);
+      return snap?.fields ?? null;
+    }
   } catch {
     return null;
   }
@@ -955,7 +1088,7 @@ export async function persistHttpActivity(req: Request, res: Response): Promise<
   if (!tutorId) return;
 
   const snap = req.activitySnapshot;
-  const entityId = lastUuid(path) ?? idFromJson(res.locals.activityResponse);
+  const entityId = activityEntityId(path, res.locals.activityResponse);
   let studentId =
     snap?.studentId ??
     (path.startsWith('/api/students') && entityId ? entityId : studentIdFromBody(req.body));
@@ -969,7 +1102,19 @@ export async function persistHttpActivity(req: Request, res: Response): Promise<
   }
 
   const entityLabel = snap?.entityLabel ?? labelFromBody(req.body) ?? studentName;
-  const classified = classify(method, path, req.body, studentName, entityLabel);
+  let classified = classify(method, path, req.body, studentName, entityLabel);
+  if (path.startsWith('/api/taxes')) {
+    const merged =
+      method === 'DELETE'
+        ? (snap?.fields ?? {})
+        : { ...(snap?.fields ?? {}), ...taxFieldsFromBody(req.body) };
+    const bits = taxBitsFromFields(merged);
+    const base = taxSummaryBase(method, req.body);
+    classified = {
+      ...classified,
+      summary: withStudent(bits ? `${base} · ${bits}` : base, studentName),
+    };
+  }
   const appErr = errorFromResponse(res);
   const summary = isError
     ? `Не удалось: ${classified.summary}${appErr?.message ? ` — ${appErr.message}` : ''}`

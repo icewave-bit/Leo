@@ -380,6 +380,81 @@ describe('taxes', () => {
     expect(afterReload.body.length).toBe(0);
   });
 
+  it('includes a top-up that dwarfs the leftover balance', async () => {
+    const { agent } = await registerTutor(app);
+
+    const studentRes = await agent
+      .post('/api/students')
+      .send({
+        name: 'Large Top-up',
+        hue: 218,
+        balanceKind: 'money',
+        currency: 'EUR',
+        prepaid: 15,
+        debt: 0,
+        rate: 50,
+        isGroup: false,
+        members: [],
+      })
+      .expect(201);
+    const studentId = studentRes.body.id as string;
+
+    await agent
+      .patch(`/api/students/${studentId}`)
+      .send({ prepaid: 215, receivedOn: '2026-04-02' })
+      .expect(200);
+
+    const list = await agent
+      .get(`/api/taxes?month=2026-04&studentId=${studentId}`)
+      .expect(200);
+
+    expect(list.body).toHaveLength(1);
+    expect(list.body[0].amount).toBe(200);
+    expect(list.body[0].currency).toBe('EUR');
+  });
+
+  it('creates a manual tax entry when the amount is just under the current balance', async () => {
+    const { agent } = await registerTutor(app);
+
+    const studentRes = await agent
+      .post('/api/students')
+      .send({
+        name: 'Manual Near Balance',
+        hue: 219,
+        balanceKind: 'money',
+        currency: 'EUR',
+        prepaid: 215,
+        debt: 0,
+        rate: 50,
+        isGroup: false,
+        members: [],
+      })
+      .expect(201);
+    const studentId = studentRes.body.id as string;
+
+    const created = await agent
+      .post('/api/taxes')
+      .send({
+        studentId,
+        receivedOn: '2026-04-03',
+        currency: 'EUR',
+        amount: 200,
+      })
+      .expect(201);
+
+    expect(created.body.amount).toBe(200);
+    expect(created.body.currency).toBe('EUR');
+
+    const studentAfter = await agent.get(`/api/students/${studentId}`).expect(200);
+    expect(studentAfter.body.prepaid).toBe(215);
+
+    const list = await agent
+      .get(`/api/taxes?month=2026-04&studentId=${studentId}`)
+      .expect(200);
+    expect(list.body).toHaveLength(1);
+    expect(list.body[0].movementId).toBe(created.body.movementId);
+  });
+
   it('excludes manual balance corrections (prepaid + debt patch)', async () => {
     const { agent } = await registerTutor(app);
 

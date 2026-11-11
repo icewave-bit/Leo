@@ -143,15 +143,6 @@ export function netBalance(prepaid: number, debt: number): number {
   return prepaid - debt;
 }
 
-/** Huge single-step prepaid jump — usually balance-kind conversion stored as replenish. */
-export function isMisclassifiedReplenishMovement(m: BalanceMovement): boolean {
-  if (m.kind !== 'replenish') return false;
-  const before = m.prepaidAfter - m.prepaidDelta;
-  if (before <= 0) return false;
-  const ratio = Math.abs(m.prepaidDelta) / Math.max(Math.abs(before), 1);
-  return ratio >= 10;
-}
-
 /** Unit stored on the movement (fallback: student’s current kind). */
 export function movementUnitKind(
   m: BalanceMovement,
@@ -173,7 +164,7 @@ export function replenishLessonsDelta(
   m: BalanceMovement,
   student: ViewStudent | undefined,
 ): number | null {
-  if (m.kind !== 'replenish' || isMisclassifiedReplenishMovement(m)) return null;
+  if (m.kind !== 'replenish') return null;
   return balanceDeltaAsLessons(
     m.prepaidDelta,
     movementUnitKind(m, student),

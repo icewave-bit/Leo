@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { attachActivityEffects, attachCascadeEffects } from '../activityLog.js';
+import { attachActivityEffects, attachCascadeEffects, recordActivity } from '../activityLog.js';
 import { getPool, query } from '../db.js';
 import { recordStudentBalancePatch } from '../balanceMovements.js';
 import { settleLessonsFromBalanceTopUp, settleFamilyDebtsFromPrepaid } from '../lessonBalance.js';
@@ -25,6 +25,7 @@ import {
 } from '../billingStudent.js';
 import { normalizeTelegramUsername } from '../telegramUsername.js';
 import { loadOpenStudentVacationEmbeds } from '../vacations.js';
+import { formatTaxBits, replenishTaxJournalNote } from '../taxReplenishments.js';
 
 const telegramUsernameSchema = z
   .string()
@@ -529,6 +530,9 @@ studentsRouter.patch('/:id', async (req, res, next) => {
       );
     }
 
+    let balanceKindChanged = false;
+    let prepaidTopUp = false;
+    let replenishId: string | null = null;
     if (body.prepaid !== undefined || body.debt !== undefined) {
       if (row.billing_student_id) {
         throw new AppError(
@@ -537,13 +541,13 @@ studentsRouter.patch('/:id', async (req, res, next) => {
           'Balance is managed by the billing payer; edit the payer account instead',
         );
       }
-      const balanceKindChanged =
+      balanceKindChanged =
         body.balanceKind !== undefined && body.balanceKind !== beforeRow.balance_kind;
-      const prepaidTopUp =
+      prepaidTopUp =
         body.prepaid !== undefined &&
         body.debt === undefined &&
         Number(row.prepaid) > Number(beforeRow.prepaid);
-      const replenishId = await recordStudentBalancePatch(
+      replenishId = await recordStudentBalancePatch(
         client,
         row.id,
         Number(beforeRow.prepaid),
@@ -572,6 +576,49 @@ studentsRouter.patch('/:id', async (req, res, next) => {
     }
 
     await client.query('COMMIT');
+    if (!balanceKindChanged && prepaidTopUp) {
+      const delta = Number(row.prepaid) - Number(beforeRow.prepaid);
+      const note = replenishTaxJournalNote({
+        excludeFromTaxes: row.exclude_from_taxes,
+        prepaidDelta: delta,
+        balanceKind: row.balance_kind,
+        rate: row.rate != null ? Number(row.rate) : null,
+        currency: row.currency,
+        receivedOn: body.receivedOn ?? null,
+      });
+      attachActivityEffects(res, [{ type: 'tax', summary: note.summary }]);
+      if (note.failure) {
+        const bits = formatTaxBits({
+          amount: note.amount,
+          currency: note.currency,
+          receivedOn: note.receivedOn,
+        });
+        await recordActivity({
+          tutorId: req.tutorId!,
+          status: 'error',
+          actor: 'system',
+          action: 'create',
+          entityType: 'tax',
+          entityId: replenishId,
+          entityLabel: row.name,
+          studentId: row.id,
+          summary: bits
+            ? `Не удалось учесть пополнение в налогах · ${bits} · ${row.name}`
+            : `Не удалось учесть пополнение в налогах · ${row.name}`,
+          details: {
+            studentName: row.name,
+            studentId: row.id,
+            after: {
+              amount: note.amount,
+              currency: note.currency,
+              receivedOn: note.receivedOn,
+            },
+          },
+          errorCode: 'TAX_SKIPPED',
+          errorMessage: note.failure,
+        });
+      }
+    }
     await attachCascadeEffects(
       res,
       req.tutorId!,

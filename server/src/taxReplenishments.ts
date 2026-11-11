@@ -5,26 +5,100 @@ export function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-export function isMisclassifiedReplenishMovement(input: {
-  kind: BalanceMovementKind;
-  prepaidDelta: number;
-  prepaidAfter: number;
-}): boolean {
-  if (input.kind !== 'replenish') return false;
-  const before = input.prepaidAfter - input.prepaidDelta;
-  if (before <= 0) return false;
-  const ratio = Math.abs(input.prepaidDelta) / Math.max(Math.abs(before), 1);
-  return ratio >= 10;
-}
-
-/** Real prepaid top-up (money or lessons), excluding balance-kind conversion artifacts. */
+/** Real prepaid top-up (money or lessons). Balance-kind switches are not recorded as replenish. */
 export function isTaxableReplenish(input: {
   kind: BalanceMovementKind;
   prepaidDelta: number;
-  prepaidAfter: number;
 }): boolean {
-  if (input.kind !== 'replenish' || input.prepaidDelta <= 0) return false;
-  return !isMisclassifiedReplenishMovement(input);
+  return input.kind === 'replenish' && input.prepaidDelta > 0;
+}
+
+export function formatTaxAmount(amount: number): string {
+  const rounded = roundMoney(amount);
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+}
+
+export function formatTaxDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!match) return value;
+  return `${match[3]}.${match[2]}.${match[1]}`;
+}
+
+/** Amount, currency, and receipt date for journal summaries. */
+export function formatTaxBits(input: {
+  amount: number | null;
+  currency: string | null;
+  lessons?: boolean;
+  receivedOn?: string | null;
+}): string {
+  const parts: string[] = [];
+  if (input.amount != null && Number.isFinite(input.amount)) {
+    const text = formatTaxAmount(input.amount);
+    if (input.lessons && !input.currency) parts.push(`${text} ур.`);
+    else parts.push(input.currency ? `${text} ${input.currency}` : text);
+  }
+  if (input.receivedOn) parts.push(formatTaxDate(input.receivedOn));
+  return parts.join(' · ');
+}
+
+export type ReplenishTaxNote = {
+  included: boolean;
+  /** Why a top-up that should have been taxed was left out. Null when exclusion is intentional. */
+  failure: string | null;
+  summary: string;
+  amount: number | null;
+  currency: string | null;
+  receivedOn: string | null;
+};
+
+/** How a balance top-up should be described in the activity journal. */
+export function replenishTaxJournalNote(input: {
+  excludeFromTaxes: boolean;
+  prepaidDelta: number;
+  balanceKind: BalanceKind;
+  rate: number | null;
+  currency: string;
+  receivedOn?: string | null;
+}): ReplenishTaxNote {
+  const receivedOn = input.receivedOn ?? null;
+  const money = replenishDeltaAsMoney(input.prepaidDelta, input.balanceKind, input.rate);
+  const lessons = money == null && input.balanceKind === 'lessons';
+  const amount = money ?? (lessons ? input.prepaidDelta : null);
+  const currency = money != null ? input.currency : null;
+  const bits = formatTaxBits({ amount, currency, lessons, receivedOn });
+
+  if (input.excludeFromTaxes) {
+    return {
+      included: false,
+      failure: null,
+      summary: bits
+        ? `Пополнение не учитывается в налогах · ${bits}`
+        : 'Пополнение не учитывается в налогах',
+      amount,
+      currency: currency ?? input.currency,
+      receivedOn,
+    };
+  }
+
+  if (!isTaxableReplenish({ kind: 'replenish', prepaidDelta: input.prepaidDelta })) {
+    return {
+      included: false,
+      failure: 'Пополнение сохранено в оплатах, но не попало в налоговый журнал',
+      summary: bits ? `Пополнение не попало в налоги · ${bits}` : 'Пополнение не попало в налоги',
+      amount,
+      currency: currency ?? input.currency,
+      receivedOn,
+    };
+  }
+
+  return {
+    included: true,
+    failure: null,
+    summary: bits ? `Учтено в налогах · ${bits}` : 'Учтено в налогах',
+    amount,
+    currency: currency ?? input.currency,
+    receivedOn,
+  };
 }
 
 /** Direct cash received when tutor marks a lesson paid (debt settled). */
@@ -38,7 +112,6 @@ export function isTaxableLessonPaid(input: {
 export function isTaxableIncomeMovement(input: {
   kind: BalanceMovementKind;
   prepaidDelta: number;
-  prepaidAfter: number;
   debtDelta: number;
 }): boolean {
   return (

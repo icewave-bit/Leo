@@ -1,11 +1,7 @@
 import type { BalanceMovement, Lesson, LessonStatus } from '../api/types';
 import { balanceDeltaAsMoney } from './balanceConvert';
 import { fmtMoney } from './format';
-import {
-  isMisclassifiedReplenishMovement,
-  movementDeltaAsMoney,
-  replenishLessonsDelta,
-} from './paymentJournal';
+import { movementDeltaAsMoney, replenishLessonsDelta } from './paymentJournal';
 import type { ViewStudent } from './schedule';
 
 export const STATUS_LABELS: Record<LessonStatus, string> = {
@@ -241,7 +237,7 @@ export function computeFinanceByCurrency(
     const st = studentMap.get(m.studentId);
     if (!st) continue;
     const row = ensure(st.currency);
-    if (m.kind === 'replenish' && !isMisclassifiedReplenishMovement(m)) {
+    if (m.kind === 'replenish') {
       const money = movementDeltaAsMoney(m.prepaidDelta, m, st);
       if (money != null) row.replenishments += money;
     }
@@ -282,7 +278,7 @@ export function computeReplenishmentIncomeTimeline(
   const map = new Map<string, number>();
 
   for (const m of movements) {
-    if (m.kind !== 'replenish' || isMisclassifiedReplenishMovement(m)) continue;
+    if (m.kind !== 'replenish') continue;
     if (studentId && m.studentId !== studentId) continue;
     const st = studentMap.get(m.studentId);
     const lessons = replenishLessonsDelta(m, st);

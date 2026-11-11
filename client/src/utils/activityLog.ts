@@ -266,7 +266,38 @@ function fieldLabel(key: string): string {
   return FIELD_LABELS[key] ?? key;
 }
 
+function appendTaxFacts(
+  facts: LogStoryFact[],
+  source: Record<string, unknown>,
+  timezone: string,
+  deleted: boolean,
+) {
+  if (source.amount != null && source.amount !== '') {
+    const currency = typeof source.currency === 'string' ? source.currency : '';
+    const value = currency
+      ? `${formatValue(source.amount, timezone)} ${currency}`
+      : formatValue(source.amount, timezone);
+    facts.push({ label: 'Сумма', value });
+  }
+  if (typeof source.receivedOn === 'string' && looksLikeDateOnly(source.receivedOn)) {
+    facts.push({ label: 'Дата поступления', value: fmtDateOnly(source.receivedOn) });
+  }
+  if (deleted && (source.taxPaid === true || source.taxPaid === false)) {
+    facts.push({ label: 'Налог уплачен', value: formatValue(source.taxPaid, timezone) });
+  }
+  if (deleted && typeof source.comment === 'string' && source.comment.trim()) {
+    facts.push({ label: 'Комментарий', value: source.comment.trim() });
+  }
+}
+
 const HIDDEN_FIELDS = new Set(['recurringScheduleId', 'studentId']);
+const TAX_IDENTITY_FIELDS = new Set([
+  'amount',
+  'currency',
+  'receivedOn',
+  'balanceKind',
+  'sourceAmount',
+]);
 const VACATION_SKIP_FIELDS = new Set([
   'startDate',
   'endDate',
@@ -362,8 +393,17 @@ export function buildLogStory(entry: ActivityLogEntry, timezone: string): LogSto
     facts.push({ label: 'Период', value: vacationAfter ?? vacationBefore! });
   }
 
+  if (entry.entityType === 'tax') {
+    const taxSource = Object.keys(after).length > 0 ? after : before;
+    appendTaxFacts(facts, taxSource, timezone, deleted);
+  }
+
+  const deletedTax = entry.entityType === 'tax' && deleted;
   const skipKey = (key: string) =>
-    HIDDEN_FIELDS.has(key) || (entry.entityType === 'vacation' && VACATION_SKIP_FIELDS.has(key));
+    HIDDEN_FIELDS.has(key) ||
+    (entry.entityType === 'vacation' && VACATION_SKIP_FIELDS.has(key)) ||
+    (entry.entityType === 'tax' && TAX_IDENTITY_FIELDS.has(key)) ||
+    (deletedTax && (key === 'taxPaid' || key === 'comment' || key === 'studentName'));
 
   const startBefore = typeof before.startUtc === 'string' ? before.startUtc : null;
   const startAfter = typeof after.startUtc === 'string' ? after.startUtc : null;

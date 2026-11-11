@@ -2,6 +2,7 @@ import { describe, it, beforeAll, afterAll, beforeEach, expect } from 'vitest';
 import type { Express } from 'express';
 import { createApp } from '../app.js';
 import { waitForActivityLog } from '../middleware/activityLog.js';
+import { replenishTaxJournalNote } from '../taxReplenishments.js';
 import { setupTestDb, teardownTestDb } from './db.js';
 import { registerTutor } from './helpers.js';
 
@@ -506,5 +507,151 @@ describe('activity log', () => {
         }),
       ]),
     );
+  });
+
+  it('names the amount and date when a tax row is created and deleted', async () => {
+    const { agent } = await registerTutor(app);
+    await agent.patch('/api/auth/me').send({ taxDisplayCurrency: 'none' }).expect(200);
+    const student = await agent
+      .post('/api/students')
+      .send({ name: 'Lea', currency: 'EUR', rate: 40 })
+      .expect(201);
+    await waitForActivityLog();
+
+    const created = await agent
+      .post('/api/taxes')
+      .send({
+        studentId: student.body.id,
+        receivedOn: '2026-04-02',
+        currency: 'EUR',
+        amount: 200,
+      })
+      .expect(201);
+
+    const createLogs = await listLogs(agent, { entityType: 'tax' });
+    const create = createLogs.items.find((row) => row.action === 'create');
+    expect(create).toMatchObject({
+      status: 'ok',
+      action: 'create',
+      entityType: 'tax',
+      entityId: created.body.movementId,
+      studentId: student.body.id,
+      summary: 'Запись в налогах · 200 EUR · 02.04.2026 · Lea',
+    });
+    expect(create?.details).toMatchObject({
+      studentName: 'Lea',
+      after: { amount: 200, currency: 'EUR', receivedOn: '2026-04-02' },
+    });
+
+    await agent.delete(`/api/taxes/${created.body.movementId}`).expect(204);
+
+    const allTax = await listLogs(agent, { entityType: 'tax' });
+    const removed = allTax.items.find((row) => row.action === 'delete');
+    expect(removed).toMatchObject({
+      status: 'ok',
+      summary: 'Удалена налоговая запись · 200 EUR · 02.04.2026 · Lea',
+      studentId: student.body.id,
+    });
+    expect(removed?.details).toMatchObject({
+      deleted: true,
+      before: {
+        studentName: 'Lea',
+        amount: 200,
+        currency: 'EUR',
+        receivedOn: '2026-04-02',
+      },
+    });
+  });
+
+  it('logs a rejected tax entry with the amount that failed', async () => {
+    const { agent } = await registerTutor(app);
+    const student = await agent
+      .post('/api/students')
+      .send({ name: 'Lea', excludeFromTaxes: true })
+      .expect(201);
+    await waitForActivityLog();
+
+    const res = await agent.post('/api/taxes').send({
+      studentId: student.body.id,
+      receivedOn: '2026-04-03',
+      currency: 'EUR',
+      amount: 80,
+    });
+    expect(res.status).toBe(400);
+
+    const logs = await listLogs(agent, { entityType: 'tax', status: 'error' });
+    expect(logs.items[0]).toMatchObject({
+      status: 'error',
+      action: 'create',
+      studentId: student.body.id,
+      errorCode: 'VALIDATION',
+    });
+    expect(String(logs.items[0]?.summary)).toContain('80 EUR');
+    expect(String(logs.items[0]?.summary)).toContain('03.04.2026');
+    expect(String(logs.items[0]?.summary)).toContain('Lea');
+    expect(String(logs.items[0]?.errorMessage)).toMatch(/налог/i);
+  });
+
+  it('records whether a balance top-up was included in taxes', async () => {
+    const { agent } = await registerTutor(app);
+    const taxed = await agent
+      .post('/api/students')
+      .send({ name: 'Taxed', currency: 'EUR', prepaid: 15 })
+      .expect(201);
+    const hidden = await agent
+      .post('/api/students')
+      .send({ name: 'Hidden', currency: 'EUR', excludeFromTaxes: true })
+      .expect(201);
+    await waitForActivityLog();
+
+    await agent
+      .patch(`/api/students/${taxed.body.id}`)
+      .send({ prepaid: 215, receivedOn: '2026-04-02' })
+      .expect(200);
+    await agent
+      .patch(`/api/students/${hidden.body.id}`)
+      .send({ prepaid: 50, receivedOn: '2026-04-02' })
+      .expect(200);
+
+    const logs = await listLogs(agent, { entityType: 'balance' });
+    const taxedLog = logs.items.find((row) => row.studentId === taxed.body.id);
+    const hiddenLog = logs.items.find((row) => row.studentId === hidden.body.id);
+    expect(
+      (taxedLog?.details as { effects?: Array<{ type: string; summary: string }> }).effects,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'tax',
+          summary: 'Учтено в налогах · 200 EUR · 02.04.2026',
+        }),
+      ]),
+    );
+    expect(
+      (hiddenLog?.details as { effects?: Array<{ type: string; summary: string }> }).effects,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'tax',
+          summary: 'Пополнение не учитывается в налогах · 50 EUR · 02.04.2026',
+        }),
+      ]),
+    );
+
+    const errors = await listLogs(agent, { entityType: 'tax', status: 'error' });
+    expect(errors.total).toBe(0);
+  });
+
+  it('describes a top-up that cannot enter the tax journal', () => {
+    const note = replenishTaxJournalNote({
+      excludeFromTaxes: false,
+      prepaidDelta: 0,
+      balanceKind: 'money',
+      rate: 10,
+      currency: 'EUR',
+      receivedOn: '2026-04-02',
+    });
+    expect(note.included).toBe(false);
+    expect(note.failure).toMatch(/не попало в налоговый журнал/);
+    expect(note.summary).toContain('02.04.2026');
   });
 });
