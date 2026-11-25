@@ -210,6 +210,7 @@ export async function reverseLessonBalancePayment(
   if (!lesson.balance_paid_applied) return;
 
   const toDebt = Number(lesson.charge_debt_delta);
+  if (toDebt <= 0) return;
 
   const payerId = await resolveBillingStudentId(client, lesson.student_id);
 
@@ -224,6 +225,15 @@ export async function reverseLessonBalancePayment(
      WHERE id = $1`,
     [lesson.id],
   );
+
+  await recordBalanceMovement(client, {
+    studentId: payerId,
+    chargedForStudentId: payerId !== lesson.student_id ? lesson.student_id : null,
+    lessonId: lesson.id,
+    kind: 'lesson_paid',
+    prepaidDelta: 0,
+    debtDelta: toDebt,
+  });
 }
 
 export async function reverseLessonBalanceCharge(

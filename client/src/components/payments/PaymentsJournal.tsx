@@ -23,8 +23,8 @@ import {
   buildJournalRows,
   mainTimelineMovements,
   movementsHaveMixedUnits,
-  periodDeltaSummary,
   periodRange,
+  periodSummary,
 } from '../../utils/paymentJournal';
 import { StudentBalance } from '../StudentBalance';
 import { BillingPayerLink } from '../students/BillingPayerLink';
@@ -73,7 +73,7 @@ export function PaymentsJournal() {
   }, [movements, studentMap, tz]);
 
   const summary = useMemo(
-    () => periodDeltaSummary(movements, selectedStudent),
+    () => periodSummary(movements, selectedStudent),
     [movements, selectedStudent],
   );
 
@@ -142,10 +142,23 @@ export function PaymentsJournal() {
               <StudentBalance student={balanceStudent} compact />
               <div className="pay-summary__stats">
                 {summary ? (
-                  <div className="pay-summary__stat">
-                    <span className="pay-summary__stat-lbl">За период</span>
-                    <span className="pay-summary__stat-val tnum">{summary.net}</span>
-                  </div>
+                  <>
+                    <div className="pay-summary__stat">
+                      <span className="pay-summary__stat-lbl">Поступило</span>
+                      <span
+                        className={
+                          'pay-summary__stat-val tnum' +
+                          (summary.paidPositive ? ' pay-summary__stat-val--credit' : '')
+                        }
+                      >
+                        {summary.paid}
+                      </span>
+                    </div>
+                    <div className="pay-summary__stat">
+                      <span className="pay-summary__stat-lbl">Списано</span>
+                      <span className="pay-summary__stat-val tnum">{summary.charged}</span>
+                    </div>
+                  </>
                 ) : summaryMixedUnits ? (
                   <p className="pay-summary__mixed-hint">
                     За период есть операции в рублях и в уроках — итог по строкам смотрите в

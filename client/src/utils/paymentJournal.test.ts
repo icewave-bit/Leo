@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { BalanceMovement } from '../api/types';
 import { fmtBalanceAmount } from './format';
 import type { ViewStudent } from './schedule';
-import { buildJournalRows } from './paymentJournal';
+import { buildJournalRows, periodSummary } from './paymentJournal';
 
 function student(partial: Partial<ViewStudent> & Pick<ViewStudent, 'id' | 'name'>): ViewStudent {
   return {
@@ -140,5 +140,49 @@ describe('buildJournalRows', () => {
     expect(rows[0]!.title).toBe('Пополнение');
     expect(rows[0]!.isCompoundReplenish).toBeFalsy();
     expect(rows[0]!.allocations).toBeUndefined();
+  });
+});
+
+describe('periodSummary', () => {
+  const payer = student({ id: 'payer', name: 'C', currency: 'EUR', balanceKind: 'money' });
+
+  it('separates payments received and lesson charges without cancelling them out', () => {
+    const movements: BalanceMovement[] = [
+      movement({ id: 'ch-1', kind: 'lesson_charge', prepaidDelta: -1333, debtDelta: 0 }),
+      movement({ id: 'ch-2', kind: 'lesson_charge', prepaidDelta: 0, debtDelta: 1333 }),
+      movement({ id: 'rep-1', kind: 'replenish', prepaidDelta: 2666, debtDelta: 0 }),
+      movement({
+        id: 'paid-child',
+        kind: 'lesson_paid',
+        parentMovementId: 'rep-1',
+        prepaidDelta: -1333,
+        debtDelta: -1333,
+      }),
+    ];
+
+    const res = periodSummary(movements, payer);
+    expect(res).toEqual({
+      paid: '+' + fmtBalanceAmount(2666, 'money', 'EUR'),
+      paidPositive: true,
+      charged: fmtBalanceAmount(2666, 'money', 'EUR'),
+    });
+  });
+
+  it('accounts for direct lesson_paid, payment reversals, lesson_reverse, and ignores manual', () => {
+    const movements: BalanceMovement[] = [
+      movement({ id: 'ch-1', kind: 'lesson_charge', prepaidDelta: 0, debtDelta: 1000 }),
+      movement({ id: 'ch-2', kind: 'lesson_charge', prepaidDelta: 0, debtDelta: 1000 }),
+      movement({ id: 'paid-1', kind: 'lesson_paid', prepaidDelta: 0, debtDelta: -1000 }),
+      movement({ id: 'unpaid-1', kind: 'lesson_paid', prepaidDelta: 0, debtDelta: 1000 }),
+      movement({ id: 'rev-2', kind: 'lesson_reverse', prepaidDelta: 0, debtDelta: -1000 }),
+      movement({ id: 'man-1', kind: 'manual', prepaidDelta: 500, debtDelta: 0 }),
+    ];
+
+    const res = periodSummary(movements, payer);
+    expect(res).toEqual({
+      paid: fmtBalanceAmount(0, 'money', 'EUR'),
+      paidPositive: false,
+      charged: fmtBalanceAmount(1000, 'money', 'EUR'),
+    });
   });
 });

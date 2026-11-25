@@ -202,4 +202,42 @@ describe('balance movements', () => {
       ),
     ).toBe(true);
   });
+
+  it('records payment reversal movement when unmarking a paid lesson', async () => {
+    const { agent } = await registerTutor(app);
+    const studentRes = await agent
+      .post('/api/students')
+      .send({ name: 'Unpay Test', balanceKind: 'money', prepaid: 0, debt: 0, rate: 100, currency: 'EUR' })
+      .expect(201);
+    const studentId = studentRes.body.id as string;
+
+    const startUtc = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    const lessonRes = await agent
+      .post('/api/lessons')
+      .send({ studentId, startUtc, durationMin: 60 })
+      .expect(201);
+    const lessonId = lessonRes.body.id as string;
+
+    // Auto-complete charges debt +100
+    await agent.get('/api/lessons').query({
+      from: new Date(Date.now() - 7 * 86_400_000).toISOString(),
+      to: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+    });
+
+    // Mark paid (-100 debt), then unmark paid (+100 debt)
+    await agent.patch(`/api/lessons/${lessonId}`).send({ paid: true }).expect(200);
+    await agent.patch(`/api/lessons/${lessonId}`).send({ paid: false }).expect(200);
+
+    const from = new Date(0).toISOString();
+    const to = new Date(Date.now() + 86_400_000).toISOString();
+    const list = await agent
+      .get(`/api/balance-movements?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&studentId=${studentId}`)
+      .expect(200);
+
+    const paidMovements = (list.body as Array<{ kind: string; debtDelta: number }>).filter(
+      (m) => m.kind === 'lesson_paid',
+    );
+    expect(paidMovements).toHaveLength(2);
+    expect(paidMovements.reduce((sum, m) => sum + m.debtDelta, 0)).toBe(0);
+  });
 });

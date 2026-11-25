@@ -3310,6 +3310,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .pay-summary__stat { display: flex; flex-direction: column; gap: 4px; min-width: 72px; }
 .pay-summary__stat-lbl { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .pay-summary__stat-val { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }
+.pay-summary__stat-val--credit { color: var(--c-credit); }
 .pay-summary__stat-val--muted { font-size: 16px; color: var(--text); font-weight: 650; }
 .pay-summary__mixed-hint {
   margin: 0;
@@ -4889,7 +4890,7 @@ col.tax-col-actions { width: 36px; }
   }
   .pay-summary__stats {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
   }
   .pay-summary__stat { min-width: 0; }

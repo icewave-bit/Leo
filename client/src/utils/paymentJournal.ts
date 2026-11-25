@@ -219,7 +219,10 @@ function movementTitle(
   const chargedFor = m.chargedForStudentId
     ? students.get(m.chargedForStudentId)
     : undefined;
-  const baseTitle = MOVEMENT_LABELS[m.kind];
+  const baseTitle =
+    m.kind === 'lesson_paid' && m.debtDelta > 0
+      ? 'Отмена оплаты'
+      : MOVEMENT_LABELS[m.kind];
   return {
     title: chargedFor != null ? `${baseTitle} · ${chargedFor.name}` : baseTitle,
     chargedForName: chargedFor?.name ?? null,
@@ -258,7 +261,10 @@ export function enrichMovements(
       amountLabel: fmtDelta(amount, unitKind, currency),
       netLabel: fmtBalanceNet(m.prepaidAfter, m.debtAfter, unitKind, currency),
       whenLabel: fmtLessonWhen(m.occurredAt, timezone),
-      tone: MOVEMENT_TONE[m.kind],
+      tone:
+        m.kind === 'lesson_paid' && m.debtDelta > 0
+          ? 'neutral'
+          : MOVEMENT_TONE[m.kind],
     };
   });
 }
@@ -340,22 +346,51 @@ export function attachRunningBalance(
   }));
 }
 
-export function periodDeltaSummary(
+export interface PeriodSummary {
+  paid: string;
+  paidPositive: boolean;
+  charged: string;
+}
+
+export function periodSummary(
   movements: BalanceMovement[],
   student: ViewStudent | undefined,
-): { net: string } | null {
+): PeriodSummary | null {
   const main = mainTimelineMovements(movements);
   if (!student || main.length === 0) return null;
   if (movementsHaveMixedUnits(main, student)) return null;
 
   const unitKind = movementUnitKind(main[0]!, student);
   const currency = student.currency;
-  const netChange = main.reduce((a, m) => a + m.prepaidDelta - m.debtDelta, 0);
-  if (Math.abs(netChange) < 1e-9) {
-    return { net: fmtBalanceAmount(0, unitKind, currency) };
+
+  let paidAmount = 0;
+  let chargedAmount = 0;
+
+  for (const m of main) {
+    if (m.kind === 'replenish') {
+      paidAmount += m.prepaidDelta;
+    } else if (m.kind === 'lesson_paid') {
+      paidAmount += -m.debtDelta;
+    } else if (m.kind === 'lesson_charge') {
+      chargedAmount += m.debtDelta - m.prepaidDelta;
+    } else if (m.kind === 'lesson_reverse') {
+      chargedAmount -= m.prepaidDelta - m.debtDelta;
+    }
   }
-  const sign = netChange > 0 ? '+' : '−';
+
+  const paid =
+    Math.abs(paidAmount) < 1e-9
+      ? fmtBalanceAmount(0, unitKind, currency)
+      : (paidAmount > 0 ? '+' : '−') + fmtBalanceAmount(Math.abs(paidAmount), unitKind, currency);
+
+  const charged =
+    Math.abs(chargedAmount) < 1e-9
+      ? fmtBalanceAmount(0, unitKind, currency)
+      : (chargedAmount < 0 ? '−' : '') + fmtBalanceAmount(Math.abs(chargedAmount), unitKind, currency);
+
   return {
-    net: sign + fmtBalanceAmount(Math.abs(netChange), unitKind, currency),
+    paid,
+    paidPositive: paidAmount > 1e-9,
+    charged,
   };
 }
